@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package osai.ledger.v1;
+
+option go_package = "github.com/osai/osai/proto/osai/ledger/v1;ledgerv1";
+
+message Money {
+  int64 amount_minor = 1;
+  string currency = 2;
+}
+
+message SettlementCommand {
+  string idempotency_key = 1;
+  string correlation_id = 2;
+  string settlement_instruction_id = 3;
+  string trade_id = 4;
+  string obligation_id = 5;
+  string provider_reference = 6;
+  string external_reference = 7;
+  string beneficiary = 8;
+  Money amount = 9;
+  string purpose = 10;
+}
+
+message LedgerError {
+  string code = 1;
+  string message = 2;
+}
+
+message SettlementCommandResponse {
+  string journal_id = 1;
+  bool already_applied = 2;
+  LedgerError error = 3;
+}
+
+message ReconciliationAdjustmentCommand {
+  string idempotency_key = 1;
+  string correlation_id = 2;
+  string break_id = 3;
+  string maker = 4;
+  string checker = 5;
+  string currency = 6;
+  int64 amount_minor = 7;
+  string reason = 8;
+  string journal_tag = 9;
+}
+
+service LedgerService {
+  rpc ConfirmSettlement(SettlementCommand) returns (SettlementCommandResponse);
+  rpc FailSettlement(SettlementCommand) returns (SettlementCommandResponse);
+  rpc ReverseSettlement(SettlementCommand) returns (SettlementCommandResponse);
+  rpc PostReconciliationAdjustment(ReconciliationAdjustmentCommand) returns (SettlementCommandResponse);
+}

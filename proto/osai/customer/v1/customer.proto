@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package osai.customer.v1;
+
+option go_package = "github.com/osai/osai/proto/osai/customer/v1;customerv1";
+
+message CredentialAuthRequest {
+  string public_id = 1;
+  string secret = 2;
+}
+
+message InstitutionRequest {
+  string institution_id = 1;
+}
+
+message AuthContext {
+  string institution_id = 1;
+  string institution_status = 2;
+  string kyb_status = 3;
+  string api_access_status = 4;
+  bool api_enabled = 5;
+  repeated string entitlements = 6;
+  string request_id = 7;
+}
+
+message Institution {
+  string institution_id = 1;
+  string name = 2;
+  string status = 3;
+  string kyb_status = 4;
+  string country = 5;
+  bool api_enabled = 6;
+}
+
+message WebhookConfiguration {
+  string institution_id = 1;
+  string webhook_url = 2;
+  string secret = 3;
+  bool enabled = 4;
+  string status = 5;
+}
+
+service CustomerService {
+  rpc AuthenticateAPIClient(CredentialAuthRequest) returns (AuthContext);
+  rpc GetInstitutionAccess(InstitutionRequest) returns (AuthContext);
+  rpc GetInstitution(InstitutionRequest) returns (Institution);
+  rpc GetWebhookConfiguration(InstitutionRequest) returns (WebhookConfiguration);
+}

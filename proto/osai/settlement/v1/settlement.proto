@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package osai.settlement.v1;
+
+option go_package = "github.com/osai/osai/proto/osai/settlement/v1;settlementv1";
+
+message Money {
+  int64 amount_minor = 1;
+  string currency = 2;
+}
+
+message CreateSettlementForTradeRequest {
+  string institution_id = 1;
+  string trade_id = 2;
+  string quote_id = 3;
+  string idempotency_key = 4;
+  string correlation_id = 5;
+  string beneficiary = 6;
+  Money amount = 7;
+  string purpose = 8;
+}
+
+message SettlementResponse {
+  string settlement_id = 1;
+  string institution_id = 2;
+  string trade_id = 3;
+  string quote_id = 4;
+  string status = 5;
+  string beneficiary = 6;
+  int64 amount_minor = 7;
+  string currency = 8;
+  string correlation_id = 9;
+}
+
+message GetSettlementRequest {
+  string institution_id = 1;
+  string settlement_id = 2;
+  string correlation_id = 3;
+}
+
+service SettlementService {
+  rpc CreateSettlementForTrade(CreateSettlementForTradeRequest) returns (SettlementResponse);
+  rpc GetSettlement(GetSettlementRequest) returns (SettlementResponse);
+}

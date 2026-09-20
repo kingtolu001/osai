@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package osai.trade.v1;
+
+option go_package = "github.com/osai/osai/proto/osai/trade/v1;tradev1";
+
+message Money {
+  int64 amount_minor = 1;
+  string currency = 2;
+}
+
+message CreateTradeFromAcceptedQuoteRequest {
+  string institution_id = 1;
+  string quote_id = 2;
+  string idempotency_key = 3;
+  string correlation_id = 4;
+  int64 base_amount_minor = 5;
+  string base_currency = 6;
+  string quote_currency = 7;
+  Money amount = 8;
+}
+
+message TradeResponse {
+  string trade_id = 1;
+  string institution_id = 2;
+  string quote_id = 3;
+  string status = 4;
+  int64 base_amount_minor = 5;
+  string base_currency = 6;
+  string quote_currency = 7;
+  string correlation_id = 8;
+  string settlement_id = 9;
+}
+
+message GetTradeRequest {
+  string institution_id = 1;
+  string trade_id = 2;
+  string correlation_id = 3;
+}
+
+service TradeService {
+  rpc CreateTradeFromAcceptedQuote(CreateTradeFromAcceptedQuoteRequest) returns (TradeResponse);
+  rpc GetTrade(GetTradeRequest) returns (TradeResponse);
+}

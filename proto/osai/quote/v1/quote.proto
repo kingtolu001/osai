@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package osai.quote.v1;
+
+option go_package = "github.com/osai/osai/proto/osai/quote/v1;quotev1";
+
+message Money {
+  int64 amount_minor = 1;
+  string currency = 2;
+}
+
+message CreateQuoteRequest {
+  string institution_id = 1;
+  string idempotency_key = 2;
+  string correlation_id = 3;
+  int64 base_amount_minor = 4;
+  string base_currency = 5;
+  string quote_currency = 6;
+  string destination_rail = 7;
+  string urgency = 8;
+}
+
+message QuoteResponse {
+  string quote_id = 1;
+  string status = 2;
+  int64 base_amount_minor = 3;
+  string base_currency = 4;
+  string quote_currency = 5;
+  string destination_rail = 6;
+  int64 amount_out_minor = 7;
+  int64 rate_minor = 8;
+  int64 fee_minor = 9;
+  string expires_at = 10;
+  string correlation_id = 11;
+  string trade_id = 12;
+}
+
+message GetQuoteRequest {
+  string institution_id = 1;
+  string quote_id = 2;
+  string correlation_id = 3;
+}
+
+message AcceptQuoteRequest {
+  string institution_id = 1;
+  string quote_id = 2;
+  string idempotency_key = 3;
+  string correlation_id = 4;
+}
+
+service QuoteService {
+  rpc CreateQuote(CreateQuoteRequest) returns (QuoteResponse);
+  rpc GetQuote(GetQuoteRequest) returns (QuoteResponse);
+  rpc AcceptQuote(AcceptQuoteRequest) returns (QuoteResponse);
+}

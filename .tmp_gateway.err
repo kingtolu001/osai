@@ -1,0 +1,4 @@
+2026/09/20 14:28:35 api-gateway listening on :8082
+exit status 0xffffffff
+-gateway server failed: listen tcp :8082: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+exit status 1

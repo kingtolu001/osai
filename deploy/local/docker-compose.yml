@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: osai-postgres
+    environment:
+      POSTGRES_USER: osai
+      POSTGRES_PASSWORD: osai
+      POSTGRES_DB: osai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osai -d osai"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
+    container_name: osai-redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:9093
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092,OUTSIDE://localhost:9093
+      - --set redpanda.enable_transactions=true
+      - --set redpanda.auto_create_topics_enabled=true
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+      - "9644:9644"
+
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    container_name: osai-temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=osai
+      - POSTGRES_PWD=osai
+      - POSTGRES_SEEDS=postgres
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.100.0
+    container_name: osai-otel
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+
+volumes:
+  postgres_data:

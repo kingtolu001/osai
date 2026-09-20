@@ -1,0 +1,393 @@
+openapi: 3.0.3
+info:
+  title: Osai Customer API
+  version: 1.0.0
+  description: Phase 5 customer-facing API surface for quote, trade, settlement, balances, and transactions.
+servers:
+  - url: http://localhost:8082
+paths:
+  /v1/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /v1/quotes:
+    post:
+      summary: Create a quote
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/Authorization'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteRequest'
+      responses:
+        '200':
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /v1/quotes/{quote_id}:
+    get:
+      summary: Get quote by ID
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/QuoteID'
+      responses:
+        '200':
+          description: Quote found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/quotes/{quote_id}/accept:
+    post:
+      summary: Accept a quote
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/QuoteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptQuoteRequest'
+      responses:
+        '200':
+          description: Quote accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptQuoteResponse'
+  /v1/trades/{trade_id}:
+    get:
+      summary: Get trade by ID
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/TradeID'
+      responses:
+        '200':
+          description: Trade found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeResponse'
+  /v1/settlements/{settlement_id}:
+    get:
+      summary: Get settlement by ID
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/SettlementID'
+      responses:
+        '200':
+          description: Settlement found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementResponse'
+  /v1/balances:
+    get:
+      summary: Get institution balances
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+      responses:
+        '200':
+          description: Balance view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+  /v1/transactions:
+    get:
+      summary: List institution transactions
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Transaction page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionPage'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Format: ApiKey <public_id>:<secret>'
+  parameters:
+    Authorization:
+      name: Authorization
+      in: header
+      required: true
+      schema:
+        type: string
+    RequestID:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 25
+    QuoteID:
+      name: quote_id
+      in: path
+      required: true
+      schema:
+        type: string
+    TradeID:
+      name: trade_id
+      in: path
+      required: true
+      schema:
+        type: string
+    SettlementID:
+      name: settlement_id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+    HealthResponse:
+      type: object
+      required: [status, request_id]
+      properties:
+        status:
+          type: string
+        request_id:
+          type: string
+    Money:
+      type: object
+      required: [amount_minor, currency]
+      properties:
+        amount_minor:
+          type: integer
+        currency:
+          type: string
+    QuoteResponse:
+      type: object
+      required: [quote_id, status, base_amount_minor, base_currency, quote_currency, amount_out_minor, rate_minor, fee_minor, expires_at]
+      properties:
+        quote_id:
+          type: string
+        status:
+          type: string
+        base_amount_minor:
+          type: integer
+        base_currency:
+          type: string
+        quote_currency:
+          type: string
+        destination_rail:
+          type: string
+        amount_out_minor:
+          type: integer
+        rate_minor:
+          type: integer
+        fee_minor:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+    CreateQuoteRequest:
+      type: object
+      required: [base_amount_minor, base_currency, quote_currency]
+      properties:
+        base_amount_minor:
+          type: integer
+        base_currency:
+          type: string
+        quote_currency:
+          type: string
+        destination_rail:
+          type: string
+        urgency:
+          type: string
+    AcceptQuoteRequest:
+      type: object
+      required: [quote_id]
+      properties:
+        quote_id:
+          type: string
+    AcceptQuoteResponse:
+      type: object
+      required: [quote_id, trade_id, status]
+      properties:
+        quote_id:
+          type: string
+        trade_id:
+          type: string
+        status:
+          type: string
+        request_id:
+          type: string
+    TradeResponse:
+      type: object
+      required: [trade_id, quote_id, institution_id, status]
+      properties:
+        trade_id:
+          type: string
+        quote_id:
+          type: string
+        institution_id:
+          type: string
+        status:
+          type: string
+        base_amount_minor:
+          type: integer
+        base_currency:
+          type: string
+        quote_currency:
+          type: string
+        settlement_id:
+          type: string
+        request_id:
+          type: string
+    SettlementResponse:
+      type: object
+      required: [settlement_id, trade_id, quote_id, institution_id, status, amount_minor, currency]
+      properties:
+        settlement_id:
+          type: string
+        trade_id:
+          type: string
+        quote_id:
+          type: string
+        institution_id:
+          type: string
+        status:
+          type: string
+        beneficiary:
+          type: string
+        amount_minor:
+          type: integer
+        currency:
+          type: string
+        purpose:
+          type: string
+        request_id:
+          type: string
+    BalanceResponse:
+      type: object
+      required: [institution_id, currency, available_minor, held_minor, total_minor]
+      properties:
+        institution_id:
+          type: string
+        currency:
+          type: string
+        available_minor:
+          type: integer
+        held_minor:
+          type: integer
+        total_minor:
+          type: integer
+        request_id:
+          type: string
+    TransactionItem:
+      type: object
+      required: [transaction_id, type, amount_minor, currency, status, occurred_at]
+      properties:
+        transaction_id:
+          type: string
+        type:
+          type: string
+        amount_minor:
+          type: integer
+        currency:
+          type: string
+        status:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        correlation_id:
+          type: string
+    TransactionPage:
+      type: object
+      required: [items, page, page_size, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionItem'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+        request_id:
+          type: string
+  responses:
+    ValidationError:
+      description: Validation failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+security:
+  - ApiKeyAuth: []

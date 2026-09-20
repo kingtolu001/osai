@@ -1,0 +1,10 @@
+*.md
+*.MD
+*.markdown
+*.Markdown
+logs/
+runtime-logs/
+*.log
+.env
+bin/
+tmp/
