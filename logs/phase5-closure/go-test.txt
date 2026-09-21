@@ -1,0 +1,42 @@
+?   	github.com/osai/osai	[no test files]
+ok  	github.com/osai/osai/adapters/firstpair	(cached)
+ok  	github.com/osai/osai/adapters/simulator/simcore	(cached)
+?   	github.com/osai/osai/cmd/ledger-server	[no test files]
+?   	github.com/osai/osai/cmd/reconciliation	[no test files]
+?   	github.com/osai/osai/cmd/temporal-drill	[no test files]
+?   	github.com/osai/osai/cmd/temporal-worker	[no test files]
+?   	github.com/osai/osai/pkg/correlation	[no test files]
+?   	github.com/osai/osai/pkg/ids	[no test files]
+?   	github.com/osai/osai/pkg/money	[no test files]
+ok  	github.com/osai/osai/pkg/observability	(cached)
+?   	github.com/osai/osai/pkg/provider	[no test files]
+?   	github.com/osai/osai/proto/osai/customer/v1	[no test files]
+?   	github.com/osai/osai/proto/osai/ledger/v1	[no test files]
+?   	github.com/osai/osai/proto/osai/quote/v1	[no test files]
+?   	github.com/osai/osai/proto/osai/reporting/v1	[no test files]
+?   	github.com/osai/osai/proto/osai/settlement/v1	[no test files]
+?   	github.com/osai/osai/proto/osai/trade/v1	[no test files]
+ok  	github.com/osai/osai/services/api-gateway	(cached)
+ok  	github.com/osai/osai/services/customer-kyb	(cached)
+?   	github.com/osai/osai/services/ledger	[no test files]
+ok  	github.com/osai/osai/services/ledger/ledgerapi	(cached)
+ok  	github.com/osai/osai/services/ledger/ledgercore	(cached)
+ok  	github.com/osai/osai/services/ledger/ledgergrpc	(cached)
+ok  	github.com/osai/osai/services/ledger/ledgerstore	(cached)
+?   	github.com/osai/osai/services/liquidity-router	[no test files]
+?   	github.com/osai/osai/services/liquidity-router/routingcore	[no test files]
+?   	github.com/osai/osai/services/notification-webhook	[no test files]
+ok  	github.com/osai/osai/services/notification-webhook/webhookcore	(cached)
+?   	github.com/osai/osai/services/ops	[no test files]
+?   	github.com/osai/osai/services/quote	[no test files]
+?   	github.com/osai/osai/services/quote/quotecore	[no test files]
+ok  	github.com/osai/osai/services/reconciliation	(cached)
+?   	github.com/osai/osai/services/reporting	[no test files]
+?   	github.com/osai/osai/services/risk-policy	[no test files]
+?   	github.com/osai/osai/services/settlement	[no test files]
+?   	github.com/osai/osai/services/settlement/ledgerclient	[no test files]
+ok  	github.com/osai/osai/services/settlement/settlementcore	(cached)
+ok  	github.com/osai/osai/services/settlement/settlementstore	(cached)
+?   	github.com/osai/osai/services/trade-orchestrator	[no test files]
+ok  	github.com/osai/osai/services/trade-orchestrator/tradecore	(cached)
+ok  	github.com/osai/osai/workflows	(cached)

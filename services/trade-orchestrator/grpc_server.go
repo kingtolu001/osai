@@ -9,6 +9,7 @@ import (
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/trade-orchestrator/tradecore"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -66,7 +67,7 @@ func (s *tradeServer) GetTrade(ctx context.Context, req *tradev1.GetTradeRequest
 
 func dialTradeService(grpcAddr string) (settlementv1.SettlementServiceClient, error) {
 	if strings.TrimSpace(grpcAddr) == "" { return nil, nil }
-	conn, err := grpc.Dial(grpcAddr, grpc.WithInsecure())
+	conn, err := grpc.Dial(grpcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil { return nil, err }
 	log.Printf("trade orchestration connected to settlement service at %s", grpcAddr)
 	return settlementv1.NewSettlementServiceClient(conn), nil

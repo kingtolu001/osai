@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/osai/osai/pkg/observability"
-	"google.golang.org/grpc/credentials/insecure"
-
 	quotev1 "github.com/osai/osai/proto/osai/quote/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/quote/quotecore"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -25,17 +25,27 @@ func main() {
 	}
 	store := quotecore.NewQuoteStore()
 	httpPort := os.Getenv("OSAI_QUOTE_PORT")
-	if httpPort == "" { httpPort = ":8084" }
+	if httpPort == "" {
+		httpPort = ":8084"
+	}
 	grpcPort := os.Getenv("OSAI_QUOTE_GRPC_ADDR")
-	if grpcPort == "" { grpcPort = ":50053" }
+	if grpcPort == "" {
+		grpcPort = ":50053"
+	}
 	listener, err := net.Listen("tcp", grpcPort)
-	if err != nil { log.Fatalf("quote gRPC listen failed: %v", err) }
+	if err != nil {
+		log.Fatalf("quote gRPC listen failed: %v", err)
+	}
 	tradeAddr := os.Getenv("OSAI_TRADE_GRPC_ADDR")
-	if tradeAddr == "" { tradeAddr = "localhost:50054" }
-	tradeConn, err := grpc.Dial(tradeAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor()))
-	if err != nil { log.Fatalf("dial trade-orchestrator: %v", err) }
+	if tradeAddr == "" {
+		tradeAddr = "localhost:50054"
+	}
+	tradeConn, err := grpc.Dial(tradeAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	if err != nil {
+		log.Fatalf("dial trade-orchestrator: %v", err)
+	}
 	defer tradeConn.Close()
-	server := grpc.NewServer(grpc.UnaryInterceptor(observability.UnaryServerInterceptor()))
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	quotev1.RegisterQuoteServiceServer(server, &grpcServer{store: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn)})
 	log.Printf("quote gRPC listening on %s", grpcPort)
 	go func() {
@@ -62,8 +72,12 @@ func main() {
 				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "VALIDATION_ERROR", "message": "malformed JSON"}})
 				return
 			}
-			if req.CustomerID == "" { req.CustomerID = "inst_sandbox_local" }
-			if req.IdempotencyKey == "" { req.IdempotencyKey = "quote-key-" + time.Now().UTC().Format(time.RFC3339Nano) }
+			if req.CustomerID == "" {
+				req.CustomerID = "inst_sandbox_local"
+			}
+			if req.IdempotencyKey == "" {
+				req.IdempotencyKey = "quote-key-" + time.Now().UTC().Format(time.RFC3339Nano)
+			}
 			quote, err := store.Create(quotecore.QuoteRequest{CustomerID: req.CustomerID, BaseAmountMinor: req.BaseAmountMinor, BaseCurrency: req.BaseCurrency, QuoteCurrency: req.QuoteCurrency, DestinationRail: req.DestinationRail, Urgency: req.Urgency, IdempotencyKey: req.IdempotencyKey}, req.DestinationRail, 1200, 500, req.BaseAmountMinor/100, time.Now().Add(30*time.Minute))
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)

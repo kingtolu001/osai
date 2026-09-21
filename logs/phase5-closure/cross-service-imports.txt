@@ -1,0 +1,5 @@
+services\api-gateway\gateway.go:17: "github.com/osai/osai/services/quote/quotecore"
+services\api-gateway\grpc_clients.go:16: "github.com/osai/osai/services/quote/quotecore"
+services\liquidity-router\routingcore\router.go:7: quotecore "github.com/osai/osai/services/quote/quotecore"
+services\trade-orchestrator\tradecore\simulated_trade.go:7: "github.com/osai/osai/services/liquidity-router/routingcore"
+services\trade-orchestrator\tradecore\simulated_trade.go:8: quotecore "github.com/osai/osai/services/quote/quotecore"

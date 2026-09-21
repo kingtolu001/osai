@@ -25,9 +25,13 @@ func main() {
 	}
 	store := settlementcore.NewStore(nil)
 	grpcPort := os.Getenv("OSAI_SETTLEMENT_GRPC_ADDR")
-	if grpcPort == "" { grpcPort = ":50055" }
+	if grpcPort == "" {
+		grpcPort = ":50055"
+	}
 	listener, err := net.Listen("tcp", grpcPort)
-	if err != nil { log.Fatalf("settlement gRPC listen failed: %v", err) }
+	if err != nil {
+		log.Fatalf("settlement gRPC listen failed: %v", err)
+	}
 	server := grpc.NewServer(grpc.UnaryInterceptor(observability.UnaryServerInterceptor()))
 	settlementv1.RegisterSettlementServiceServer(server, &settlementGRPCServer{store: store})
 	log.Printf("settlement gRPC listening on %s", grpcPort)
@@ -76,7 +80,9 @@ func main() {
 	})
 	go func() {
 		port := os.Getenv("OSAI_SETTLEMENT_PORT")
-		if port == "" { port = ":8085" }
+		if port == "" {
+			port = ":8085"
+		}
 		log.Printf("settlement service listening on %s", port)
 		if err := http.ListenAndServe(port, nil); err != nil {
 			log.Printf("settlement http server failed: %v", err)
@@ -120,14 +126,14 @@ func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req
 	}
 	log.Printf("settlement instruction created: settlement_id=%s trade_id=%s quote_id=%s institution_id=%s correlation_id=%s", instruction.ID, req.TradeId, req.QuoteId, req.InstitutionId, req.CorrelationId)
 	return &settlementv1.SettlementResponse{
-		SettlementId: instruction.ID,
+		SettlementId:  instruction.ID,
 		InstitutionId: req.InstitutionId,
-		TradeId: req.TradeId,
-		QuoteId: req.QuoteId,
-		Status: string(instruction.State),
-		Beneficiary: instruction.Beneficiary,
-		AmountMinor: instruction.AmountMinor,
-		Currency: instruction.Currency,
+		TradeId:       req.TradeId,
+		QuoteId:       req.QuoteId,
+		Status:        string(instruction.State),
+		Beneficiary:   instruction.Beneficiary,
+		AmountMinor:   instruction.AmountMinor,
+		Currency:      instruction.Currency,
 		CorrelationId: req.CorrelationId,
 	}, nil
 }
@@ -150,14 +156,14 @@ func (s *settlementGRPCServer) GetSettlement(ctx context.Context, req *settlemen
 		return nil, status.Error(codes.PermissionDenied, "forbidden")
 	}
 	return &settlementv1.SettlementResponse{
-		SettlementId: instruction.ID,
+		SettlementId:  instruction.ID,
 		InstitutionId: req.InstitutionId,
-		TradeId: "",
-		QuoteId: "",
-		Status: string(instruction.State),
-		Beneficiary: instruction.Beneficiary,
-		AmountMinor: instruction.AmountMinor,
-		Currency: instruction.Currency,
+		TradeId:       "",
+		QuoteId:       "",
+		Status:        string(instruction.State),
+		Beneficiary:   instruction.Beneficiary,
+		AmountMinor:   instruction.AmountMinor,
+		Currency:      instruction.Currency,
 		CorrelationId: req.CorrelationId,
 	}, nil
 }

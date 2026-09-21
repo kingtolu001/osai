@@ -31,7 +31,10 @@ func Init(serviceName string) error {
 		serviceName = "osai"
 	}
 	initOnce.Do(func() {
-		otel.SetTextMapPropagator(propagation.TraceContext{})
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		))
 		ctx := context.Background()
 		exporter, err := otlptracegrpc.New(ctx,
 			otlptracegrpc.WithInsecure(),

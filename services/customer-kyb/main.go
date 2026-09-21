@@ -11,6 +11,7 @@ import (
 
 	"github.com/osai/osai/pkg/observability"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 )
 
@@ -23,12 +24,18 @@ func main() {
 		log.Printf("sandbox seed warning: %v", err)
 	}
 	addr := os.Getenv("OSAI_KYB_PORT")
-	if addr == "" { addr = ":8081" }
+	if addr == "" {
+		addr = ":8081"
+	}
 	grpcAddr := os.Getenv("OSAI_CUSTOMER_GRPC_ADDR")
-	if grpcAddr == "" { grpcAddr = ":50052" }
+	if grpcAddr == "" {
+		grpcAddr = ":50052"
+	}
 	listener, err := net.Listen("tcp", grpcAddr)
-	if err != nil { log.Fatalf("customer-kyb gRPC listen failed: %v", err) }
-	server := grpc.NewServer(grpc.UnaryInterceptor(observability.UnaryServerInterceptor()))
+	if err != nil {
+		log.Fatalf("customer-kyb gRPC listen failed: %v", err)
+	}
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	customerv1.RegisterCustomerServiceServer(server, &grpcServer{service: service})
 	log.Printf("customer-kyb gRPC listening on %s", grpcAddr)
 	go func() {
@@ -49,24 +56,32 @@ func main() {
 }
 
 func seedSandboxCustomer(service *Service) error {
-	if service == nil { return nil }
+	if service == nil {
+		return nil
+	}
 	instID := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_INSTITUTION_ID"))
-	if instID == "" { instID = "inst_sandbox_local" }
+	if instID == "" {
+		instID = "inst_sandbox_local"
+	}
 	clientID := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_CLIENT_ID"))
-	if clientID == "" { clientID = "ck_sandbox_local" }
+	if clientID == "" {
+		clientID = "ck_sandbox_local"
+	}
 	secret := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_CLIENT_SECRET"))
-	if secret == "" { secret = "secret_local_001" }
+	if secret == "" {
+		secret = "secret_local_001"
+	}
 
 	service.mu.Lock()
 	if service.institutions[instID] == nil {
 		service.institutions[instID] = &Institution{
-			ID:        instID,
-			Name:      "Sandbox Institution",
-			Status:    InstitutionStatusActive,
-			KYBStatus: KybStatusApproved,
-			Country:   "US",
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			ID:         instID,
+			Name:       "Sandbox Institution",
+			Status:     InstitutionStatusActive,
+			KYBStatus:  KybStatusApproved,
+			Country:    "US",
+			CreatedAt:  time.Now().UTC(),
+			UpdatedAt:  time.Now().UTC(),
 			APIEnabled: true,
 		}
 	}

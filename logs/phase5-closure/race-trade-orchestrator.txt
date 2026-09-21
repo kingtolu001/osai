@@ -1,0 +1,2 @@
+?   	github.com/osai/osai/services/trade-orchestrator	[no test files]
+ok  	github.com/osai/osai/services/trade-orchestrator/tradecore	(cached)
