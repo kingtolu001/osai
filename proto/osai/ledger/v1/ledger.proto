@@ -45,9 +45,17 @@ message ReconciliationAdjustmentCommand {
   string journal_tag = 9;
 }
 
+message CustomerReadRequest { string institution_id = 1; int32 page = 2; int32 page_size = 3; }
+message CustomerBalance { string currency = 1; int64 available_minor = 2; int64 held_minor = 3; }
+message CustomerBalanceResponse { repeated CustomerBalance balances = 1; }
+message CustomerTransaction { string journal_id = 1; string trade_id = 2; string currency = 3; int64 amount_minor = 4; string occurred_at = 5; }
+message CustomerTransactionResponse { repeated CustomerTransaction items = 1; int32 total = 2; }
+
 service LedgerService {
   rpc ConfirmSettlement(SettlementCommand) returns (SettlementCommandResponse);
   rpc FailSettlement(SettlementCommand) returns (SettlementCommandResponse);
   rpc ReverseSettlement(SettlementCommand) returns (SettlementCommandResponse);
   rpc PostReconciliationAdjustment(ReconciliationAdjustmentCommand) returns (SettlementCommandResponse);
+  rpc GetCustomerBalances(CustomerReadRequest) returns (CustomerBalanceResponse);
+  rpc ListCustomerTransactions(CustomerReadRequest) returns (CustomerTransactionResponse);
 }

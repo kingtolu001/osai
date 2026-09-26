@@ -14,7 +14,7 @@ import (
 
 type grpcServer struct {
 	quotev1.UnimplementedQuoteServiceServer
-	store      *quotecore.QuoteStore
+	store       *quotecore.QuoteStore
 	tradeClient tradev1.TradeServiceClient
 }
 
@@ -73,15 +73,18 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	if s.tradeClient == nil {
 		return nil, status.Error(codes.Unavailable, "trade service unavailable")
 	}
+	if quote.IsExpiredAt(time.Now()) || quote.Status != quotecore.QuoteStatusQuoted {
+		return nil, status.Error(codes.FailedPrecondition, "quote is not executable")
+	}
 	tradeResp, err := s.tradeClient.CreateTradeFromAcceptedQuote(ctx, &tradev1.CreateTradeFromAcceptedQuoteRequest{
-		InstitutionId: req.InstitutionId,
-		QuoteId:      req.QuoteId,
-		IdempotencyKey: req.IdempotencyKey,
-		CorrelationId: req.CorrelationId,
+		InstitutionId:   req.InstitutionId,
+		QuoteId:         req.QuoteId,
+		IdempotencyKey:  req.IdempotencyKey,
+		CorrelationId:   req.CorrelationId,
 		BaseAmountMinor: quote.Request.BaseAmountMinor,
-		BaseCurrency: quote.Request.BaseCurrency,
-		QuoteCurrency: quote.Request.QuoteCurrency,
-		Amount: &tradev1.Money{AmountMinor: quote.AmountOutMinor, Currency: quote.Request.QuoteCurrency},
+		BaseCurrency:    quote.Request.BaseCurrency,
+		QuoteCurrency:   quote.Request.QuoteCurrency,
+		Amount:          &tradev1.Money{AmountMinor: quote.AmountOutMinor, Currency: quote.Request.QuoteCurrency},
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -90,7 +93,8 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	if strings.TrimSpace(tradeID) == "" {
 		return nil, status.Error(codes.Internal, "trade-orchestrator did not return a trade id")
 	}
-	if err := quote.Accept(tradeID, req.IdempotencyKey, time.Now().UTC(), s.store); err != nil {
+	quote, err = s.store.AcceptWithCorrelation(quote.ID, req.IdempotencyKey, tradeID, req.CorrelationId, time.Now().UTC())
+	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	quote.AcceptedTradeID = tradeID
@@ -101,7 +105,9 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 }
 
 func toQuoteResponse(quote *quotecore.ExecutableQuote) *quotev1.QuoteResponse {
-	if quote == nil { return &quotev1.QuoteResponse{} }
+	if quote == nil {
+		return &quotev1.QuoteResponse{}
+	}
 	return &quotev1.QuoteResponse{
 		QuoteId:         quote.ID,
 		TradeId:         quote.AcceptedTradeID,

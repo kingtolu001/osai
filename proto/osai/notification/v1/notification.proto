@@ -1,0 +1,14 @@
+syntax = "proto3";
+package osai.notification.v1;
+option go_package = "github.com/osai/osai/proto/osai/notification/v1;notificationv1";
+message Event {
+ string event_id = 1;
+ string institution_id = 2;
+ string event_type = 3;
+ string correlation_id = 4;
+ string aggregate_id = 5;
+ string occurred_at = 6;
+ string payload_json = 7;
+}
+message Receipt { string event_id = 1; }
+service NotificationService { rpc PublishEvent(Event) returns (Receipt); }

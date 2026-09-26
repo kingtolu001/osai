@@ -2,6 +2,7 @@ package ledgerstore
 
 import (
 	"database/sql"
+	"errors"
 
 	"github.com/osai/osai/services/ledger/ledgerapi"
 	"github.com/osai/osai/services/ledger/ledgercore"
@@ -15,8 +16,16 @@ func (p Postgres) SaveJournal(key string, journal ledgercore.Journal) error {
 		return err
 	}
 	defer transaction.Rollback()
-	if _, err = transaction.Exec(`INSERT INTO ledger_journals (dedup_key, journal_id, trade_id, currency) VALUES ($1,$2,$3,$4) ON CONFLICT (dedup_key) DO NOTHING`, key, journal.ID, journal.TradeID, journal.Currency); err != nil {
+	result, err := transaction.Exec(`INSERT INTO ledger_journals (dedup_key, journal_id, trade_id, currency) VALUES ($1,$2,$3,$4) ON CONFLICT (dedup_key) DO NOTHING`, key, journal.ID, journal.TradeID, journal.Currency)
+	if err != nil {
 		return err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted != 1 {
+		return errors.New("journal idempotency key already exists")
 	}
 	for _, entry := range journal.Entries {
 		if _, err = transaction.Exec(`INSERT INTO ledger_entries (journal_id, account_code, account_name, owner, currency, debit, credit, external_ref) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, journal.ID, entry.AccountCode, entry.AccountName, entry.Owner, entry.Currency, entry.Debit, entry.Credit, entry.ExternalRef); err != nil {

@@ -38,12 +38,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	listener, err := net.Listen("tcp", ":50051")
+	addr:=os.Getenv("OSAI_LEDGER_GRPC_ADDR");if addr==""{addr=":50051"}
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	server := grpc.NewServer()
-	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service})
-	log.Println("ledger gRPC server listening on :50051")
+	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service, DB: db})
+	log.Printf("ledger gRPC server listening on %s",addr)
 	log.Fatal(server.Serve(listener))
 }

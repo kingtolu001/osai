@@ -3,8 +3,6 @@ package routingcore
 import (
 	"fmt"
 	"sort"
-
-	quotecore "github.com/osai/osai/services/quote/quotecore"
 )
 
 // ProviderProfile is the normalized capability metadata used for deterministic routing.
@@ -31,7 +29,12 @@ type RouteCandidate struct {
 }
 
 // RankProviders filters ineligible providers and ranks by deterministic weighted score.
-func RankProviders(req quotecore.QuoteRequest, providers []ProviderProfile) ([]RouteCandidate, error) {
+type RouteRequest struct {
+	BaseCurrency  string
+	QuoteCurrency string
+}
+
+func RankProviders(req RouteRequest, providers []ProviderProfile) ([]RouteCandidate, error) {
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("no providers available for %s->%s", req.BaseCurrency, req.QuoteCurrency)
 	}

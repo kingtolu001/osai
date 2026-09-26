@@ -1,16 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/postgres"
+	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	quotev1 "github.com/osai/osai/proto/osai/quote/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/quote/quotecore"
@@ -23,7 +25,38 @@ func main() {
 	if err := observability.Init("quote"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	store := quotecore.NewQuoteStore()
+	db, err := postgres.Open("quote")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	store, err := quotecore.NewPostgresStore(db)
+	if err != nil {
+		log.Fatal(err)
+	}
+	token := os.Getenv("OSAI_NOTIFICATION_TOKEN")
+	if token == "" {
+		log.Fatal("OSAI_NOTIFICATION_TOKEN required")
+	}
+	notificationAddr := os.Getenv("OSAI_NOTIFICATION_GRPC_ADDR")
+	if notificationAddr == "" {
+		notificationAddr = "localhost:50057"
+	}
+	notificationConn, err := grpc.Dial(notificationAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer notificationConn.Close()
+	notificationClient := notificationv1.NewNotificationServiceClient(notificationConn)
+	go func() {
+		for range time.NewTicker(250 * time.Millisecond).C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := store.Relay(ctx, notificationClient, token); err != nil {
+				log.Printf("quote outbox relay: %v", err)
+			}
+			cancel()
+		}
+	}()
 	httpPort := os.Getenv("OSAI_QUOTE_PORT")
 	if httpPort == "" {
 		httpPort = ":8084"
@@ -52,54 +85,6 @@ func main() {
 		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "quote"})
-		})
-		http.HandleFunc("/v1/quotes", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
-			var req struct {
-				CustomerID      string `json:"customer_id"`
-				BaseAmountMinor int64  `json:"base_amount_minor"`
-				BaseCurrency    string `json:"base_currency"`
-				QuoteCurrency   string `json:"quote_currency"`
-				DestinationRail string `json:"destination_rail"`
-				Urgency         string `json:"urgency"`
-				IdempotencyKey  string `json:"idempotency_key"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "VALIDATION_ERROR", "message": "malformed JSON"}})
-				return
-			}
-			if req.CustomerID == "" {
-				req.CustomerID = "inst_sandbox_local"
-			}
-			if req.IdempotencyKey == "" {
-				req.IdempotencyKey = "quote-key-" + time.Now().UTC().Format(time.RFC3339Nano)
-			}
-			quote, err := store.Create(quotecore.QuoteRequest{CustomerID: req.CustomerID, BaseAmountMinor: req.BaseAmountMinor, BaseCurrency: req.BaseCurrency, QuoteCurrency: req.QuoteCurrency, DestinationRail: req.DestinationRail, Urgency: req.Urgency, IdempotencyKey: req.IdempotencyKey}, req.DestinationRail, 1200, 500, req.BaseAmountMinor/100, time.Now().Add(30*time.Minute))
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "VALIDATION_ERROR", "message": err.Error()}})
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"quote_id": quote.ID, "status": string(quote.Status), "base_amount_minor": quote.Request.BaseAmountMinor, "base_currency": quote.Request.BaseCurrency, "quote_currency": quote.Request.QuoteCurrency, "amount_out_minor": quote.AmountOutMinor, "rate_minor": quote.RateMinor, "fee_minor": quote.FeeMinor, "expires_at": quote.ExpiresAt.UTC().Format(time.RFC3339)})
-		})
-		http.HandleFunc("/v1/quotes/", func(w http.ResponseWriter, r *http.Request) {
-			path := strings.TrimPrefix(r.URL.Path, "/v1/quotes/")
-			if path == "" || strings.Contains(path, "/") {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			quote, ok := store.Get(path)
-			if !ok {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"quote_id": quote.ID, "status": string(quote.Status), "base_amount_minor": quote.Request.BaseAmountMinor, "base_currency": quote.Request.BaseCurrency, "quote_currency": quote.Request.QuoteCurrency, "amount_out_minor": quote.AmountOutMinor, "rate_minor": quote.RateMinor, "fee_minor": quote.FeeMinor, "expires_at": quote.ExpiresAt.UTC().Format(time.RFC3339)})
 		})
 		log.Printf("quote health listening on %s", httpPort)
 		if err := http.ListenAndServe(httpPort, nil); err != nil {

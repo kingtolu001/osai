@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v5.27.2
-// source: osai/ledger/v1/ledger.proto
+// source: proto/osai/ledger/v1/ledger.proto
 
 package ledgerv1
 
@@ -31,7 +31,7 @@ type Money struct {
 
 func (x *Money) Reset() {
 	*x = Money{}
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[0]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +43,7 @@ func (x *Money) String() string {
 func (*Money) ProtoMessage() {}
 
 func (x *Money) ProtoReflect() protoreflect.Message {
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[0]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +56,7 @@ func (x *Money) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Money.ProtoReflect.Descriptor instead.
 func (*Money) Descriptor() ([]byte, []int) {
-	return file_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{0}
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Money) GetAmountMinor() int64 {
@@ -91,7 +91,7 @@ type SettlementCommand struct {
 
 func (x *SettlementCommand) Reset() {
 	*x = SettlementCommand{}
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[1]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -103,7 +103,7 @@ func (x *SettlementCommand) String() string {
 func (*SettlementCommand) ProtoMessage() {}
 
 func (x *SettlementCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[1]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -116,7 +116,7 @@ func (x *SettlementCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettlementCommand.ProtoReflect.Descriptor instead.
 func (*SettlementCommand) Descriptor() ([]byte, []int) {
-	return file_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{1}
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SettlementCommand) GetIdempotencyKey() string {
@@ -199,7 +199,7 @@ type LedgerError struct {
 
 func (x *LedgerError) Reset() {
 	*x = LedgerError{}
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[2]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -211,7 +211,7 @@ func (x *LedgerError) String() string {
 func (*LedgerError) ProtoMessage() {}
 
 func (x *LedgerError) ProtoReflect() protoreflect.Message {
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[2]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -224,7 +224,7 @@ func (x *LedgerError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerError.ProtoReflect.Descriptor instead.
 func (*LedgerError) Descriptor() ([]byte, []int) {
-	return file_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{2}
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *LedgerError) GetCode() string {
@@ -252,7 +252,7 @@ type SettlementCommandResponse struct {
 
 func (x *SettlementCommandResponse) Reset() {
 	*x = SettlementCommandResponse{}
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[3]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -264,7 +264,7 @@ func (x *SettlementCommandResponse) String() string {
 func (*SettlementCommandResponse) ProtoMessage() {}
 
 func (x *SettlementCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[3]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -277,7 +277,7 @@ func (x *SettlementCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettlementCommandResponse.ProtoReflect.Descriptor instead.
 func (*SettlementCommandResponse) Descriptor() ([]byte, []int) {
-	return file_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{3}
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SettlementCommandResponse) GetJournalId() string {
@@ -318,7 +318,7 @@ type ReconciliationAdjustmentCommand struct {
 
 func (x *ReconciliationAdjustmentCommand) Reset() {
 	*x = ReconciliationAdjustmentCommand{}
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[4]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -330,7 +330,7 @@ func (x *ReconciliationAdjustmentCommand) String() string {
 func (*ReconciliationAdjustmentCommand) ProtoMessage() {}
 
 func (x *ReconciliationAdjustmentCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_osai_ledger_v1_ledger_proto_msgTypes[4]
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -343,7 +343,7 @@ func (x *ReconciliationAdjustmentCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconciliationAdjustmentCommand.ProtoReflect.Descriptor instead.
 func (*ReconciliationAdjustmentCommand) Descriptor() ([]byte, []int) {
-	return file_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{4}
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ReconciliationAdjustmentCommand) GetIdempotencyKey() string {
@@ -409,11 +409,303 @@ func (x *ReconciliationAdjustmentCommand) GetJournalTag() string {
 	return ""
 }
 
-var File_osai_ledger_v1_ledger_proto protoreflect.FileDescriptor
+type CustomerReadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Page          int32                  `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_osai_ledger_v1_ledger_proto_rawDesc = "" +
+func (x *CustomerReadRequest) Reset() {
+	*x = CustomerReadRequest{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CustomerReadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CustomerReadRequest) ProtoMessage() {}
+
+func (x *CustomerReadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CustomerReadRequest.ProtoReflect.Descriptor instead.
+func (*CustomerReadRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CustomerReadRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *CustomerReadRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *CustomerReadRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+type CustomerBalance struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Currency       string                 `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	AvailableMinor int64                  `protobuf:"varint,2,opt,name=available_minor,json=availableMinor,proto3" json:"available_minor,omitempty"`
+	HeldMinor      int64                  `protobuf:"varint,3,opt,name=held_minor,json=heldMinor,proto3" json:"held_minor,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CustomerBalance) Reset() {
+	*x = CustomerBalance{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CustomerBalance) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CustomerBalance) ProtoMessage() {}
+
+func (x *CustomerBalance) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CustomerBalance.ProtoReflect.Descriptor instead.
+func (*CustomerBalance) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CustomerBalance) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *CustomerBalance) GetAvailableMinor() int64 {
+	if x != nil {
+		return x.AvailableMinor
+	}
+	return 0
+}
+
+func (x *CustomerBalance) GetHeldMinor() int64 {
+	if x != nil {
+		return x.HeldMinor
+	}
+	return 0
+}
+
+type CustomerBalanceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Balances      []*CustomerBalance     `protobuf:"bytes,1,rep,name=balances,proto3" json:"balances,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CustomerBalanceResponse) Reset() {
+	*x = CustomerBalanceResponse{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CustomerBalanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CustomerBalanceResponse) ProtoMessage() {}
+
+func (x *CustomerBalanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CustomerBalanceResponse.ProtoReflect.Descriptor instead.
+func (*CustomerBalanceResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CustomerBalanceResponse) GetBalances() []*CustomerBalance {
+	if x != nil {
+		return x.Balances
+	}
+	return nil
+}
+
+type CustomerTransaction struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JournalId     string                 `protobuf:"bytes,1,opt,name=journal_id,json=journalId,proto3" json:"journal_id,omitempty"`
+	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	Currency      string                 `protobuf:"bytes,3,opt,name=currency,proto3" json:"currency,omitempty"`
+	AmountMinor   int64                  `protobuf:"varint,4,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"`
+	OccurredAt    string                 `protobuf:"bytes,5,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CustomerTransaction) Reset() {
+	*x = CustomerTransaction{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CustomerTransaction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CustomerTransaction) ProtoMessage() {}
+
+func (x *CustomerTransaction) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CustomerTransaction.ProtoReflect.Descriptor instead.
+func (*CustomerTransaction) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CustomerTransaction) GetJournalId() string {
+	if x != nil {
+		return x.JournalId
+	}
+	return ""
+}
+
+func (x *CustomerTransaction) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
+}
+
+func (x *CustomerTransaction) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *CustomerTransaction) GetAmountMinor() int64 {
+	if x != nil {
+		return x.AmountMinor
+	}
+	return 0
+}
+
+func (x *CustomerTransaction) GetOccurredAt() string {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return ""
+}
+
+type CustomerTransactionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*CustomerTransaction `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CustomerTransactionResponse) Reset() {
+	*x = CustomerTransactionResponse{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CustomerTransactionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CustomerTransactionResponse) ProtoMessage() {}
+
+func (x *CustomerTransactionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CustomerTransactionResponse.ProtoReflect.Descriptor instead.
+func (*CustomerTransactionResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CustomerTransactionResponse) GetItems() []*CustomerTransaction {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *CustomerTransactionResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+var File_proto_osai_ledger_v1_ledger_proto protoreflect.FileDescriptor
+
+const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"\n" +
-	"\x1bosai/ledger/v1/ledger.proto\x12\x0eosai.ledger.v1\"F\n" +
+	"!proto/osai/ledger/v1/ledger.proto\x12\x0eosai.ledger.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
 	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xa8\x03\n" +
@@ -447,71 +739,106 @@ const file_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"\famount_minor\x18\a \x01(\x03R\vamountMinor\x12\x16\n" +
 	"\x06reason\x18\b \x01(\tR\x06reason\x12\x1f\n" +
 	"\vjournal_tag\x18\t \x01(\tR\n" +
-	"journalTag2\xb1\x03\n" +
+	"journalTag\"m\n" +
+	"\x13CustomerReadRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x12\n" +
+	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\"u\n" +
+	"\x0fCustomerBalance\x12\x1a\n" +
+	"\bcurrency\x18\x01 \x01(\tR\bcurrency\x12'\n" +
+	"\x0favailable_minor\x18\x02 \x01(\x03R\x0eavailableMinor\x12\x1d\n" +
+	"\n" +
+	"held_minor\x18\x03 \x01(\x03R\theldMinor\"V\n" +
+	"\x17CustomerBalanceResponse\x12;\n" +
+	"\bbalances\x18\x01 \x03(\v2\x1f.osai.ledger.v1.CustomerBalanceR\bbalances\"\xaf\x01\n" +
+	"\x13CustomerTransaction\x12\x1d\n" +
+	"\n" +
+	"journal_id\x18\x01 \x01(\tR\tjournalId\x12\x19\n" +
+	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x1a\n" +
+	"\bcurrency\x18\x03 \x01(\tR\bcurrency\x12!\n" +
+	"\famount_minor\x18\x04 \x01(\x03R\vamountMinor\x12\x1f\n" +
+	"\voccurred_at\x18\x05 \x01(\tR\n" +
+	"occurredAt\"n\n" +
+	"\x1bCustomerTransactionResponse\x129\n" +
+	"\x05items\x18\x01 \x03(\v2#.osai.ledger.v1.CustomerTransactionR\x05items\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\x84\x05\n" +
 	"\rLedgerService\x12a\n" +
 	"\x11ConfirmSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12^\n" +
 	"\x0eFailSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12a\n" +
 	"\x11ReverseSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12z\n" +
-	"\x1cPostReconciliationAdjustment\x12/.osai.ledger.v1.ReconciliationAdjustmentCommand\x1a).osai.ledger.v1.SettlementCommandResponseB4Z2github.com/osai/osai/proto/osai/ledger/v1;ledgerv1b\x06proto3"
+	"\x1cPostReconciliationAdjustment\x12/.osai.ledger.v1.ReconciliationAdjustmentCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12c\n" +
+	"\x13GetCustomerBalances\x12#.osai.ledger.v1.CustomerReadRequest\x1a'.osai.ledger.v1.CustomerBalanceResponse\x12l\n" +
+	"\x18ListCustomerTransactions\x12#.osai.ledger.v1.CustomerReadRequest\x1a+.osai.ledger.v1.CustomerTransactionResponseB4Z2github.com/osai/osai/proto/osai/ledger/v1;ledgerv1b\x06proto3"
 
 var (
-	file_osai_ledger_v1_ledger_proto_rawDescOnce sync.Once
-	file_osai_ledger_v1_ledger_proto_rawDescData []byte
+	file_proto_osai_ledger_v1_ledger_proto_rawDescOnce sync.Once
+	file_proto_osai_ledger_v1_ledger_proto_rawDescData []byte
 )
 
-func file_osai_ledger_v1_ledger_proto_rawDescGZIP() []byte {
-	file_osai_ledger_v1_ledger_proto_rawDescOnce.Do(func() {
-		file_osai_ledger_v1_ledger_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_osai_ledger_v1_ledger_proto_rawDesc), len(file_osai_ledger_v1_ledger_proto_rawDesc)))
+func file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP() []byte {
+	file_proto_osai_ledger_v1_ledger_proto_rawDescOnce.Do(func() {
+		file_proto_osai_ledger_v1_ledger_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_osai_ledger_v1_ledger_proto_rawDesc), len(file_proto_osai_ledger_v1_ledger_proto_rawDesc)))
 	})
-	return file_osai_ledger_v1_ledger_proto_rawDescData
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescData
 }
 
-var file_osai_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_osai_ledger_v1_ledger_proto_goTypes = []any{
+var file_proto_osai_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_proto_osai_ledger_v1_ledger_proto_goTypes = []any{
 	(*Money)(nil),                           // 0: osai.ledger.v1.Money
 	(*SettlementCommand)(nil),               // 1: osai.ledger.v1.SettlementCommand
 	(*LedgerError)(nil),                     // 2: osai.ledger.v1.LedgerError
 	(*SettlementCommandResponse)(nil),       // 3: osai.ledger.v1.SettlementCommandResponse
 	(*ReconciliationAdjustmentCommand)(nil), // 4: osai.ledger.v1.ReconciliationAdjustmentCommand
+	(*CustomerReadRequest)(nil),             // 5: osai.ledger.v1.CustomerReadRequest
+	(*CustomerBalance)(nil),                 // 6: osai.ledger.v1.CustomerBalance
+	(*CustomerBalanceResponse)(nil),         // 7: osai.ledger.v1.CustomerBalanceResponse
+	(*CustomerTransaction)(nil),             // 8: osai.ledger.v1.CustomerTransaction
+	(*CustomerTransactionResponse)(nil),     // 9: osai.ledger.v1.CustomerTransactionResponse
 }
-var file_osai_ledger_v1_ledger_proto_depIdxs = []int32{
-	0, // 0: osai.ledger.v1.SettlementCommand.amount:type_name -> osai.ledger.v1.Money
-	2, // 1: osai.ledger.v1.SettlementCommandResponse.error:type_name -> osai.ledger.v1.LedgerError
-	1, // 2: osai.ledger.v1.LedgerService.ConfirmSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	1, // 3: osai.ledger.v1.LedgerService.FailSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	1, // 4: osai.ledger.v1.LedgerService.ReverseSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	4, // 5: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:input_type -> osai.ledger.v1.ReconciliationAdjustmentCommand
-	3, // 6: osai.ledger.v1.LedgerService.ConfirmSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3, // 7: osai.ledger.v1.LedgerService.FailSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3, // 8: osai.ledger.v1.LedgerService.ReverseSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3, // 9: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:output_type -> osai.ledger.v1.SettlementCommandResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+var file_proto_osai_ledger_v1_ledger_proto_depIdxs = []int32{
+	0,  // 0: osai.ledger.v1.SettlementCommand.amount:type_name -> osai.ledger.v1.Money
+	2,  // 1: osai.ledger.v1.SettlementCommandResponse.error:type_name -> osai.ledger.v1.LedgerError
+	6,  // 2: osai.ledger.v1.CustomerBalanceResponse.balances:type_name -> osai.ledger.v1.CustomerBalance
+	8,  // 3: osai.ledger.v1.CustomerTransactionResponse.items:type_name -> osai.ledger.v1.CustomerTransaction
+	1,  // 4: osai.ledger.v1.LedgerService.ConfirmSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	1,  // 5: osai.ledger.v1.LedgerService.FailSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	1,  // 6: osai.ledger.v1.LedgerService.ReverseSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	4,  // 7: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:input_type -> osai.ledger.v1.ReconciliationAdjustmentCommand
+	5,  // 8: osai.ledger.v1.LedgerService.GetCustomerBalances:input_type -> osai.ledger.v1.CustomerReadRequest
+	5,  // 9: osai.ledger.v1.LedgerService.ListCustomerTransactions:input_type -> osai.ledger.v1.CustomerReadRequest
+	3,  // 10: osai.ledger.v1.LedgerService.ConfirmSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 11: osai.ledger.v1.LedgerService.FailSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 12: osai.ledger.v1.LedgerService.ReverseSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 13: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:output_type -> osai.ledger.v1.SettlementCommandResponse
+	7,  // 14: osai.ledger.v1.LedgerService.GetCustomerBalances:output_type -> osai.ledger.v1.CustomerBalanceResponse
+	9,  // 15: osai.ledger.v1.LedgerService.ListCustomerTransactions:output_type -> osai.ledger.v1.CustomerTransactionResponse
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
-func init() { file_osai_ledger_v1_ledger_proto_init() }
-func file_osai_ledger_v1_ledger_proto_init() {
-	if File_osai_ledger_v1_ledger_proto != nil {
+func init() { file_proto_osai_ledger_v1_ledger_proto_init() }
+func file_proto_osai_ledger_v1_ledger_proto_init() {
+	if File_proto_osai_ledger_v1_ledger_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_osai_ledger_v1_ledger_proto_rawDesc), len(file_osai_ledger_v1_ledger_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_ledger_v1_ledger_proto_rawDesc), len(file_proto_osai_ledger_v1_ledger_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_osai_ledger_v1_ledger_proto_goTypes,
-		DependencyIndexes: file_osai_ledger_v1_ledger_proto_depIdxs,
-		MessageInfos:      file_osai_ledger_v1_ledger_proto_msgTypes,
+		GoTypes:           file_proto_osai_ledger_v1_ledger_proto_goTypes,
+		DependencyIndexes: file_proto_osai_ledger_v1_ledger_proto_depIdxs,
+		MessageInfos:      file_proto_osai_ledger_v1_ledger_proto_msgTypes,
 	}.Build()
-	File_osai_ledger_v1_ledger_proto = out.File
-	file_osai_ledger_v1_ledger_proto_goTypes = nil
-	file_osai_ledger_v1_ledger_proto_depIdxs = nil
+	File_proto_osai_ledger_v1_ledger_proto = out.File
+	file_proto_osai_ledger_v1_ledger_proto_goTypes = nil
+	file_proto_osai_ledger_v1_ledger_proto_depIdxs = nil
 }

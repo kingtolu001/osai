@@ -17,36 +17,52 @@ import (
 
 type tradeServer struct {
 	tradev1.UnimplementedTradeServiceServer
-	store *tradecore.Store
+	store            *tradecore.Store
 	settlementClient settlementv1.SettlementServiceClient
 }
 
 func newTradeServer(store *tradecore.Store, settlementClient settlementv1.SettlementServiceClient) *tradeServer {
-	if store == nil { store = tradecore.NewStore() }
+	if store == nil {
+		panic("trade store required")
+	}
 	return &tradeServer{store: store, settlementClient: settlementClient}
 }
 
 func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tradev1.CreateTradeFromAcceptedQuoteRequest) (*tradev1.TradeResponse, error) {
-	if s == nil || s.store == nil || req == nil { return nil, status.Error(codes.InvalidArgument, "request required") }
-	if strings.TrimSpace(req.InstitutionId) == "" { return nil, status.Error(codes.InvalidArgument, "institution_id required") }
-	if strings.TrimSpace(req.QuoteId) == "" { return nil, status.Error(codes.InvalidArgument, "quote_id required") }
+	if s == nil || s.store == nil || req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request required")
+	}
+	if strings.TrimSpace(req.InstitutionId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id required")
+	}
+	if strings.TrimSpace(req.QuoteId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "quote_id required")
+	}
 	if req.Amount != nil && req.Amount.AmountMinor <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "amount must be positive")
 	}
 	trade, err := s.store.CreateTrade(req.InstitutionId, req.QuoteId, req.IdempotencyKey, req.CorrelationId, req.BaseAmountMinor, req.BaseCurrency, req.QuoteCurrency)
-	if err != nil { return nil, status.Error(codes.InvalidArgument, err.Error()) }
-	if s.settlementClient != nil {
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if s.settlementClient == nil {
+		return nil, status.Error(codes.Unavailable, "settlement service unavailable")
+	}
+	if trade.SettlementID == "" {
 		resp, err := s.settlementClient.CreateSettlementForTrade(ctx, &settlementv1.CreateSettlementForTradeRequest{
-			InstitutionId: req.InstitutionId,
-			TradeId:       trade.ID,
-			QuoteId:       req.QuoteId,
+			InstitutionId:  req.InstitutionId,
+			TradeId:        trade.ID,
+			QuoteId:        req.QuoteId,
 			IdempotencyKey: req.IdempotencyKey,
-			CorrelationId: req.CorrelationId,
-			Beneficiary:   "acct_" + strings.TrimPrefix(trade.ID, "trd_"),
-			Amount:        &settlementv1.Money{AmountMinor: req.BaseAmountMinor, Currency: req.BaseCurrency},
-			Purpose:       "trade-acceptance",
+			CorrelationId:  req.CorrelationId,
+			Beneficiary:    "acct_" + strings.TrimPrefix(trade.ID, "trd_"),
+			Amount:         &settlementv1.Money{AmountMinor: req.BaseAmountMinor, Currency: req.BaseCurrency},
+			Purpose:        "trade-acceptance",
 		})
-		if err == nil && resp != nil && strings.TrimSpace(resp.SettlementId) != "" {
+		if err != nil {
+			return nil, status.Error(codes.Unavailable, "settlement unavailable")
+		}
+		if resp != nil && strings.TrimSpace(resp.SettlementId) != "" {
 			_ = s.store.SetSettlementID(trade.ID, resp.SettlementId)
 			trade.SettlementID = resp.SettlementId
 		}
@@ -56,19 +72,33 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 }
 
 func (s *tradeServer) GetTrade(ctx context.Context, req *tradev1.GetTradeRequest) (*tradev1.TradeResponse, error) {
-	if s == nil || s.store == nil || req == nil { return nil, status.Error(codes.InvalidArgument, "request required") }
-	if strings.TrimSpace(req.InstitutionId) == "" { return nil, status.Error(codes.InvalidArgument, "institution_id required") }
-	if strings.TrimSpace(req.TradeId) == "" { return nil, status.Error(codes.InvalidArgument, "trade_id required") }
+	if s == nil || s.store == nil || req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request required")
+	}
+	if strings.TrimSpace(req.InstitutionId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id required")
+	}
+	if strings.TrimSpace(req.TradeId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "trade_id required")
+	}
 	trade, ok := s.store.GetTrade(req.TradeId)
-	if !ok { return nil, status.Error(codes.NotFound, "trade not found") }
-	if trade.InstitutionID != req.InstitutionId { return nil, status.Error(codes.PermissionDenied, "forbidden") }
+	if !ok {
+		return nil, status.Error(codes.NotFound, "trade not found")
+	}
+	if trade.InstitutionID != req.InstitutionId {
+		return nil, status.Error(codes.PermissionDenied, "forbidden")
+	}
 	return &tradev1.TradeResponse{TradeId: trade.ID, InstitutionId: trade.InstitutionID, QuoteId: trade.QuoteID, Status: trade.Status, BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency, QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID, SettlementId: trade.SettlementID}, nil
 }
 
 func dialTradeService(grpcAddr string) (settlementv1.SettlementServiceClient, error) {
-	if strings.TrimSpace(grpcAddr) == "" { return nil, nil }
+	if strings.TrimSpace(grpcAddr) == "" {
+		return nil, nil
+	}
 	conn, err := grpc.Dial(grpcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	log.Printf("trade orchestration connected to settlement service at %s", grpcAddr)
 	return settlementv1.NewSettlementServiceClient(conn), nil
 }

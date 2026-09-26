@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/postgres"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/trade-orchestrator/tradecore"
@@ -20,7 +21,15 @@ func main() {
 	if err := observability.Init("trade-orchestrator"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	store := tradecore.NewStore()
+	db, err := postgres.Open("trade-orchestrator")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	store, err := tradecore.NewPostgresStore(db)
+	if err != nil {
+		log.Fatal(err)
+	}
 	grpcAddr := os.Getenv("OSAI_TRADE_GRPC_ADDR")
 	if grpcAddr == "" {
 		grpcAddr = ":50054"

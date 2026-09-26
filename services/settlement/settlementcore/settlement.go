@@ -28,6 +28,9 @@ func (s State) Terminal() bool { return s == Confirmed || s == Failed }
 type Instruction struct {
 	ID            string
 	InstitutionID string
+	TradeID       string
+	QuoteID       string
+	CorrelationID string
 	ClientRef     string
 	ProviderRef   string
 	Beneficiary   string
@@ -119,6 +122,13 @@ func (s *Store) Get(id string) (Instruction, bool) {
 		return Instruction{}, false
 	}
 	return *instruction, true
+}
+
+func (s *Store) Import(instruction Instruction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copy := instruction
+	s.instructions[instruction.ID] = &copy
 }
 
 func (s *Store) Transitions(id string) []Transition {

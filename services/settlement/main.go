@@ -9,11 +9,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/postgres"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	"github.com/osai/osai/services/settlement/settlementcore"
+	"github.com/osai/osai/services/settlement/settlementstore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +24,19 @@ func main() {
 	if err := observability.Init("settlement"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	store := settlementcore.NewStore(nil)
+	db, err := postgres.Open("settlement")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if err := settlementstore.EnsureSchema(db); err != nil {
+		log.Fatal(err)
+	}
+	repository := settlementstore.Postgres{DB: db}
+	store, err := settlementcore.NewStoreWithPersistence(nil, repository)
+	if err != nil {
+		log.Fatal(err)
+	}
 	grpcPort := os.Getenv("OSAI_SETTLEMENT_GRPC_ADDR")
 	if grpcPort == "" {
 		grpcPort = ":50055"
@@ -33,50 +46,12 @@ func main() {
 		log.Fatalf("settlement gRPC listen failed: %v", err)
 	}
 	server := grpc.NewServer(grpc.UnaryInterceptor(observability.UnaryServerInterceptor()))
-	settlementv1.RegisterSettlementServiceServer(server, &settlementGRPCServer{store: store})
+	settlementv1.RegisterSettlementServiceServer(server, &settlementGRPCServer{store: store, repository: repository})
 	log.Printf("settlement gRPC listening on %s", grpcPort)
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "settlement"})
-	})
-	http.HandleFunc("/v1/settlements", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		var req struct {
-			Beneficiary string `json:"beneficiary"`
-			Currency    string `json:"currency"`
-			AmountMinor int64  `json:"amount_minor"`
-			Purpose     string `json:"purpose"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		instruction, err := store.Create(req.Beneficiary, req.Currency, req.AmountMinor, req.Purpose)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "VALIDATION_ERROR", "message": err.Error()}})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"settlement_id": instruction.ID, "state": string(instruction.State), "beneficiary": instruction.Beneficiary, "amount_minor": instruction.AmountMinor, "currency": instruction.Currency, "purpose": instruction.Purpose, "created_at": instruction.CreatedAt.UTC().Format(time.RFC3339)})
-	})
-	http.HandleFunc("/v1/settlements/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/v1/settlements/")
-		if path == "" || strings.Contains(path, "/") {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		instruction, ok := store.Get(path)
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"settlement_id": instruction.ID, "state": string(instruction.State), "beneficiary": instruction.Beneficiary, "amount_minor": instruction.AmountMinor, "currency": instruction.Currency, "purpose": instruction.Purpose, "created_at": instruction.CreatedAt.UTC().Format(time.RFC3339)})
 	})
 	go func() {
 		port := os.Getenv("OSAI_SETTLEMENT_PORT")
@@ -95,7 +70,8 @@ func main() {
 
 type settlementGRPCServer struct {
 	settlementv1.UnimplementedSettlementServiceServer
-	store *settlementcore.Store
+	store      *settlementcore.Store
+	repository settlementstore.Postgres
 }
 
 func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req *settlementv1.CreateSettlementForTradeRequest) (*settlementv1.SettlementResponse, error) {
@@ -120,10 +96,11 @@ func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req
 	if strings.TrimSpace(currency) == "" {
 		currency = "USD"
 	}
-	instruction, err := s.store.CreateWithInstitution(req.InstitutionId, req.Beneficiary, currency, amountMinor, req.Purpose)
+	instruction, err := s.repository.CreateForTrade(ctx, req.InstitutionId, req.TradeId, req.QuoteId, req.CorrelationId, req.Beneficiary, currency, amountMinor, req.Purpose)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	s.store.Import(instruction)
 	log.Printf("settlement instruction created: settlement_id=%s trade_id=%s quote_id=%s institution_id=%s correlation_id=%s", instruction.ID, req.TradeId, req.QuoteId, req.InstitutionId, req.CorrelationId)
 	return &settlementv1.SettlementResponse{
 		SettlementId:  instruction.ID,
@@ -158,13 +135,13 @@ func (s *settlementGRPCServer) GetSettlement(ctx context.Context, req *settlemen
 	return &settlementv1.SettlementResponse{
 		SettlementId:  instruction.ID,
 		InstitutionId: req.InstitutionId,
-		TradeId:       "",
-		QuoteId:       "",
+		TradeId:       instruction.TradeID,
+		QuoteId:       instruction.QuoteID,
 		Status:        string(instruction.State),
 		Beneficiary:   instruction.Beneficiary,
 		AmountMinor:   instruction.AmountMinor,
 		Currency:      instruction.Currency,
-		CorrelationId: req.CorrelationId,
+		CorrelationId: instruction.CorrelationID,
 	}, nil
 }
 

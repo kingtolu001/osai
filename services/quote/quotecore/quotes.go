@@ -2,6 +2,7 @@ package quotecore
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -70,6 +71,7 @@ type ExecutableQuote struct {
 
 // QuoteStore retains quote state and enforces idempotent create/accept semantics.
 type QuoteStore struct {
+	db             *sql.DB
 	mu             sync.Mutex
 	quotes         map[string]*ExecutableQuote
 	keyIndex       map[string]string // key -> quoteID
@@ -106,7 +108,7 @@ func (s *QuoteStore) Create(req QuoteRequest, providerID string, rateMinor, feeM
 	if req.BaseAmountMinor <= 0 {
 		return nil, errors.New("base amount must be positive")
 	}
-	if req.IdempotencyKey != "" {
+	if req.IdempotencyKey != "" && s.db == nil {
 		s.mu.Lock()
 		if qid, ok := s.keyIndex[req.IdempotencyKey]; ok {
 			s.mu.Unlock()
@@ -130,6 +132,9 @@ func (s *QuoteStore) Create(req QuoteRequest, providerID string, rateMinor, feeM
 		SettlementRail:   req.DestinationRail,
 		ProviderEvidence: map[string]string{},
 	}
+	if s.db != nil {
+		return s.createDB(quote)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -144,13 +149,23 @@ func (s *QuoteStore) Create(req QuoteRequest, providerID string, rateMinor, feeM
 }
 
 func (s *QuoteStore) Get(quoteID string) (*ExecutableQuote, bool) {
+	if s.db != nil {
+		return s.getDB(quoteID)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	q, ok := s.quotes[quoteID]
-	return q, ok
+	if !ok {
+		return nil, false
+	}
+	copy := *q
+	return &copy, true
 }
 
 func (s *QuoteStore) Accept(quoteID, idempotencyKey, tradeID string, now time.Time) (*ExecutableQuote, error) {
+	if s.db != nil {
+		return s.acceptDB(quoteID, idempotencyKey, tradeID, "", now)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

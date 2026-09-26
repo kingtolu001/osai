@@ -126,12 +126,12 @@ func (s *Service) PostReconciliationAdjustment(command ReconciliationAdjustmentC
 	if existing, ok := s.journals[key]; ok {
 		return existing.ID, true, nil
 	}
-	s.journals[key] = *journal
 	if s.storage != nil {
 		if err := s.storage.SaveJournal(key, *journal); err != nil {
 			return "", false, err
 		}
 	}
+	s.journals[key] = *journal
 	return journal.ID, false, nil
 }
 
@@ -202,11 +202,11 @@ func (s *Service) postCommand(command Command, kind string, build func(*ledgerco
 		}
 		return existing.ID, true, nil
 	}
-	s.journals[key] = *journal
 	if s.storage != nil {
 		if err := s.storage.SaveJournal(key, *journal); err != nil {
 			return "", false, err
 		}
 	}
+	s.journals[key] = *journal
 	return journal.ID, false, nil
 }

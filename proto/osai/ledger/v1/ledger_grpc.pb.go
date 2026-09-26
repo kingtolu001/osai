@@ -23,6 +23,8 @@ const (
 	LedgerService_FailSettlement_FullMethodName               = "/osai.ledger.v1.LedgerService/FailSettlement"
 	LedgerService_ReverseSettlement_FullMethodName            = "/osai.ledger.v1.LedgerService/ReverseSettlement"
 	LedgerService_PostReconciliationAdjustment_FullMethodName = "/osai.ledger.v1.LedgerService/PostReconciliationAdjustment"
+	LedgerService_GetCustomerBalances_FullMethodName          = "/osai.ledger.v1.LedgerService/GetCustomerBalances"
+	LedgerService_ListCustomerTransactions_FullMethodName     = "/osai.ledger.v1.LedgerService/ListCustomerTransactions"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -33,6 +35,8 @@ type LedgerServiceClient interface {
 	FailSettlement(ctx context.Context, in *SettlementCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
 	ReverseSettlement(ctx context.Context, in *SettlementCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
 	PostReconciliationAdjustment(ctx context.Context, in *ReconciliationAdjustmentCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
+	GetCustomerBalances(ctx context.Context, in *CustomerReadRequest, opts ...grpc.CallOption) (*CustomerBalanceResponse, error)
+	ListCustomerTransactions(ctx context.Context, in *CustomerReadRequest, opts ...grpc.CallOption) (*CustomerTransactionResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -83,6 +87,26 @@ func (c *ledgerServiceClient) PostReconciliationAdjustment(ctx context.Context, 
 	return out, nil
 }
 
+func (c *ledgerServiceClient) GetCustomerBalances(ctx context.Context, in *CustomerReadRequest, opts ...grpc.CallOption) (*CustomerBalanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CustomerBalanceResponse)
+	err := c.cc.Invoke(ctx, LedgerService_GetCustomerBalances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) ListCustomerTransactions(ctx context.Context, in *CustomerReadRequest, opts ...grpc.CallOption) (*CustomerTransactionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CustomerTransactionResponse)
+	err := c.cc.Invoke(ctx, LedgerService_ListCustomerTransactions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerServiceServer is the server API for LedgerService service.
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
@@ -91,6 +115,8 @@ type LedgerServiceServer interface {
 	FailSettlement(context.Context, *SettlementCommand) (*SettlementCommandResponse, error)
 	ReverseSettlement(context.Context, *SettlementCommand) (*SettlementCommandResponse, error)
 	PostReconciliationAdjustment(context.Context, *ReconciliationAdjustmentCommand) (*SettlementCommandResponse, error)
+	GetCustomerBalances(context.Context, *CustomerReadRequest) (*CustomerBalanceResponse, error)
+	ListCustomerTransactions(context.Context, *CustomerReadRequest) (*CustomerTransactionResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -112,6 +138,12 @@ func (UnimplementedLedgerServiceServer) ReverseSettlement(context.Context, *Sett
 }
 func (UnimplementedLedgerServiceServer) PostReconciliationAdjustment(context.Context, *ReconciliationAdjustmentCommand) (*SettlementCommandResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PostReconciliationAdjustment not implemented")
+}
+func (UnimplementedLedgerServiceServer) GetCustomerBalances(context.Context, *CustomerReadRequest) (*CustomerBalanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCustomerBalances not implemented")
+}
+func (UnimplementedLedgerServiceServer) ListCustomerTransactions(context.Context, *CustomerReadRequest) (*CustomerTransactionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCustomerTransactions not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
 func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
@@ -206,6 +238,42 @@ func _LedgerService_PostReconciliationAdjustment_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_GetCustomerBalances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CustomerReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).GetCustomerBalances(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_GetCustomerBalances_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).GetCustomerBalances(ctx, req.(*CustomerReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_ListCustomerTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CustomerReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).ListCustomerTransactions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_ListCustomerTransactions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).ListCustomerTransactions(ctx, req.(*CustomerReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +296,14 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PostReconciliationAdjustment",
 			Handler:    _LedgerService_PostReconciliationAdjustment_Handler,
+		},
+		{
+			MethodName: "GetCustomerBalances",
+			Handler:    _LedgerService_GetCustomerBalances_Handler,
+		},
+		{
+			MethodName: "ListCustomerTransactions",
+			Handler:    _LedgerService_ListCustomerTransactions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

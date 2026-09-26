@@ -23,11 +23,17 @@ func (s *grpcServer) AuthenticateAPIClient(ctx context.Context, req *customerv1.
 	if err != nil || !ok {
 		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
+	s.service.mu.Lock()
 	cred, ok := s.service.publicToCred[req.PublicId]
+	var institutionID string
+	if ok && cred != nil {
+		institutionID = cred.InstitutionID
+	}
+	s.service.mu.Unlock()
 	if !ok || cred == nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
-	inst, ok := s.service.GetInstitution(cred.InstitutionID)
+	inst, ok := s.service.GetInstitution(institutionID)
 	if !ok {
 		return nil, status.Error(codes.NotFound, "institution not found")
 	}
@@ -66,15 +72,21 @@ func (s *grpcServer) GetWebhookConfiguration(ctx context.Context, req *customerv
 	if _, ok := s.service.GetInstitution(req.InstitutionId); !ok {
 		return nil, status.Error(codes.NotFound, "institution not found")
 	}
-	return &customerv1.WebhookConfiguration{InstitutionId: req.InstitutionId, WebhookUrl: "https://example.invalid/webhook", Enabled: true, Status: "ACTIVE"}, nil
+	return nil, status.Error(codes.Unimplemented, "webhook configuration is owned by notification service")
 }
 
 func (s *Service) ValidateAPIClient(publicID, secret string) (Institution, error) {
 	ok, err := s.ValidateCredential(publicID, secret)
-	if err != nil || !ok { return Institution{}, errors.New("invalid credentials") }
+	if err != nil || !ok {
+		return Institution{}, errors.New("invalid credentials")
+	}
 	cred := s.publicToCred[publicID]
 	inst, ok := s.GetInstitution(cred.InstitutionID)
-	if !ok { return Institution{}, errors.New("institution not found") }
-	if err := s.ValidateInstitutionAccess(inst.ID); err != nil { return Institution{}, err }
+	if !ok {
+		return Institution{}, errors.New("institution not found")
+	}
+	if err := s.ValidateInstitutionAccess(inst.ID); err != nil {
+		return Institution{}, err
+	}
 	return inst, nil
 }

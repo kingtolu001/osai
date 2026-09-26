@@ -1,6 +1,7 @@
 package tradecore
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -42,6 +43,7 @@ type Trade struct {
 }
 
 type Store struct {
+	db          *sql.DB
 	mu          sync.Mutex
 	byID        map[string]*Trade
 	byQuoteID   map[string]*Trade
@@ -53,22 +55,37 @@ func NewStore() *Store {
 }
 
 func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string) (*Trade, error) {
-	if strings.TrimSpace(institutionID) == "" { return nil, errors.New("institution_id required") }
-	if strings.TrimSpace(quoteID) == "" { return nil, errors.New("quote_id required") }
-	if baseAmountMinor <= 0 { return nil, errors.New("base_amount_minor must be positive") }
-	if strings.TrimSpace(baseCurrency) == "" { return nil, errors.New("base_currency required") }
-	if strings.TrimSpace(quoteCurrency) == "" { return nil, errors.New("quote_currency required") }
+	if strings.TrimSpace(institutionID) == "" {
+		return nil, errors.New("institution_id required")
+	}
+	if strings.TrimSpace(quoteID) == "" {
+		return nil, errors.New("quote_id required")
+	}
+	if baseAmountMinor <= 0 {
+		return nil, errors.New("base_amount_minor must be positive")
+	}
+	if strings.TrimSpace(baseCurrency) == "" {
+		return nil, errors.New("base_currency required")
+	}
+	if strings.TrimSpace(quoteCurrency) == "" {
+		return nil, errors.New("quote_currency required")
+	}
 	key := quoteID + "|" + idempotencyKey
 	if idempotencyKey != "" {
 		s.mu.Lock()
 		if tradeID, ok := s.byOperation[key]; ok {
 			trade := s.byID[tradeID]
 			s.mu.Unlock()
-			if trade != nil { return trade, nil }
+			if trade != nil {
+				return trade, nil
+			}
 		}
 		s.mu.Unlock()
 	}
 	if existing, ok := s.GetByQuoteID(quoteID); ok {
+		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor || existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency {
+			return nil, errors.New("trade replay conflict")
+		}
 		return existing, nil
 	}
 	trade := &Trade{
@@ -87,9 +104,14 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 		CreatedAt:       time.Now().UTC(),
 		UpdatedAt:       time.Now().UTC(),
 	}
+	if s.db != nil {
+		return s.createDB(trade)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing, ok := s.byQuoteID[quoteID]; ok { return existing, nil }
+	if existing, ok := s.byQuoteID[quoteID]; ok {
+		return existing, nil
+	}
 	s.byID[trade.ID] = trade
 	s.byQuoteID[quoteID] = trade
 	if key != "|" {
@@ -99,34 +121,58 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 }
 
 func (s *Store) GetTrade(tradeID string) (*Trade, bool) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	if s.db != nil {
+		return s.getDB("id", tradeID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	trade, ok := s.byID[tradeID]
-	if !ok { return nil, false }
+	if !ok {
+		return nil, false
+	}
 	copy := *trade
 	return &copy, true
 }
 
 func (s *Store) GetByQuoteID(quoteID string) (*Trade, bool) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	if s.db != nil {
+		return s.getDB("quote", quoteID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	trade, ok := s.byQuoteID[quoteID]
-	if !ok { return nil, false }
+	if !ok {
+		return nil, false
+	}
 	copy := *trade
 	return &copy, true
 }
 
 func (s *Store) SetSettlementID(tradeID, settlementID string) error {
-	if strings.TrimSpace(tradeID) == "" { return errors.New("trade_id required") }
-	if strings.TrimSpace(settlementID) == "" { return errors.New("settlement_id required") }
-	s.mu.Lock(); defer s.mu.Unlock()
+	if s.db != nil {
+		return s.setSettlementDB(tradeID, settlementID)
+	}
+	if strings.TrimSpace(tradeID) == "" {
+		return errors.New("trade_id required")
+	}
+	if strings.TrimSpace(settlementID) == "" {
+		return errors.New("settlement_id required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	trade, ok := s.byID[tradeID]
-	if !ok { return fmt.Errorf("trade %s not found", tradeID) }
+	if !ok {
+		return fmt.Errorf("trade %s not found", tradeID)
+	}
 	trade.SettlementID = settlementID
 	trade.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
 func (t *Trade) Accept() error {
-	if t == nil { return errors.New("trade is nil") }
+	if t == nil {
+		return errors.New("trade is nil")
+	}
 	if t.State != "" && t.State != StateCreated && t.State != StateQuoted {
 		return fmt.Errorf("trade cannot accept from state %s", t.State)
 	}

@@ -45,9 +45,10 @@ func TestCustomerServiceCreatesInstitutionAndCredential(t *testing.T) {
 }
 
 func TestSeedSandboxCustomerUsesStableInstitutionID(t *testing.T) {
+	t.Setenv("OSAI_SANDBOX_SEED", "1")
 	t.Setenv("OSAI_SANDBOX_INSTITUTION_ID", "")
 	t.Setenv("OSAI_SANDBOX_CLIENT_ID", "")
-	t.Setenv("OSAI_SANDBOX_CLIENT_SECRET", "")
+	t.Setenv("OSAI_SANDBOX_CLIENT_SECRET", "local-test-secret")
 
 	svc := NewService()
 	if err := seedSandboxCustomer(svc); err != nil {

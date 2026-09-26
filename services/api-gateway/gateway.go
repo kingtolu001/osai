@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/osai/osai/pkg/correlation"
-	"github.com/osai/osai/services/quote/quotecore"
 )
 
 type CustomerAuthContext struct {
@@ -26,6 +25,17 @@ type CustomerAuthContext struct {
 	Entitlements      []string
 }
 
+type CustomerInstitution struct {
+	ID         string
+	Name       string
+	Status     string
+	KYBStatus  string
+	Country    string
+	APIEnabled bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type WebhookConfig struct {
 	InstitutionID string
 	WebhookURL    string
@@ -35,42 +45,42 @@ type WebhookConfig struct {
 }
 
 type QuoteRequest struct {
-	InstitutionID    string
-	BaseAmountMinor  int64
-	BaseCurrency     string
-	QuoteCurrency    string
-	DestinationRail  string
-	Urgency          string
-	IdempotencyKey   string
-	CorrelationID    string
+	InstitutionID   string
+	BaseAmountMinor int64
+	BaseCurrency    string
+	QuoteCurrency   string
+	DestinationRail string
+	Urgency         string
+	IdempotencyKey  string
+	CorrelationID   string
 }
 
 type QuoteResponse struct {
-	QuoteID          string
-	TradeID          string
-	Status           string
-	BaseAmountMinor  int64
-	BaseCurrency     string
-	QuoteCurrency    string
-	DestinationRail  string
-	AmountOutMinor   int64
-	RateMinor        int64
-	FeeMinor         int64
-	ExpiresAt        time.Time
-	CorrelationID    string
+	QuoteID         string
+	TradeID         string
+	Status          string
+	BaseAmountMinor int64
+	BaseCurrency    string
+	QuoteCurrency   string
+	DestinationRail string
+	AmountOutMinor  int64
+	RateMinor       int64
+	FeeMinor        int64
+	ExpiresAt       time.Time
+	CorrelationID   string
 }
 
 type TradeReadResponse struct {
-	TradeID        string
-	InstitutionID  string
-	QuoteID        string
-	Status         string
+	TradeID         string
+	InstitutionID   string
+	QuoteID         string
+	Status          string
 	BaseAmountMinor int64
-	BaseCurrency   string
-	QuoteCurrency  string
-	SettlementID   string
-	CorrelationID  string
-	RequestID      string
+	BaseCurrency    string
+	QuoteCurrency   string
+	SettlementID    string
+	CorrelationID   string
+	RequestID       string
 }
 
 type SettlementReadResponse struct {
@@ -88,12 +98,12 @@ type SettlementReadResponse struct {
 }
 
 type BalanceReadResponse struct {
-	InstitutionID string
-	Currency      string
+	InstitutionID  string
+	Currency       string
 	AvailableMinor int64
-	HeldMinor     int64
-	TotalMinor    int64
-	RequestID     string
+	HeldMinor      int64
+	TotalMinor     int64
+	RequestID      string
 }
 
 type TransactionItem struct {
@@ -107,10 +117,10 @@ type TransactionItem struct {
 }
 
 type TransactionPage struct {
-	Items    []TransactionItem
-	Page     int
-	PageSize int
-	Total    int
+	Items     []TransactionItem
+	Page      int
+	PageSize  int
+	Total     int
 	RequestID string
 }
 
@@ -141,36 +151,12 @@ type ReadModelClient interface {
 }
 
 type Gateway struct {
-	quoteStore      *quotecore.QuoteStore
-	customerService *CustomerService
-	quoteClient     QuoteClient
-	tradeClient     TradeClient
+	quoteClient      QuoteClient
+	tradeClient      TradeClient
 	settlementClient SettlementClient
-	readModelClient ReadModelClient
-	customerClient  CustomerClient
-	idempotency     *idempotencyStore
-}
-
-func NewGateway(quoteStore *quotecore.QuoteStore) *Gateway {
-	if quoteStore == nil {
-		quoteStore = quotecore.NewQuoteStore()
-	}
-	cs := NewCustomerService()
-	gw := NewGatewayWithClients(NewCustomerServiceClientAdapter(cs), NewQuoteServiceClientAdapterFromStore(quoteStore))
-	gw.quoteStore = quoteStore
-	gw.customerService = cs
-	return gw
-}
-
-func NewGatewayWithClients(customerClient CustomerClient, quoteClient QuoteClient) *Gateway {
-	return &Gateway{customerClient: customerClient, quoteClient: quoteClient, idempotency: newIdempotencyStore()}
-}
-
-func (g *Gateway) SetCustomerService(cs *CustomerService) {
-	if cs != nil {
-		g.customerService = cs
-		g.customerClient = NewCustomerServiceClientAdapter(cs)
-	}
+	readModelClient  ReadModelClient
+	customerClient   CustomerClient
+	idempotency      *idempotencyStore
 }
 
 func (g *Gateway) SetCustomerClient(cc CustomerClient) {
@@ -219,7 +205,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.URL.Path == "/v1/health" {
-		writeHTTPJSON(w, http.StatusOK, map[string]any{"status":"ok","request_id":requestID})
+		writeHTTPJSON(w, http.StatusOK, map[string]any{"status": "ok", "request_id": requestID})
 		return
 	}
 	if !strings.HasPrefix(r.URL.Path, "/v1/") {
@@ -239,7 +225,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/quotes/health":
-		writeHTTPJSON(w, http.StatusOK, map[string]any{"status":"ok","request_id":requestID,"latency_ms":time.Since(start).Milliseconds()})
+		writeHTTPJSON(w, http.StatusOK, map[string]any{"status": "ok", "request_id": requestID, "latency_ms": time.Since(start).Milliseconds()})
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/quotes":
 		g.handleCreateQuote(w, r, customerID, requestID)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/quotes/") && strings.HasSuffix(r.URL.Path, "/accept"):
@@ -333,8 +319,12 @@ func (g *Gateway) handleCreateQuoteForTest(customerID, idempotencyKey string, pa
 		return nil, errors.New("unsupported destination currency")
 	}
 	quoteReq := QuoteRequest{InstitutionID: customerID, BaseAmountMinor: int64(amount), BaseCurrency: baseCurrency, QuoteCurrency: quoteCurrency, DestinationRail: strings.TrimSpace(fmt.Sprint(payload["destination_rail"])), Urgency: strings.TrimSpace(fmt.Sprint(payload["urgency"])), IdempotencyKey: idempotencyKey, CorrelationID: "req-test"}
-	if quoteReq.DestinationRail == "" { quoteReq.DestinationRail = "sim_lp_1" }
-	if quoteReq.Urgency == "" { quoteReq.Urgency = "normal" }
+	if quoteReq.DestinationRail == "" {
+		quoteReq.DestinationRail = "sim_lp_1"
+	}
+	if quoteReq.Urgency == "" {
+		quoteReq.Urgency = "normal"
+	}
 	quote, err := g.quoteClient.CreateQuote(quoteReq)
 	if err != nil {
 		return nil, err
@@ -344,89 +334,143 @@ func (g *Gateway) handleCreateQuoteForTest(customerID, idempotencyKey string, pa
 
 func (g *Gateway) handleCreateQuote(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	if r.Method != http.MethodPost {
-		writeHTTPJSON(w, http.StatusMethodNotAllowed, errorEnvelope("VALIDATION_ERROR", "method not allowed", requestID)); return
+		writeHTTPJSON(w, http.StatusMethodNotAllowed, errorEnvelope("VALIDATION_ERROR", "method not allowed", requestID))
+		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil || len(body) == 0 {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed request body", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed request body", requestID))
+		return
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed JSON", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed JSON", requestID))
+		return
 	}
 	amount, ok := payload["base_amount_minor"].(float64)
 	if !ok || amount <= 0 {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "base_amount_minor must be a positive integer", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "base_amount_minor must be a positive integer", requestID))
+		return
 	}
 	baseCurrency := strings.TrimSpace(fmt.Sprint(payload["base_currency"]))
 	quoteCurrency := strings.TrimSpace(fmt.Sprint(payload["quote_currency"]))
 	if baseCurrency == "" || quoteCurrency == "" {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "base_currency and quote_currency are required", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "base_currency and quote_currency are required", requestID))
+		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if idempotencyKey == "" {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "missing Idempotency-Key", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "missing Idempotency-Key", requestID))
+		return
 	}
 	if !strings.EqualFold(baseCurrency, "NGN") && !strings.EqualFold(baseCurrency, "USD") {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("UNSUPPORTED_CORRIDOR", "unsupported source currency", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("UNSUPPORTED_CORRIDOR", "unsupported source currency", requestID))
+		return
 	}
 	if !strings.EqualFold(quoteCurrency, "USD") && !strings.EqualFold(quoteCurrency, "NGN") {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("UNSUPPORTED_CORRIDOR", "unsupported destination currency", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("UNSUPPORTED_CORRIDOR", "unsupported destination currency", requestID))
+		return
 	}
-	if _, _, err := g.idempotency.CheckAndStore(customerID, "/v1/quotes", idempotencyKey, payload, http.StatusOK, nil); err != nil {
-		writeHTTPJSON(w, http.StatusConflict, errorEnvelope("IDEMPOTENCY_CONFLICT", "idempotency key reused with different payload", requestID)); return
+	if replay, stored, err := g.idempotency.CheckAndStore(customerID, "/v1/quotes", idempotencyKey, payload, http.StatusOK, nil); err != nil {
+		if errors.Is(err, errIdempotencyConflict) {
+			writeHTTPJSON(w, http.StatusConflict, errorEnvelope("IDEMPOTENCY_CONFLICT", "idempotency key reused with different payload", requestID))
+		} else {
+			writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("IDEMPOTENCY_UNAVAILABLE", "idempotency storage unavailable", requestID))
+		}
+		return
+	} else if replay && stored["quote_id"] != nil {
+		writeHTTPJSON(w, http.StatusOK, stored)
+		return
 	}
 	quoteReq := QuoteRequest{InstitutionID: customerID, BaseAmountMinor: int64(amount), BaseCurrency: baseCurrency, QuoteCurrency: quoteCurrency, DestinationRail: strings.TrimSpace(fmt.Sprint(payload["destination_rail"])), Urgency: strings.TrimSpace(fmt.Sprint(payload["urgency"])), IdempotencyKey: idempotencyKey, CorrelationID: requestID}
-	if quoteReq.DestinationRail == "" { quoteReq.DestinationRail = "sim_lp_1" }
-	if quoteReq.Urgency == "" { quoteReq.Urgency = "normal" }
+	if quoteReq.DestinationRail == "" {
+		quoteReq.DestinationRail = "sim_lp_1"
+	}
+	if quoteReq.Urgency == "" {
+		quoteReq.Urgency = "normal"
+	}
 	quote, err := g.quoteClient.CreateQuote(quoteReq)
 	if err != nil {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", err.Error(), requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", err.Error(), requestID))
+		return
 	}
 	response := map[string]any{"quote_id": quote.QuoteID, "status": quote.Status, "base_amount_minor": quote.BaseAmountMinor, "base_currency": quote.BaseCurrency, "quote_currency": quote.QuoteCurrency, "destination_rail": quote.DestinationRail, "amount_out_minor": quote.AmountOutMinor, "rate_minor": quote.RateMinor, "fee_minor": quote.FeeMinor, "expires_at": quote.ExpiresAt.UTC().Format(time.RFC3339), "request_id": requestID}
-	g.idempotency.SaveResponse(customerID, "/v1/quotes", idempotencyKey, payload, response)
+	if err := g.idempotency.SaveResponse(customerID, "/v1/quotes", idempotencyKey, payload, response); err != nil {
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("IDEMPOTENCY_UNAVAILABLE", "idempotency storage unavailable", requestID))
+		return
+	}
 	writeHTTPJSON(w, http.StatusOK, response)
 }
 
 func (g *Gateway) handleAcceptQuote(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/quotes/")
 	parts := strings.Split(path, "/")
-	if len(parts) != 2 || parts[1] != "accept" { writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("QUOTE_NOT_FOUND", "quote path not found", requestID)); return }
+	if len(parts) != 2 || parts[1] != "accept" {
+		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("QUOTE_NOT_FOUND", "quote path not found", requestID))
+		return
+	}
 	quoteID := parts[0]
 	idKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	if idKey == "" { writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "missing Idempotency-Key", requestID)); return }
+	if idKey == "" {
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "missing Idempotency-Key", requestID))
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil || len(body) == 0 {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed request body", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed request body", requestID))
+		return
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed JSON", requestID)); return
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "malformed JSON", requestID))
+		return
 	}
 	if quoteID != "" {
 		if qid, ok := payload["quote_id"].(string); ok && qid != "" && qid != quoteID {
-			writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "quote_id mismatch", requestID)); return
+			writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "quote_id mismatch", requestID))
+			return
 		}
 		payload["quote_id"] = quoteID
 	}
 	payload["institution_id"] = customerID
-	if _, _, err := g.idempotency.CheckAndStore(customerID, "/v1/quotes/"+quoteID+"/accept", idKey, payload, http.StatusOK, nil); err != nil { writeHTTPJSON(w, http.StatusConflict, errorEnvelope("IDEMPOTENCY_CONFLICT", "idempotency key reused with different payload", requestID)); return }
+	if replay, stored, err := g.idempotency.CheckAndStore(customerID, "/v1/quotes/"+quoteID+"/accept", idKey, payload, http.StatusOK, nil); err != nil {
+		if errors.Is(err, errIdempotencyConflict) {
+			writeHTTPJSON(w, http.StatusConflict, errorEnvelope("IDEMPOTENCY_CONFLICT", "idempotency key reused with different payload", requestID))
+		} else {
+			writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("IDEMPOTENCY_UNAVAILABLE", "idempotency storage unavailable", requestID))
+		}
+		return
+	} else if replay && stored["trade_id"] != nil {
+		writeHTTPJSON(w, http.StatusOK, stored)
+		return
+	}
 	quote, err := g.quoteClient.AcceptQuote(customerID, quoteID, idKey, requestID)
-	if err != nil { writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", err.Error(), requestID)); return }
+	if err != nil {
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", err.Error(), requestID))
+		return
+	}
 	response := map[string]any{"quote_id": quote.QuoteID, "trade_id": quote.TradeID, "status": quote.Status, "request_id": requestID}
-	g.idempotency.SaveResponse(customerID, "/v1/quotes/"+quoteID+"/accept", idKey, payload, response)
+	if err := g.idempotency.SaveResponse(customerID, "/v1/quotes/"+quoteID+"/accept", idKey, payload, response); err != nil {
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("IDEMPOTENCY_UNAVAILABLE", "idempotency storage unavailable", requestID))
+		return
+	}
 	writeHTTPJSON(w, http.StatusOK, response)
 }
 
 func (g *Gateway) handleGetQuote(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/quotes/")
-	if strings.Contains(path, "/") { writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("QUOTE_NOT_FOUND", "quote not found", requestID)); return }
+	if strings.Contains(path, "/") {
+		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("QUOTE_NOT_FOUND", "quote not found", requestID))
+		return
+	}
 	quote, err := g.quoteClient.GetQuote(customerID, path)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("QUOTE_NOT_FOUND", "quote not found", requestID)); return
+			writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("QUOTE_NOT_FOUND", "quote not found", requestID))
+			return
 		}
-		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to quote", requestID)); return
+		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to quote", requestID))
+		return
 	}
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"quote_id": quote.QuoteID, "status": quote.Status, "base_amount_minor": quote.BaseAmountMinor, "base_currency": quote.BaseCurrency, "quote_currency": quote.QuoteCurrency, "amount_out_minor": quote.AmountOutMinor, "rate_minor": quote.RateMinor, "fee_minor": quote.FeeMinor, "expires_at": quote.ExpiresAt.UTC().Format(time.RFC3339), "request_id": requestID})
 }
@@ -434,17 +478,21 @@ func (g *Gateway) handleGetQuote(w http.ResponseWriter, r *http.Request, custome
 func (g *Gateway) handleGetTrade(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/trades/")
 	if strings.Contains(path, "/") || strings.TrimSpace(path) == "" {
-		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("TRADE_NOT_FOUND", "trade not found", requestID)); return
+		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("TRADE_NOT_FOUND", "trade not found", requestID))
+		return
 	}
 	if g.tradeClient == nil {
-		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "trade read service unavailable", requestID)); return
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "trade read service unavailable", requestID))
+		return
 	}
 	trade, err := g.tradeClient.GetTrade(customerID, path)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("TRADE_NOT_FOUND", "trade not found", requestID)); return
+			writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("TRADE_NOT_FOUND", "trade not found", requestID))
+			return
 		}
-		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to trade", requestID)); return
+		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to trade", requestID))
+		return
 	}
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"trade_id": trade.TradeID, "quote_id": trade.QuoteID, "institution_id": trade.InstitutionID, "status": trade.Status, "base_amount_minor": trade.BaseAmountMinor, "base_currency": trade.BaseCurrency, "quote_currency": trade.QuoteCurrency, "settlement_id": trade.SettlementID, "request_id": requestID})
 }
@@ -452,43 +500,55 @@ func (g *Gateway) handleGetTrade(w http.ResponseWriter, r *http.Request, custome
 func (g *Gateway) handleGetSettlement(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/settlements/")
 	if strings.Contains(path, "/") || strings.TrimSpace(path) == "" {
-		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("SETTLEMENT_NOT_FOUND", "settlement not found", requestID)); return
+		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("SETTLEMENT_NOT_FOUND", "settlement not found", requestID))
+		return
 	}
 	if g.settlementClient == nil {
-		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "settlement read service unavailable", requestID)); return
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "settlement read service unavailable", requestID))
+		return
 	}
 	settlement, err := g.settlementClient.GetSettlement(customerID, path)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("SETTLEMENT_NOT_FOUND", "settlement not found", requestID)); return
+			writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("SETTLEMENT_NOT_FOUND", "settlement not found", requestID))
+			return
 		}
-		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to settlement", requestID)); return
+		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to settlement", requestID))
+		return
 	}
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"settlement_id": settlement.SettlementID, "trade_id": settlement.TradeID, "quote_id": settlement.QuoteID, "institution_id": settlement.InstitutionID, "status": settlement.Status, "beneficiary": settlement.Beneficiary, "amount_minor": settlement.AmountMinor, "currency": settlement.Currency, "purpose": settlement.Purpose, "request_id": requestID})
 }
 
 func (g *Gateway) handleGetBalances(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	if g.readModelClient == nil {
-		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "balance read service unavailable", requestID)); return
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "balance read service unavailable", requestID))
+		return
 	}
 	balances, err := g.readModelClient.GetBalances(customerID)
 	if err != nil {
-		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to balances", requestID)); return
+		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to balances", requestID))
+		return
 	}
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"institution_id": balances.InstitutionID, "currency": balances.Currency, "available_minor": balances.AvailableMinor, "held_minor": balances.HeldMinor, "total_minor": balances.TotalMinor, "request_id": requestID})
 }
 
 func (g *Gateway) handleGetTransactions(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
 	if g.readModelClient == nil {
-		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "transaction read service unavailable", requestID)); return
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("READ_SERVICE_UNAVAILABLE", "transaction read service unavailable", requestID))
+		return
 	}
 	page := 1
-	if p := r.URL.Query().Get("page"); p != "" { page = atoiDefault(p, 1) }
+	if p := r.URL.Query().Get("page"); p != "" {
+		page = atoiDefault(p, 1)
+	}
 	pageSize := 25
-	if s := r.URL.Query().Get("page_size"); s != "" { pageSize = atoiDefault(s, 25) }
+	if s := r.URL.Query().Get("page_size"); s != "" {
+		pageSize = atoiDefault(s, 25)
+	}
 	items, err := g.readModelClient.GetTransactions(customerID, page, pageSize)
 	if err != nil {
-		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to transactions", requestID)); return
+		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "no access to transactions", requestID))
+		return
 	}
 	payload := map[string]any{"items": make([]map[string]any, 0, len(items.Items)), "page": items.Page, "page_size": items.PageSize, "total": items.Total, "request_id": requestID}
 	for _, item := range items.Items {
@@ -520,4 +580,6 @@ func signWithSecret(secret, body string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func signAndVerify(secret, body string) bool { return hmac.Equal([]byte(signWithSecret(secret, body)), []byte(signWithSecret(secret, body))) }
+func signAndVerify(secret, body string) bool {
+	return hmac.Equal([]byte(signWithSecret(secret, body)), []byte(signWithSecret(secret, body)))
+}

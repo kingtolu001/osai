@@ -8,3 +8,5 @@ runtime-logs/
 .env
 bin/
 tmp/
+.cache/
+deploy/local/phase5-durability-verification.sql
