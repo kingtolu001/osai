@@ -74,17 +74,19 @@ func (x *Money) GetCurrency() string {
 }
 
 type CreateTradeFromAcceptedQuoteRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	InstitutionId   string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
-	QuoteId         string                 `protobuf:"bytes,2,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
-	IdempotencyKey  string                 `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	CorrelationId   string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	BaseAmountMinor int64                  `protobuf:"varint,5,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
-	BaseCurrency    string                 `protobuf:"bytes,6,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
-	QuoteCurrency   string                 `protobuf:"bytes,7,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
-	Amount          *Money                 `protobuf:"bytes,8,opt,name=amount,proto3" json:"amount,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId        string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	QuoteId              string                 `protobuf:"bytes,2,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
+	IdempotencyKey       string                 `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	CorrelationId        string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	BaseAmountMinor      int64                  `protobuf:"varint,5,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
+	BaseCurrency         string                 `protobuf:"bytes,6,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
+	QuoteCurrency        string                 `protobuf:"bytes,7,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
+	Amount               *Money                 `protobuf:"bytes,8,opt,name=amount,proto3" json:"amount,omitempty"`
+	BeneficiaryId        string                 `protobuf:"bytes,9,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
+	SettlementProviderId string                 `protobuf:"bytes,10,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *CreateTradeFromAcceptedQuoteRequest) Reset() {
@@ -173,19 +175,35 @@ func (x *CreateTradeFromAcceptedQuoteRequest) GetAmount() *Money {
 	return nil
 }
 
+func (x *CreateTradeFromAcceptedQuoteRequest) GetBeneficiaryId() string {
+	if x != nil {
+		return x.BeneficiaryId
+	}
+	return ""
+}
+
+func (x *CreateTradeFromAcceptedQuoteRequest) GetSettlementProviderId() string {
+	if x != nil {
+		return x.SettlementProviderId
+	}
+	return ""
+}
+
 type TradeResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	TradeId         string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	InstitutionId   string                 `protobuf:"bytes,2,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
-	QuoteId         string                 `protobuf:"bytes,3,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
-	Status          string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	BaseAmountMinor int64                  `protobuf:"varint,5,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
-	BaseCurrency    string                 `protobuf:"bytes,6,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
-	QuoteCurrency   string                 `protobuf:"bytes,7,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
-	CorrelationId   string                 `protobuf:"bytes,8,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	SettlementId    string                 `protobuf:"bytes,9,opt,name=settlement_id,json=settlementId,proto3" json:"settlement_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	TradeId              string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	InstitutionId        string                 `protobuf:"bytes,2,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	QuoteId              string                 `protobuf:"bytes,3,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
+	Status               string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	BaseAmountMinor      int64                  `protobuf:"varint,5,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
+	BaseCurrency         string                 `protobuf:"bytes,6,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
+	QuoteCurrency        string                 `protobuf:"bytes,7,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
+	CorrelationId        string                 `protobuf:"bytes,8,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	SettlementId         string                 `protobuf:"bytes,9,opt,name=settlement_id,json=settlementId,proto3" json:"settlement_id,omitempty"`
+	BeneficiaryId        string                 `protobuf:"bytes,10,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
+	SettlementProviderId string                 `protobuf:"bytes,11,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *TradeResponse) Reset() {
@@ -281,6 +299,20 @@ func (x *TradeResponse) GetSettlementId() string {
 	return ""
 }
 
+func (x *TradeResponse) GetBeneficiaryId() string {
+	if x != nil {
+		return x.BeneficiaryId
+	}
+	return ""
+}
+
+func (x *TradeResponse) GetSettlementProviderId() string {
+	if x != nil {
+		return x.SettlementProviderId
+	}
+	return ""
+}
+
 type GetTradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
@@ -348,7 +380,7 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x1fproto/osai/trade/v1/trade.proto\x12\rosai.trade.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xdd\x02\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xba\x03\n" +
 	"#CreateTradeFromAcceptedQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12'\n" +
@@ -357,7 +389,10 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x11base_amount_minor\x18\x05 \x01(\x03R\x0fbaseAmountMinor\x12#\n" +
 	"\rbase_currency\x18\x06 \x01(\tR\fbaseCurrency\x12%\n" +
 	"\x0equote_currency\x18\a \x01(\tR\rquoteCurrency\x12,\n" +
-	"\x06amount\x18\b \x01(\v2\x14.osai.trade.v1.MoneyR\x06amount\"\xc8\x02\n" +
+	"\x06amount\x18\b \x01(\v2\x14.osai.trade.v1.MoneyR\x06amount\x12%\n" +
+	"\x0ebeneficiary_id\x18\t \x01(\tR\rbeneficiaryId\x124\n" +
+	"\x16settlement_provider_id\x18\n" +
+	" \x01(\tR\x14settlementProviderId\"\xa5\x03\n" +
 	"\rTradeResponse\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x19\n" +
@@ -367,7 +402,10 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\rbase_currency\x18\x06 \x01(\tR\fbaseCurrency\x12%\n" +
 	"\x0equote_currency\x18\a \x01(\tR\rquoteCurrency\x12%\n" +
 	"\x0ecorrelation_id\x18\b \x01(\tR\rcorrelationId\x12#\n" +
-	"\rsettlement_id\x18\t \x01(\tR\fsettlementId\"z\n" +
+	"\rsettlement_id\x18\t \x01(\tR\fsettlementId\x12%\n" +
+	"\x0ebeneficiary_id\x18\n" +
+	" \x01(\tR\rbeneficiaryId\x124\n" +
+	"\x16settlement_provider_id\x18\v \x01(\tR\x14settlementProviderId\"z\n" +
 	"\x0fGetTradeRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12%\n" +

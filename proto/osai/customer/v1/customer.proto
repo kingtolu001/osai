@@ -13,6 +13,29 @@ message InstitutionRequest {
   string institution_id = 1;
 }
 
+message BeneficiaryRequest {
+  string institution_id = 1;
+  string beneficiary_id = 2;
+}
+
+message RegisterBeneficiaryRequest {
+  string institution_id = 1;
+  string name = 2;
+  string bank_code = 3;
+  string account_number = 4;
+  string idempotency_key = 5;
+}
+
+message Beneficiary {
+  string beneficiary_id = 1;
+  string institution_id = 2;
+  string name = 3;
+  string bank_code = 4;
+  string account_number = 5;
+  string status = 6;
+  string approval_status = 7;
+}
+
 message AuthContext {
   string institution_id = 1;
   string institution_status = 2;
@@ -45,4 +68,6 @@ service CustomerService {
   rpc GetInstitutionAccess(InstitutionRequest) returns (AuthContext);
   rpc GetInstitution(InstitutionRequest) returns (Institution);
   rpc GetWebhookConfiguration(InstitutionRequest) returns (WebhookConfiguration);
+  rpc GetApprovedBeneficiary(BeneficiaryRequest) returns (Beneficiary);
+  rpc RegisterBeneficiary(RegisterBeneficiaryRequest) returns (Beneficiary);
 }

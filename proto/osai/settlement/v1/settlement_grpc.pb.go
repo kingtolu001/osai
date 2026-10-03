@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	SettlementService_CreateSettlementForTrade_FullMethodName = "/osai.settlement.v1.SettlementService/CreateSettlementForTrade"
 	SettlementService_GetSettlement_FullMethodName            = "/osai.settlement.v1.SettlementService/GetSettlement"
+	SettlementService_ListConfirmedSettlements_FullMethodName = "/osai.settlement.v1.SettlementService/ListConfirmedSettlements"
 )
 
 // SettlementServiceClient is the client API for SettlementService service.
@@ -29,6 +30,7 @@ const (
 type SettlementServiceClient interface {
 	CreateSettlementForTrade(ctx context.Context, in *CreateSettlementForTradeRequest, opts ...grpc.CallOption) (*SettlementResponse, error)
 	GetSettlement(ctx context.Context, in *GetSettlementRequest, opts ...grpc.CallOption) (*SettlementResponse, error)
+	ListConfirmedSettlements(ctx context.Context, in *ListConfirmedSettlementsRequest, opts ...grpc.CallOption) (*ListConfirmedSettlementsResponse, error)
 }
 
 type settlementServiceClient struct {
@@ -59,12 +61,23 @@ func (c *settlementServiceClient) GetSettlement(ctx context.Context, in *GetSett
 	return out, nil
 }
 
+func (c *settlementServiceClient) ListConfirmedSettlements(ctx context.Context, in *ListConfirmedSettlementsRequest, opts ...grpc.CallOption) (*ListConfirmedSettlementsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListConfirmedSettlementsResponse)
+	err := c.cc.Invoke(ctx, SettlementService_ListConfirmedSettlements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SettlementServiceServer is the server API for SettlementService service.
 // All implementations must embed UnimplementedSettlementServiceServer
 // for forward compatibility.
 type SettlementServiceServer interface {
 	CreateSettlementForTrade(context.Context, *CreateSettlementForTradeRequest) (*SettlementResponse, error)
 	GetSettlement(context.Context, *GetSettlementRequest) (*SettlementResponse, error)
+	ListConfirmedSettlements(context.Context, *ListConfirmedSettlementsRequest) (*ListConfirmedSettlementsResponse, error)
 	mustEmbedUnimplementedSettlementServiceServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedSettlementServiceServer) CreateSettlementForTrade(context.Con
 }
 func (UnimplementedSettlementServiceServer) GetSettlement(context.Context, *GetSettlementRequest) (*SettlementResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSettlement not implemented")
+}
+func (UnimplementedSettlementServiceServer) ListConfirmedSettlements(context.Context, *ListConfirmedSettlementsRequest) (*ListConfirmedSettlementsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListConfirmedSettlements not implemented")
 }
 func (UnimplementedSettlementServiceServer) mustEmbedUnimplementedSettlementServiceServer() {}
 func (UnimplementedSettlementServiceServer) testEmbeddedByValue()                           {}
@@ -138,6 +154,24 @@ func _SettlementService_GetSettlement_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SettlementService_ListConfirmedSettlements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListConfirmedSettlementsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettlementServiceServer).ListConfirmedSettlements(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettlementService_ListConfirmedSettlements_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettlementServiceServer).ListConfirmedSettlements(ctx, req.(*ListConfirmedSettlementsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SettlementService_ServiceDesc is the grpc.ServiceDesc for SettlementService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var SettlementService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSettlement",
 			Handler:    _SettlementService_GetSettlement_Handler,
+		},
+		{
+			MethodName: "ListConfirmedSettlements",
+			Handler:    _SettlementService_ListConfirmedSettlements_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

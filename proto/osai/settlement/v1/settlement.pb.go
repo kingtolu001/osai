@@ -83,6 +83,10 @@ type CreateSettlementForTradeRequest struct {
 	Beneficiary    string                 `protobuf:"bytes,6,opt,name=beneficiary,proto3" json:"beneficiary,omitempty"`
 	Amount         *Money                 `protobuf:"bytes,7,opt,name=amount,proto3" json:"amount,omitempty"`
 	Purpose        string                 `protobuf:"bytes,8,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	ProviderId     string                 `protobuf:"bytes,9,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	BankCode       string                 `protobuf:"bytes,10,opt,name=bank_code,json=bankCode,proto3" json:"bank_code,omitempty"`
+	AccountNumber  string                 `protobuf:"bytes,11,opt,name=account_number,json=accountNumber,proto3" json:"account_number,omitempty"`
+	BeneficiaryId  string                 `protobuf:"bytes,12,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -173,6 +177,34 @@ func (x *CreateSettlementForTradeRequest) GetPurpose() string {
 	return ""
 }
 
+func (x *CreateSettlementForTradeRequest) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
+	}
+	return ""
+}
+
+func (x *CreateSettlementForTradeRequest) GetBankCode() string {
+	if x != nil {
+		return x.BankCode
+	}
+	return ""
+}
+
+func (x *CreateSettlementForTradeRequest) GetAccountNumber() string {
+	if x != nil {
+		return x.AccountNumber
+	}
+	return ""
+}
+
+func (x *CreateSettlementForTradeRequest) GetBeneficiaryId() string {
+	if x != nil {
+		return x.BeneficiaryId
+	}
+	return ""
+}
+
 type SettlementResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SettlementId  string                 `protobuf:"bytes,1,opt,name=settlement_id,json=settlementId,proto3" json:"settlement_id,omitempty"`
@@ -184,6 +216,9 @@ type SettlementResponse struct {
 	AmountMinor   int64                  `protobuf:"varint,7,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"`
 	Currency      string                 `protobuf:"bytes,8,opt,name=currency,proto3" json:"currency,omitempty"`
 	CorrelationId string                 `protobuf:"bytes,9,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	ProviderId    string                 `protobuf:"bytes,10,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	ClientRef     string                 `protobuf:"bytes,11,opt,name=client_ref,json=clientRef,proto3" json:"client_ref,omitempty"`
+	ProviderRef   string                 `protobuf:"bytes,12,opt,name=provider_ref,json=providerRef,proto3" json:"provider_ref,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -281,6 +316,27 @@ func (x *SettlementResponse) GetCorrelationId() string {
 	return ""
 }
 
+func (x *SettlementResponse) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
+	}
+	return ""
+}
+
+func (x *SettlementResponse) GetClientRef() string {
+	if x != nil {
+		return x.ClientRef
+	}
+	return ""
+}
+
+func (x *SettlementResponse) GetProviderRef() string {
+	if x != nil {
+		return x.ProviderRef
+	}
+	return ""
+}
+
 type GetSettlementRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
@@ -341,6 +397,136 @@ func (x *GetSettlementRequest) GetCorrelationId() string {
 	return ""
 }
 
+// Internal reconciliation snapshot. The service authenticates this RPC with
+// its dedicated reconciliation token and returns only terminal settlements.
+type ListConfirmedSettlementsRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProviderId        string                 `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	FromUnix          int64                  `protobuf:"varint,2,opt,name=from_unix,json=fromUnix,proto3" json:"from_unix,omitempty"`
+	ToUnix            int64                  `protobuf:"varint,3,opt,name=to_unix,json=toUnix,proto3" json:"to_unix,omitempty"`
+	AfterSettlementId string                 `protobuf:"bytes,4,opt,name=after_settlement_id,json=afterSettlementId,proto3" json:"after_settlement_id,omitempty"`
+	PageSize          int32                  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ListConfirmedSettlementsRequest) Reset() {
+	*x = ListConfirmedSettlementsRequest{}
+	mi := &file_proto_osai_settlement_v1_settlement_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConfirmedSettlementsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConfirmedSettlementsRequest) ProtoMessage() {}
+
+func (x *ListConfirmedSettlementsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_settlement_v1_settlement_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConfirmedSettlementsRequest.ProtoReflect.Descriptor instead.
+func (*ListConfirmedSettlementsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_settlement_v1_settlement_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListConfirmedSettlementsRequest) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
+	}
+	return ""
+}
+
+func (x *ListConfirmedSettlementsRequest) GetFromUnix() int64 {
+	if x != nil {
+		return x.FromUnix
+	}
+	return 0
+}
+
+func (x *ListConfirmedSettlementsRequest) GetToUnix() int64 {
+	if x != nil {
+		return x.ToUnix
+	}
+	return 0
+}
+
+func (x *ListConfirmedSettlementsRequest) GetAfterSettlementId() string {
+	if x != nil {
+		return x.AfterSettlementId
+	}
+	return ""
+}
+
+func (x *ListConfirmedSettlementsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+type ListConfirmedSettlementsResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Settlements      []*SettlementResponse  `protobuf:"bytes,1,rep,name=settlements,proto3" json:"settlements,omitempty"`
+	NextSettlementId string                 `protobuf:"bytes,2,opt,name=next_settlement_id,json=nextSettlementId,proto3" json:"next_settlement_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ListConfirmedSettlementsResponse) Reset() {
+	*x = ListConfirmedSettlementsResponse{}
+	mi := &file_proto_osai_settlement_v1_settlement_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConfirmedSettlementsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConfirmedSettlementsResponse) ProtoMessage() {}
+
+func (x *ListConfirmedSettlementsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_settlement_v1_settlement_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConfirmedSettlementsResponse.ProtoReflect.Descriptor instead.
+func (*ListConfirmedSettlementsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_settlement_v1_settlement_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListConfirmedSettlementsResponse) GetSettlements() []*SettlementResponse {
+	if x != nil {
+		return x.Settlements
+	}
+	return nil
+}
+
+func (x *ListConfirmedSettlementsResponse) GetNextSettlementId() string {
+	if x != nil {
+		return x.NextSettlementId
+	}
+	return ""
+}
+
 var File_proto_osai_settlement_v1_settlement_proto protoreflect.FileDescriptor
 
 const file_proto_osai_settlement_v1_settlement_proto_rawDesc = "" +
@@ -348,7 +534,7 @@ const file_proto_osai_settlement_v1_settlement_proto_rawDesc = "" +
 	")proto/osai/settlement/v1/settlement.proto\x12\x12osai.settlement.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xbd\x02\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xc9\x03\n" +
 	"\x1fCreateSettlementForTradeRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x19\n" +
@@ -357,7 +543,13 @@ const file_proto_osai_settlement_v1_settlement_proto_rawDesc = "" +
 	"\x0ecorrelation_id\x18\x05 \x01(\tR\rcorrelationId\x12 \n" +
 	"\vbeneficiary\x18\x06 \x01(\tR\vbeneficiary\x121\n" +
 	"\x06amount\x18\a \x01(\v2\x19.osai.settlement.v1.MoneyR\x06amount\x12\x18\n" +
-	"\apurpose\x18\b \x01(\tR\apurpose\"\xb6\x02\n" +
+	"\apurpose\x18\b \x01(\tR\apurpose\x12\x1f\n" +
+	"\vprovider_id\x18\t \x01(\tR\n" +
+	"providerId\x12\x1b\n" +
+	"\tbank_code\x18\n" +
+	" \x01(\tR\bbankCode\x12%\n" +
+	"\x0eaccount_number\x18\v \x01(\tR\raccountNumber\x12%\n" +
+	"\x0ebeneficiary_id\x18\f \x01(\tR\rbeneficiaryId\"\x99\x03\n" +
 	"\x12SettlementResponse\x12#\n" +
 	"\rsettlement_id\x18\x01 \x01(\tR\fsettlementId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x19\n" +
@@ -367,14 +559,31 @@ const file_proto_osai_settlement_v1_settlement_proto_rawDesc = "" +
 	"\vbeneficiary\x18\x06 \x01(\tR\vbeneficiary\x12!\n" +
 	"\famount_minor\x18\a \x01(\x03R\vamountMinor\x12\x1a\n" +
 	"\bcurrency\x18\b \x01(\tR\bcurrency\x12%\n" +
-	"\x0ecorrelation_id\x18\t \x01(\tR\rcorrelationId\"\x89\x01\n" +
+	"\x0ecorrelation_id\x18\t \x01(\tR\rcorrelationId\x12\x1f\n" +
+	"\vprovider_id\x18\n" +
+	" \x01(\tR\n" +
+	"providerId\x12\x1d\n" +
+	"\n" +
+	"client_ref\x18\v \x01(\tR\tclientRef\x12!\n" +
+	"\fprovider_ref\x18\f \x01(\tR\vproviderRef\"\x89\x01\n" +
 	"\x14GetSettlementRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12#\n" +
 	"\rsettlement_id\x18\x02 \x01(\tR\fsettlementId\x12%\n" +
-	"\x0ecorrelation_id\x18\x03 \x01(\tR\rcorrelationId2\xef\x01\n" +
+	"\x0ecorrelation_id\x18\x03 \x01(\tR\rcorrelationId\"\xc5\x01\n" +
+	"\x1fListConfirmedSettlementsRequest\x12\x1f\n" +
+	"\vprovider_id\x18\x01 \x01(\tR\n" +
+	"providerId\x12\x1b\n" +
+	"\tfrom_unix\x18\x02 \x01(\x03R\bfromUnix\x12\x17\n" +
+	"\ato_unix\x18\x03 \x01(\x03R\x06toUnix\x12.\n" +
+	"\x13after_settlement_id\x18\x04 \x01(\tR\x11afterSettlementId\x12\x1b\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"\x9a\x01\n" +
+	" ListConfirmedSettlementsResponse\x12H\n" +
+	"\vsettlements\x18\x01 \x03(\v2&.osai.settlement.v1.SettlementResponseR\vsettlements\x12,\n" +
+	"\x12next_settlement_id\x18\x02 \x01(\tR\x10nextSettlementId2\xf7\x02\n" +
 	"\x11SettlementService\x12w\n" +
 	"\x18CreateSettlementForTrade\x123.osai.settlement.v1.CreateSettlementForTradeRequest\x1a&.osai.settlement.v1.SettlementResponse\x12a\n" +
-	"\rGetSettlement\x12(.osai.settlement.v1.GetSettlementRequest\x1a&.osai.settlement.v1.SettlementResponseB<Z:github.com/osai/osai/proto/osai/settlement/v1;settlementv1b\x06proto3"
+	"\rGetSettlement\x12(.osai.settlement.v1.GetSettlementRequest\x1a&.osai.settlement.v1.SettlementResponse\x12\x85\x01\n" +
+	"\x18ListConfirmedSettlements\x123.osai.settlement.v1.ListConfirmedSettlementsRequest\x1a4.osai.settlement.v1.ListConfirmedSettlementsResponseB<Z:github.com/osai/osai/proto/osai/settlement/v1;settlementv1b\x06proto3"
 
 var (
 	file_proto_osai_settlement_v1_settlement_proto_rawDescOnce sync.Once
@@ -388,24 +597,29 @@ func file_proto_osai_settlement_v1_settlement_proto_rawDescGZIP() []byte {
 	return file_proto_osai_settlement_v1_settlement_proto_rawDescData
 }
 
-var file_proto_osai_settlement_v1_settlement_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_proto_osai_settlement_v1_settlement_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_proto_osai_settlement_v1_settlement_proto_goTypes = []any{
-	(*Money)(nil),                           // 0: osai.settlement.v1.Money
-	(*CreateSettlementForTradeRequest)(nil), // 1: osai.settlement.v1.CreateSettlementForTradeRequest
-	(*SettlementResponse)(nil),              // 2: osai.settlement.v1.SettlementResponse
-	(*GetSettlementRequest)(nil),            // 3: osai.settlement.v1.GetSettlementRequest
+	(*Money)(nil),                            // 0: osai.settlement.v1.Money
+	(*CreateSettlementForTradeRequest)(nil),  // 1: osai.settlement.v1.CreateSettlementForTradeRequest
+	(*SettlementResponse)(nil),               // 2: osai.settlement.v1.SettlementResponse
+	(*GetSettlementRequest)(nil),             // 3: osai.settlement.v1.GetSettlementRequest
+	(*ListConfirmedSettlementsRequest)(nil),  // 4: osai.settlement.v1.ListConfirmedSettlementsRequest
+	(*ListConfirmedSettlementsResponse)(nil), // 5: osai.settlement.v1.ListConfirmedSettlementsResponse
 }
 var file_proto_osai_settlement_v1_settlement_proto_depIdxs = []int32{
 	0, // 0: osai.settlement.v1.CreateSettlementForTradeRequest.amount:type_name -> osai.settlement.v1.Money
-	1, // 1: osai.settlement.v1.SettlementService.CreateSettlementForTrade:input_type -> osai.settlement.v1.CreateSettlementForTradeRequest
-	3, // 2: osai.settlement.v1.SettlementService.GetSettlement:input_type -> osai.settlement.v1.GetSettlementRequest
-	2, // 3: osai.settlement.v1.SettlementService.CreateSettlementForTrade:output_type -> osai.settlement.v1.SettlementResponse
-	2, // 4: osai.settlement.v1.SettlementService.GetSettlement:output_type -> osai.settlement.v1.SettlementResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 1: osai.settlement.v1.ListConfirmedSettlementsResponse.settlements:type_name -> osai.settlement.v1.SettlementResponse
+	1, // 2: osai.settlement.v1.SettlementService.CreateSettlementForTrade:input_type -> osai.settlement.v1.CreateSettlementForTradeRequest
+	3, // 3: osai.settlement.v1.SettlementService.GetSettlement:input_type -> osai.settlement.v1.GetSettlementRequest
+	4, // 4: osai.settlement.v1.SettlementService.ListConfirmedSettlements:input_type -> osai.settlement.v1.ListConfirmedSettlementsRequest
+	2, // 5: osai.settlement.v1.SettlementService.CreateSettlementForTrade:output_type -> osai.settlement.v1.SettlementResponse
+	2, // 6: osai.settlement.v1.SettlementService.GetSettlement:output_type -> osai.settlement.v1.SettlementResponse
+	5, // 7: osai.settlement.v1.SettlementService.ListConfirmedSettlements:output_type -> osai.settlement.v1.ListConfirmedSettlementsResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_proto_osai_settlement_v1_settlement_proto_init() }
@@ -419,7 +633,7 @@ func file_proto_osai_settlement_v1_settlement_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_settlement_v1_settlement_proto_rawDesc), len(file_proto_osai_settlement_v1_settlement_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

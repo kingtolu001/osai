@@ -18,6 +18,8 @@ message CreateTradeFromAcceptedQuoteRequest {
   string base_currency = 6;
   string quote_currency = 7;
   Money amount = 8;
+  string beneficiary_id = 9;
+  string settlement_provider_id = 10;
 }
 
 message TradeResponse {
@@ -30,6 +32,8 @@ message TradeResponse {
   string quote_currency = 7;
   string correlation_id = 8;
   string settlement_id = 9;
+  string beneficiary_id = 10;
+  string settlement_provider_id = 11;
 }
 
 message GetTradeRequest {

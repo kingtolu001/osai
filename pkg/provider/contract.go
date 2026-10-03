@@ -63,6 +63,8 @@ type TransferAck struct {
 }
 
 type TransferResult struct {
+	ProviderRef   string
+	ClientRef     string
 	Status        TransferStatus
 	AmountMinor   int64
 	Currency      string
@@ -74,11 +76,13 @@ type TransferResult struct {
 
 type WebhookEvent struct {
 	ProviderEventID string
+	ProviderRef     string
 	ClientRef       string
 	Status          TransferStatus
 	AmountMinor     int64
 	Currency        string
 	Beneficiary     string
+	OccurredAt      time.Time
 	Evidence        Evidence
 }
 
@@ -91,8 +95,12 @@ type Health struct {
 
 type ExternalTransaction struct {
 	ID          string
+	ClientRef   string
+	ProviderRef string
 	AmountMinor int64
 	Currency    string
+	Beneficiary string
+	FeeMinor    int64
 	Direction   string
 	OccurredAt  time.Time
 	Evidence    Evidence

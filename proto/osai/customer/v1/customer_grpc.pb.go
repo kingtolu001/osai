@@ -23,6 +23,8 @@ const (
 	CustomerService_GetInstitutionAccess_FullMethodName    = "/osai.customer.v1.CustomerService/GetInstitutionAccess"
 	CustomerService_GetInstitution_FullMethodName          = "/osai.customer.v1.CustomerService/GetInstitution"
 	CustomerService_GetWebhookConfiguration_FullMethodName = "/osai.customer.v1.CustomerService/GetWebhookConfiguration"
+	CustomerService_GetApprovedBeneficiary_FullMethodName  = "/osai.customer.v1.CustomerService/GetApprovedBeneficiary"
+	CustomerService_RegisterBeneficiary_FullMethodName     = "/osai.customer.v1.CustomerService/RegisterBeneficiary"
 )
 
 // CustomerServiceClient is the client API for CustomerService service.
@@ -33,6 +35,8 @@ type CustomerServiceClient interface {
 	GetInstitutionAccess(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*AuthContext, error)
 	GetInstitution(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*Institution, error)
 	GetWebhookConfiguration(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*WebhookConfiguration, error)
+	GetApprovedBeneficiary(ctx context.Context, in *BeneficiaryRequest, opts ...grpc.CallOption) (*Beneficiary, error)
+	RegisterBeneficiary(ctx context.Context, in *RegisterBeneficiaryRequest, opts ...grpc.CallOption) (*Beneficiary, error)
 }
 
 type customerServiceClient struct {
@@ -83,6 +87,26 @@ func (c *customerServiceClient) GetWebhookConfiguration(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *customerServiceClient) GetApprovedBeneficiary(ctx context.Context, in *BeneficiaryRequest, opts ...grpc.CallOption) (*Beneficiary, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Beneficiary)
+	err := c.cc.Invoke(ctx, CustomerService_GetApprovedBeneficiary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customerServiceClient) RegisterBeneficiary(ctx context.Context, in *RegisterBeneficiaryRequest, opts ...grpc.CallOption) (*Beneficiary, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Beneficiary)
+	err := c.cc.Invoke(ctx, CustomerService_RegisterBeneficiary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CustomerServiceServer is the server API for CustomerService service.
 // All implementations must embed UnimplementedCustomerServiceServer
 // for forward compatibility.
@@ -91,6 +115,8 @@ type CustomerServiceServer interface {
 	GetInstitutionAccess(context.Context, *InstitutionRequest) (*AuthContext, error)
 	GetInstitution(context.Context, *InstitutionRequest) (*Institution, error)
 	GetWebhookConfiguration(context.Context, *InstitutionRequest) (*WebhookConfiguration, error)
+	GetApprovedBeneficiary(context.Context, *BeneficiaryRequest) (*Beneficiary, error)
+	RegisterBeneficiary(context.Context, *RegisterBeneficiaryRequest) (*Beneficiary, error)
 	mustEmbedUnimplementedCustomerServiceServer()
 }
 
@@ -112,6 +138,12 @@ func (UnimplementedCustomerServiceServer) GetInstitution(context.Context, *Insti
 }
 func (UnimplementedCustomerServiceServer) GetWebhookConfiguration(context.Context, *InstitutionRequest) (*WebhookConfiguration, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWebhookConfiguration not implemented")
+}
+func (UnimplementedCustomerServiceServer) GetApprovedBeneficiary(context.Context, *BeneficiaryRequest) (*Beneficiary, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetApprovedBeneficiary not implemented")
+}
+func (UnimplementedCustomerServiceServer) RegisterBeneficiary(context.Context, *RegisterBeneficiaryRequest) (*Beneficiary, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterBeneficiary not implemented")
 }
 func (UnimplementedCustomerServiceServer) mustEmbedUnimplementedCustomerServiceServer() {}
 func (UnimplementedCustomerServiceServer) testEmbeddedByValue()                         {}
@@ -206,6 +238,42 @@ func _CustomerService_GetWebhookConfiguration_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CustomerService_GetApprovedBeneficiary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeneficiaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).GetApprovedBeneficiary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_GetApprovedBeneficiary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).GetApprovedBeneficiary(ctx, req.(*BeneficiaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CustomerService_RegisterBeneficiary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterBeneficiaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).RegisterBeneficiary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_RegisterBeneficiary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).RegisterBeneficiary(ctx, req.(*RegisterBeneficiaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CustomerService_ServiceDesc is the grpc.ServiceDesc for CustomerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +296,14 @@ var CustomerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetWebhookConfiguration",
 			Handler:    _CustomerService_GetWebhookConfiguration_Handler,
+		},
+		{
+			MethodName: "GetApprovedBeneficiary",
+			Handler:    _CustomerService_GetApprovedBeneficiary_Handler,
+		},
+		{
+			MethodName: "RegisterBeneficiary",
+			Handler:    _CustomerService_RegisterBeneficiary_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

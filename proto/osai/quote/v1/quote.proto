@@ -46,6 +46,7 @@ message AcceptQuoteRequest {
   string quote_id = 2;
   string idempotency_key = 3;
   string correlation_id = 4;
+  string beneficiary_id = 5;
 }
 
 service QuoteService {

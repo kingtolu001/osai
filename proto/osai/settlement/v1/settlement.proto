@@ -18,6 +18,10 @@ message CreateSettlementForTradeRequest {
   string beneficiary = 6;
   Money amount = 7;
   string purpose = 8;
+  string provider_id = 9;
+  string bank_code = 10;
+  string account_number = 11;
+  string beneficiary_id = 12;
 }
 
 message SettlementResponse {
@@ -30,6 +34,9 @@ message SettlementResponse {
   int64 amount_minor = 7;
   string currency = 8;
   string correlation_id = 9;
+  string provider_id = 10;
+  string client_ref = 11;
+  string provider_ref = 12;
 }
 
 message GetSettlementRequest {
@@ -38,7 +45,23 @@ message GetSettlementRequest {
   string correlation_id = 3;
 }
 
+// Internal reconciliation snapshot. The service authenticates this RPC with
+// its dedicated reconciliation token and returns only terminal settlements.
+message ListConfirmedSettlementsRequest {
+  string provider_id = 1;
+  int64 from_unix = 2;
+  int64 to_unix = 3;
+  string after_settlement_id = 4;
+  int32 page_size = 5;
+}
+
+message ListConfirmedSettlementsResponse {
+  repeated SettlementResponse settlements = 1;
+  string next_settlement_id = 2;
+}
+
 service SettlementService {
   rpc CreateSettlementForTrade(CreateSettlementForTradeRequest) returns (SettlementResponse);
   rpc GetSettlement(GetSettlementRequest) returns (SettlementResponse);
+  rpc ListConfirmedSettlements(ListConfirmedSettlementsRequest) returns (ListConfirmedSettlementsResponse);
 }

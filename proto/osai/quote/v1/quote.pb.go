@@ -371,6 +371,7 @@ type AcceptQuoteRequest struct {
 	QuoteId        string                 `protobuf:"bytes,2,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
 	IdempotencyKey string                 `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	CorrelationId  string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	BeneficiaryId  string                 `protobuf:"bytes,5,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -433,6 +434,13 @@ func (x *AcceptQuoteRequest) GetCorrelationId() string {
 	return ""
 }
 
+func (x *AcceptQuoteRequest) GetBeneficiaryId() string {
+	if x != nil {
+		return x.BeneficiaryId
+	}
+	return ""
+}
+
 var File_proto_osai_quote_v1_quote_proto protoreflect.FileDescriptor
 
 const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
@@ -469,12 +477,13 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"\x0fGetQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12%\n" +
-	"\x0ecorrelation_id\x18\x03 \x01(\tR\rcorrelationId\"\xa6\x01\n" +
+	"\x0ecorrelation_id\x18\x03 \x01(\tR\rcorrelationId\"\xcd\x01\n" +
 	"\x12AcceptQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12'\n" +
 	"\x0fidempotency_key\x18\x03 \x01(\tR\x0eidempotencyKey\x12%\n" +
-	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId2\xf8\x01\n" +
+	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\x12%\n" +
+	"\x0ebeneficiary_id\x18\x05 \x01(\tR\rbeneficiaryId2\xf8\x01\n" +
 	"\fQuoteService\x12N\n" +
 	"\vCreateQuote\x12!.osai.quote.v1.CreateQuoteRequest\x1a\x1c.osai.quote.v1.QuoteResponse\x12H\n" +
 	"\bGetQuote\x12\x1e.osai.quote.v1.GetQuoteRequest\x1a\x1c.osai.quote.v1.QuoteResponse\x12N\n" +

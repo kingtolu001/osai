@@ -117,6 +117,226 @@ func (x *InstitutionRequest) GetInstitutionId() string {
 	return ""
 }
 
+type BeneficiaryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	BeneficiaryId string                 `protobuf:"bytes,2,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeneficiaryRequest) Reset() {
+	*x = BeneficiaryRequest{}
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeneficiaryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeneficiaryRequest) ProtoMessage() {}
+
+func (x *BeneficiaryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeneficiaryRequest.ProtoReflect.Descriptor instead.
+func (*BeneficiaryRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *BeneficiaryRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *BeneficiaryRequest) GetBeneficiaryId() string {
+	if x != nil {
+		return x.BeneficiaryId
+	}
+	return ""
+}
+
+type RegisterBeneficiaryRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId  string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	BankCode       string                 `protobuf:"bytes,3,opt,name=bank_code,json=bankCode,proto3" json:"bank_code,omitempty"`
+	AccountNumber  string                 `protobuf:"bytes,4,opt,name=account_number,json=accountNumber,proto3" json:"account_number,omitempty"`
+	IdempotencyKey string                 `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RegisterBeneficiaryRequest) Reset() {
+	*x = RegisterBeneficiaryRequest{}
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterBeneficiaryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterBeneficiaryRequest) ProtoMessage() {}
+
+func (x *RegisterBeneficiaryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterBeneficiaryRequest.ProtoReflect.Descriptor instead.
+func (*RegisterBeneficiaryRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RegisterBeneficiaryRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *RegisterBeneficiaryRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RegisterBeneficiaryRequest) GetBankCode() string {
+	if x != nil {
+		return x.BankCode
+	}
+	return ""
+}
+
+func (x *RegisterBeneficiaryRequest) GetAccountNumber() string {
+	if x != nil {
+		return x.AccountNumber
+	}
+	return ""
+}
+
+func (x *RegisterBeneficiaryRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type Beneficiary struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	BeneficiaryId  string                 `protobuf:"bytes,1,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
+	InstitutionId  string                 `protobuf:"bytes,2,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Name           string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	BankCode       string                 `protobuf:"bytes,4,opt,name=bank_code,json=bankCode,proto3" json:"bank_code,omitempty"`
+	AccountNumber  string                 `protobuf:"bytes,5,opt,name=account_number,json=accountNumber,proto3" json:"account_number,omitempty"`
+	Status         string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	ApprovalStatus string                 `protobuf:"bytes,7,opt,name=approval_status,json=approvalStatus,proto3" json:"approval_status,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Beneficiary) Reset() {
+	*x = Beneficiary{}
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Beneficiary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Beneficiary) ProtoMessage() {}
+
+func (x *Beneficiary) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Beneficiary.ProtoReflect.Descriptor instead.
+func (*Beneficiary) Descriptor() ([]byte, []int) {
+	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Beneficiary) GetBeneficiaryId() string {
+	if x != nil {
+		return x.BeneficiaryId
+	}
+	return ""
+}
+
+func (x *Beneficiary) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *Beneficiary) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Beneficiary) GetBankCode() string {
+	if x != nil {
+		return x.BankCode
+	}
+	return ""
+}
+
+func (x *Beneficiary) GetAccountNumber() string {
+	if x != nil {
+		return x.AccountNumber
+	}
+	return ""
+}
+
+func (x *Beneficiary) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Beneficiary) GetApprovalStatus() string {
+	if x != nil {
+		return x.ApprovalStatus
+	}
+	return ""
+}
+
 type AuthContext struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	InstitutionId     string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
@@ -132,7 +352,7 @@ type AuthContext struct {
 
 func (x *AuthContext) Reset() {
 	*x = AuthContext{}
-	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[2]
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -144,7 +364,7 @@ func (x *AuthContext) String() string {
 func (*AuthContext) ProtoMessage() {}
 
 func (x *AuthContext) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[2]
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -157,7 +377,7 @@ func (x *AuthContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthContext.ProtoReflect.Descriptor instead.
 func (*AuthContext) Descriptor() ([]byte, []int) {
-	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{2}
+	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AuthContext) GetInstitutionId() string {
@@ -223,7 +443,7 @@ type Institution struct {
 
 func (x *Institution) Reset() {
 	*x = Institution{}
-	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[3]
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -235,7 +455,7 @@ func (x *Institution) String() string {
 func (*Institution) ProtoMessage() {}
 
 func (x *Institution) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[3]
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -248,7 +468,7 @@ func (x *Institution) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Institution.ProtoReflect.Descriptor instead.
 func (*Institution) Descriptor() ([]byte, []int) {
-	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{3}
+	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Institution) GetInstitutionId() string {
@@ -306,7 +526,7 @@ type WebhookConfiguration struct {
 
 func (x *WebhookConfiguration) Reset() {
 	*x = WebhookConfiguration{}
-	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[4]
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -318,7 +538,7 @@ func (x *WebhookConfiguration) String() string {
 func (*WebhookConfiguration) ProtoMessage() {}
 
 func (x *WebhookConfiguration) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[4]
+	mi := &file_proto_osai_customer_v1_customer_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -331,7 +551,7 @@ func (x *WebhookConfiguration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebhookConfiguration.ProtoReflect.Descriptor instead.
 func (*WebhookConfiguration) Descriptor() ([]byte, []int) {
-	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{4}
+	return file_proto_osai_customer_v1_customer_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *WebhookConfiguration) GetInstitutionId() string {
@@ -378,7 +598,24 @@ const file_proto_osai_customer_v1_customer_proto_rawDesc = "" +
 	"\tpublic_id\x18\x01 \x01(\tR\bpublicId\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\";\n" +
 	"\x12InstitutionRequest\x12%\n" +
-	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\"\x92\x02\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\"b\n" +
+	"\x12BeneficiaryRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12%\n" +
+	"\x0ebeneficiary_id\x18\x02 \x01(\tR\rbeneficiaryId\"\xc4\x01\n" +
+	"\x1aRegisterBeneficiaryRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
+	"\tbank_code\x18\x03 \x01(\tR\bbankCode\x12%\n" +
+	"\x0eaccount_number\x18\x04 \x01(\tR\raccountNumber\x12'\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\"\xf4\x01\n" +
+	"\vBeneficiary\x12%\n" +
+	"\x0ebeneficiary_id\x18\x01 \x01(\tR\rbeneficiaryId\x12%\n" +
+	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1b\n" +
+	"\tbank_code\x18\x04 \x01(\tR\bbankCode\x12%\n" +
+	"\x0eaccount_number\x18\x05 \x01(\tR\raccountNumber\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12'\n" +
+	"\x0fapproval_status\x18\a \x01(\tR\x0eapprovalStatus\"\x92\x02\n" +
 	"\vAuthContext\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12-\n" +
 	"\x12institution_status\x18\x02 \x01(\tR\x11institutionStatus\x12\x1d\n" +
@@ -405,12 +642,14 @@ const file_proto_osai_customer_v1_customer_proto_rawDesc = "" +
 	"webhookUrl\x12\x16\n" +
 	"\x06secret\x18\x03 \x01(\tR\x06secret\x12\x18\n" +
 	"\aenabled\x18\x04 \x01(\bR\aenabled\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\tR\x06status2\x8f\x03\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status2\xd2\x04\n" +
 	"\x0fCustomerService\x12_\n" +
 	"\x15AuthenticateAPIClient\x12'.osai.customer.v1.CredentialAuthRequest\x1a\x1d.osai.customer.v1.AuthContext\x12[\n" +
 	"\x14GetInstitutionAccess\x12$.osai.customer.v1.InstitutionRequest\x1a\x1d.osai.customer.v1.AuthContext\x12U\n" +
 	"\x0eGetInstitution\x12$.osai.customer.v1.InstitutionRequest\x1a\x1d.osai.customer.v1.Institution\x12g\n" +
-	"\x17GetWebhookConfiguration\x12$.osai.customer.v1.InstitutionRequest\x1a&.osai.customer.v1.WebhookConfigurationB8Z6github.com/osai/osai/proto/osai/customer/v1;customerv1b\x06proto3"
+	"\x17GetWebhookConfiguration\x12$.osai.customer.v1.InstitutionRequest\x1a&.osai.customer.v1.WebhookConfiguration\x12]\n" +
+	"\x16GetApprovedBeneficiary\x12$.osai.customer.v1.BeneficiaryRequest\x1a\x1d.osai.customer.v1.Beneficiary\x12b\n" +
+	"\x13RegisterBeneficiary\x12,.osai.customer.v1.RegisterBeneficiaryRequest\x1a\x1d.osai.customer.v1.BeneficiaryB8Z6github.com/osai/osai/proto/osai/customer/v1;customerv1b\x06proto3"
 
 var (
 	file_proto_osai_customer_v1_customer_proto_rawDescOnce sync.Once
@@ -424,25 +663,32 @@ func file_proto_osai_customer_v1_customer_proto_rawDescGZIP() []byte {
 	return file_proto_osai_customer_v1_customer_proto_rawDescData
 }
 
-var file_proto_osai_customer_v1_customer_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_proto_osai_customer_v1_customer_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_proto_osai_customer_v1_customer_proto_goTypes = []any{
-	(*CredentialAuthRequest)(nil), // 0: osai.customer.v1.CredentialAuthRequest
-	(*InstitutionRequest)(nil),    // 1: osai.customer.v1.InstitutionRequest
-	(*AuthContext)(nil),           // 2: osai.customer.v1.AuthContext
-	(*Institution)(nil),           // 3: osai.customer.v1.Institution
-	(*WebhookConfiguration)(nil),  // 4: osai.customer.v1.WebhookConfiguration
+	(*CredentialAuthRequest)(nil),      // 0: osai.customer.v1.CredentialAuthRequest
+	(*InstitutionRequest)(nil),         // 1: osai.customer.v1.InstitutionRequest
+	(*BeneficiaryRequest)(nil),         // 2: osai.customer.v1.BeneficiaryRequest
+	(*RegisterBeneficiaryRequest)(nil), // 3: osai.customer.v1.RegisterBeneficiaryRequest
+	(*Beneficiary)(nil),                // 4: osai.customer.v1.Beneficiary
+	(*AuthContext)(nil),                // 5: osai.customer.v1.AuthContext
+	(*Institution)(nil),                // 6: osai.customer.v1.Institution
+	(*WebhookConfiguration)(nil),       // 7: osai.customer.v1.WebhookConfiguration
 }
 var file_proto_osai_customer_v1_customer_proto_depIdxs = []int32{
 	0, // 0: osai.customer.v1.CustomerService.AuthenticateAPIClient:input_type -> osai.customer.v1.CredentialAuthRequest
 	1, // 1: osai.customer.v1.CustomerService.GetInstitutionAccess:input_type -> osai.customer.v1.InstitutionRequest
 	1, // 2: osai.customer.v1.CustomerService.GetInstitution:input_type -> osai.customer.v1.InstitutionRequest
 	1, // 3: osai.customer.v1.CustomerService.GetWebhookConfiguration:input_type -> osai.customer.v1.InstitutionRequest
-	2, // 4: osai.customer.v1.CustomerService.AuthenticateAPIClient:output_type -> osai.customer.v1.AuthContext
-	2, // 5: osai.customer.v1.CustomerService.GetInstitutionAccess:output_type -> osai.customer.v1.AuthContext
-	3, // 6: osai.customer.v1.CustomerService.GetInstitution:output_type -> osai.customer.v1.Institution
-	4, // 7: osai.customer.v1.CustomerService.GetWebhookConfiguration:output_type -> osai.customer.v1.WebhookConfiguration
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	2, // 4: osai.customer.v1.CustomerService.GetApprovedBeneficiary:input_type -> osai.customer.v1.BeneficiaryRequest
+	3, // 5: osai.customer.v1.CustomerService.RegisterBeneficiary:input_type -> osai.customer.v1.RegisterBeneficiaryRequest
+	5, // 6: osai.customer.v1.CustomerService.AuthenticateAPIClient:output_type -> osai.customer.v1.AuthContext
+	5, // 7: osai.customer.v1.CustomerService.GetInstitutionAccess:output_type -> osai.customer.v1.AuthContext
+	6, // 8: osai.customer.v1.CustomerService.GetInstitution:output_type -> osai.customer.v1.Institution
+	7, // 9: osai.customer.v1.CustomerService.GetWebhookConfiguration:output_type -> osai.customer.v1.WebhookConfiguration
+	4, // 10: osai.customer.v1.CustomerService.GetApprovedBeneficiary:output_type -> osai.customer.v1.Beneficiary
+	4, // 11: osai.customer.v1.CustomerService.RegisterBeneficiary:output_type -> osai.customer.v1.Beneficiary
+	6, // [6:12] is the sub-list for method output_type
+	0, // [0:6] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -459,7 +705,7 @@ func file_proto_osai_customer_v1_customer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_customer_v1_customer_proto_rawDesc), len(file_proto_osai_customer_v1_customer_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
