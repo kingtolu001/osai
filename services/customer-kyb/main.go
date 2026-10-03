@@ -32,6 +32,10 @@ func main() {
 	if err := seedSandboxCustomer(service); err != nil {
 		log.Printf("sandbox seed warning: %v", err)
 	}
+	operators, err := loadBeneficiaryOperators()
+	if err != nil {
+		log.Fatal(err)
+	}
 	addr := os.Getenv("OSAI_KYB_PORT")
 	if addr == "" {
 		addr = ":8081"
@@ -48,11 +52,14 @@ func main() {
 	customerv1.RegisterCustomerServiceServer(server, &grpcServer{service: service})
 	log.Printf("customer-kyb gRPC listening on %s", grpcAddr)
 	go func() {
-		httpServer := &http.Server{Addr: addr, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprintf(w, `{"status":"ok","service":"customer-kyb"}`)
-		}), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+		})
+		mux.Handle("/v1/operator/beneficiaries/", service.beneficiaryOperatorHandler(operators))
+		httpServer := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 		log.Printf("customer-kyb health listening on %s", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("customer-kyb health failed: %v", err)

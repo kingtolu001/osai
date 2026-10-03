@@ -32,7 +32,7 @@ func (s *Store) createDB(trade *Trade) (*Trade, error) {
 		if err = json.Unmarshal(raw, &old); err != nil {
 			return nil, err
 		}
-		if old.InstitutionID != trade.InstitutionID || old.BaseAmountMinor != trade.BaseAmountMinor || old.BaseCurrency != trade.BaseCurrency || old.QuoteCurrency != trade.QuoteCurrency {
+		if old.InstitutionID != trade.InstitutionID || old.BaseAmountMinor != trade.BaseAmountMinor || old.BaseCurrency != trade.BaseCurrency || old.QuoteCurrency != trade.QuoteCurrency || old.BeneficiaryID != trade.BeneficiaryID || old.SettlementProviderID != trade.SettlementProviderID {
 			return nil, errors.New("trade replay conflict")
 		}
 		return &old, tx.Commit()

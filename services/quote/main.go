@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/osai/osai/adapters/firstpair"
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/postgres"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
@@ -79,7 +80,7 @@ func main() {
 	}
 	defer tradeConn.Close()
 	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
-	quotev1.RegisterQuoteServiceServer(server, &grpcServer{store: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn)})
+	quotev1.RegisterQuoteServiceServer(server, &grpcServer{store: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn), liquidity: firstpair.New().Liquidity})
 	log.Printf("quote gRPC listening on %s", grpcPort)
 	go func() {
 		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

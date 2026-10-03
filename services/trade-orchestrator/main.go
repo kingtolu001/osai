@@ -9,6 +9,7 @@ import (
 
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/postgres"
+	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/trade-orchestrator/tradecore"
@@ -39,6 +40,7 @@ func main() {
 		settlementAddr = "localhost:50055"
 	}
 	var settlementClient settlementv1.SettlementServiceClient
+	var customerClient customerv1.CustomerServiceClient
 	if strings.TrimSpace(settlementAddr) != "" {
 		conn, err := grpc.Dial(settlementAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor()))
 		if err != nil {
@@ -48,12 +50,25 @@ func main() {
 			settlementClient = settlementv1.NewSettlementServiceClient(conn)
 		}
 	}
+	customerAddr := os.Getenv("OSAI_CUSTOMER_GRPC_ADDR")
+	if customerAddr == "" {
+		customerAddr = "localhost:50052"
+	}
+	if strings.TrimSpace(customerAddr) != "" {
+		conn, err := grpc.Dial(customerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor()))
+		if err != nil {
+			log.Printf("trade-orchestrator could not dial customer service: %v", err)
+		} else {
+			defer conn.Close()
+			customerClient = customerv1.NewCustomerServiceClient(conn)
+		}
+	}
 	listener, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
 		log.Fatalf("trade-orchestrator gRPC listen failed: %v", err)
 	}
 	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
-	tradev1.RegisterTradeServiceServer(server, newTradeServer(store, settlementClient))
+	tradev1.RegisterTradeServiceServer(server, newTradeServer(store, settlementClient).withCustomerClient(customerClient))
 	log.Printf("trade-orchestrator gRPC listening on %s", grpcAddr)
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("trade-orchestrator gRPC server failed: %v", err)

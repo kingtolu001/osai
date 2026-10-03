@@ -102,6 +102,17 @@ func canonicalQuoteRequestHash(req QuoteRequest) string {
 }
 
 func (s *QuoteStore) Create(req QuoteRequest, providerID string, rateMinor, feeMinor, amountOutMinor int64, expiresAt time.Time) (*ExecutableQuote, error) {
+	return s.create(req, providerID, rateMinor, feeMinor, amountOutMinor, expiresAt, nil)
+}
+
+func (s *QuoteStore) CreateFromProvider(req QuoteRequest, quote ProviderQuote) (*ExecutableQuote, error) {
+	if quote.ProviderID == "" || quote.BaseCurrency != req.BaseCurrency || quote.QuoteCurrency != req.QuoteCurrency || quote.BaseAmountMinor != req.BaseAmountMinor || quote.AmountOutMinor <= 0 || quote.RateMinor <= 0 || quote.FeeMinor < 0 || !quote.ExpiresAt.After(time.Now()) {
+		return nil, errors.New("provider quote is invalid")
+	}
+	return s.create(req, quote.ProviderID, quote.RateMinor, quote.FeeMinor, quote.AmountOutMinor, quote.ExpiresAt, quote.Evidence)
+}
+
+func (s *QuoteStore) create(req QuoteRequest, providerID string, rateMinor, feeMinor, amountOutMinor int64, expiresAt time.Time, evidence map[string]string) (*ExecutableQuote, error) {
 	if req.CustomerID == "" {
 		return nil, errors.New("customer id required")
 	}
@@ -130,7 +141,7 @@ func (s *QuoteStore) Create(req QuoteRequest, providerID string, rateMinor, feeM
 		ExpiresAt:        expiresAt,
 		CreatedAt:        time.Now().UTC(),
 		SettlementRail:   req.DestinationRail,
-		ProviderEvidence: map[string]string{},
+		ProviderEvidence: evidence,
 	}
 	if s.db != nil {
 		return s.createDB(quote)

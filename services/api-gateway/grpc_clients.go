@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -14,7 +16,23 @@ import (
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
+
+func (c *grpcCustomerClient) RegisterBeneficiary(institutionID, name, bankCode, accountNumber, idempotencyKey string) (BeneficiaryRegistration, error) {
+	token := os.Getenv("OSAI_BENEFICIARY_WRITE_TOKEN")
+	if token == "" {
+		return BeneficiaryRegistration{}, errors.New("beneficiary registration unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-osai-beneficiary-write-token", token)
+	resp, err := c.client.RegisterBeneficiary(ctx, &customerv1.RegisterBeneficiaryRequest{InstitutionId: institutionID, Name: name, BankCode: bankCode, AccountNumber: accountNumber, IdempotencyKey: idempotencyKey})
+	if err != nil {
+		return BeneficiaryRegistration{}, err
+	}
+	return BeneficiaryRegistration{ID: resp.BeneficiaryId, Status: resp.Status, ApprovalStatus: resp.ApprovalStatus}, nil
+}
 
 type grpcCustomerClient struct {
 	client customerv1.CustomerServiceClient
@@ -102,10 +120,10 @@ func (q *grpcQuoteClient) GetQuote(institutionID, quoteID string) (QuoteResponse
 	return QuoteResponse{QuoteID: resp.QuoteId, Status: resp.Status, BaseAmountMinor: resp.BaseAmountMinor, BaseCurrency: resp.BaseCurrency, QuoteCurrency: resp.QuoteCurrency, DestinationRail: resp.DestinationRail, AmountOutMinor: resp.AmountOutMinor, RateMinor: resp.RateMinor, FeeMinor: resp.FeeMinor, ExpiresAt: parseExpiration(resp.ExpiresAt), CorrelationID: resp.CorrelationId}, nil
 }
 
-func (q *grpcQuoteClient) AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID string) (QuoteResponse, error) {
+func (q *grpcQuoteClient) AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID, beneficiaryID string) (QuoteResponse, error) {
 	ctx := correlation.WithContext(context.Background(), correlationID)
 	ctx = observability.AttachOutgoingGRPCMetadata(ctx)
-	resp, err := q.client.AcceptQuote(ctx, &quotev1.AcceptQuoteRequest{InstitutionId: institutionID, QuoteId: quoteID, IdempotencyKey: idempotencyKey, CorrelationId: correlationID})
+	resp, err := q.client.AcceptQuote(ctx, &quotev1.AcceptQuoteRequest{InstitutionId: institutionID, QuoteId: quoteID, IdempotencyKey: idempotencyKey, CorrelationId: correlationID, BeneficiaryId: beneficiaryID})
 	if err != nil {
 		return QuoteResponse{}, err
 	}

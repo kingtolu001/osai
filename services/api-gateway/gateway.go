@@ -36,6 +36,16 @@ type CustomerInstitution struct {
 	UpdatedAt  time.Time
 }
 
+type BeneficiaryRegistration struct {
+	ID             string
+	Status         string
+	ApprovalStatus string
+}
+
+type beneficiaryRegistrar interface {
+	RegisterBeneficiary(institutionID, name, bankCode, accountNumber, idempotencyKey string) (BeneficiaryRegistration, error)
+}
+
 type WebhookConfig struct {
 	InstitutionID string
 	WebhookURL    string
@@ -134,7 +144,7 @@ type CustomerClient interface {
 type QuoteClient interface {
 	CreateQuote(req QuoteRequest) (QuoteResponse, error)
 	GetQuote(institutionID, quoteID string) (QuoteResponse, error)
-	AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID string) (QuoteResponse, error)
+	AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID, beneficiaryID string) (QuoteResponse, error)
 }
 
 type TradeClient interface {
@@ -228,6 +238,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeHTTPJSON(w, http.StatusOK, map[string]any{"status": "ok", "request_id": requestID, "latency_ms": time.Since(start).Milliseconds()})
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/quotes":
 		g.handleCreateQuote(w, r, customerID, requestID)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/beneficiaries":
+		g.handleCreateBeneficiary(w, r, customerID, requestID)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/quotes/") && strings.HasSuffix(r.URL.Path, "/accept"):
 		g.handleAcceptQuote(w, r, customerID, requestID)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/quotes/"):
@@ -243,6 +255,51 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeHTTPJSON(w, http.StatusNotFound, errorEnvelope("NOT_FOUND", "route not found", requestID))
 	}
+}
+
+func (g *Gateway) handleCreateBeneficiary(w http.ResponseWriter, r *http.Request, customerID, requestID string) {
+	registrar, ok := g.customerClient.(beneficiaryRegistrar)
+	if !ok {
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("BENEFICIARY_UNAVAILABLE", "beneficiary registration unavailable", requestID))
+		return
+	}
+	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if key == "" {
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "missing Idempotency-Key", requestID))
+		return
+	}
+	var body struct {
+		Name          string `json:"name"`
+		BankCode      string `json:"bank_code"`
+		AccountNumber string `json:"account_number"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.BankCode) == "" || strings.TrimSpace(body.AccountNumber) == "" {
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "invalid beneficiary details", requestID))
+		return
+	}
+	request := map[string]any{"name": body.Name, "bank_code": body.BankCode, "account_number": body.AccountNumber}
+	if replay, stored, err := g.idempotency.CheckAndStore(customerID, "/v1/beneficiaries", key, request, http.StatusAccepted, nil); err != nil {
+		if errors.Is(err, errIdempotencyConflict) {
+			writeHTTPJSON(w, http.StatusConflict, errorEnvelope("IDEMPOTENCY_CONFLICT", "idempotency key reused with different payload", requestID))
+		} else {
+			writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("IDEMPOTENCY_UNAVAILABLE", "idempotency storage unavailable", requestID))
+		}
+		return
+	} else if replay && stored["beneficiary_id"] != nil {
+		writeHTTPJSON(w, http.StatusAccepted, stored)
+		return
+	}
+	beneficiary, err := registrar.RegisterBeneficiary(customerID, body.Name, body.BankCode, body.AccountNumber, key)
+	if err != nil {
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("BENEFICIARY_UNAVAILABLE", "beneficiary registration unavailable", requestID))
+		return
+	}
+	response := map[string]any{"beneficiary_id": beneficiary.ID, "status": beneficiary.Status, "approval_status": beneficiary.ApprovalStatus, "request_id": requestID}
+	if err := g.idempotency.SaveResponse(customerID, "/v1/beneficiaries", key, request, response); err != nil {
+		writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("IDEMPOTENCY_UNAVAILABLE", "idempotency storage unavailable", requestID))
+		return
+	}
+	writeHTTPJSON(w, http.StatusAccepted, response)
 }
 
 func (g *Gateway) authenticate(r *http.Request) (string, error) {
@@ -444,7 +501,8 @@ func (g *Gateway) handleAcceptQuote(w http.ResponseWriter, r *http.Request, cust
 		writeHTTPJSON(w, http.StatusOK, stored)
 		return
 	}
-	quote, err := g.quoteClient.AcceptQuote(customerID, quoteID, idKey, requestID)
+	beneficiaryID, _ := payload["beneficiary_id"].(string)
+	quote, err := g.quoteClient.AcceptQuote(customerID, quoteID, idKey, requestID, strings.TrimSpace(beneficiaryID))
 	if err != nil {
 		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", err.Error(), requestID))
 		return

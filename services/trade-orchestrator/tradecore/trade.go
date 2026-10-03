@@ -25,21 +25,23 @@ const (
 
 // Trade captures the trade lifecycle owned by the trade-orchestrator service.
 type Trade struct {
-	ID              string
-	InstitutionID   string
-	QuoteID         string
-	State           TradeState
-	Status          string
-	Available       int64
-	HoldAmount      int64
-	BaseAmountMinor int64
-	BaseCurrency    string
-	QuoteCurrency   string
-	CorrelationID   string
-	SettlementID    string
-	IdempotencyKey  string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                   string
+	InstitutionID        string
+	QuoteID              string
+	State                TradeState
+	Status               string
+	Available            int64
+	HoldAmount           int64
+	BaseAmountMinor      int64
+	BaseCurrency         string
+	QuoteCurrency        string
+	CorrelationID        string
+	SettlementID         string
+	BeneficiaryID        string
+	SettlementProviderID string
+	IdempotencyKey       string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type Store struct {
@@ -54,7 +56,14 @@ func NewStore() *Store {
 	return &Store{byID: make(map[string]*Trade), byQuoteID: make(map[string]*Trade), byOperation: make(map[string]string)}
 }
 
-func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string) (*Trade, error) {
+func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string, selection ...string) (*Trade, error) {
+	beneficiaryID, providerID := "", ""
+	if len(selection) > 0 {
+		beneficiaryID = selection[0]
+	}
+	if len(selection) > 1 {
+		providerID = selection[1]
+	}
 	if strings.TrimSpace(institutionID) == "" {
 		return nil, errors.New("institution_id required")
 	}
@@ -77,32 +86,37 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 			trade := s.byID[tradeID]
 			s.mu.Unlock()
 			if trade != nil {
+				if trade.BeneficiaryID != beneficiaryID || trade.SettlementProviderID != providerID {
+					return nil, errors.New("trade beneficiary replay conflict")
+				}
 				return trade, nil
 			}
 		}
 		s.mu.Unlock()
 	}
 	if existing, ok := s.GetByQuoteID(quoteID); ok {
-		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor || existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency {
+		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor || existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency || existing.BeneficiaryID != beneficiaryID || existing.SettlementProviderID != providerID {
 			return nil, errors.New("trade replay conflict")
 		}
 		return existing, nil
 	}
 	trade := &Trade{
-		ID:              "trd_" + uuid.NewString(),
-		InstitutionID:   institutionID,
-		QuoteID:         quoteID,
-		State:           StateAccepted,
-		Status:          string(StateAccepted),
-		Available:       baseAmountMinor,
-		HoldAmount:      baseAmountMinor,
-		BaseAmountMinor: baseAmountMinor,
-		BaseCurrency:    baseCurrency,
-		QuoteCurrency:   quoteCurrency,
-		CorrelationID:   correlationID,
-		IdempotencyKey:  idempotencyKey,
-		CreatedAt:       time.Now().UTC(),
-		UpdatedAt:       time.Now().UTC(),
+		ID:                   "trd_" + uuid.NewString(),
+		InstitutionID:        institutionID,
+		QuoteID:              quoteID,
+		State:                StateAccepted,
+		Status:               string(StateAccepted),
+		Available:            baseAmountMinor,
+		HoldAmount:           baseAmountMinor,
+		BaseAmountMinor:      baseAmountMinor,
+		BaseCurrency:         baseCurrency,
+		QuoteCurrency:        quoteCurrency,
+		CorrelationID:        correlationID,
+		BeneficiaryID:        beneficiaryID,
+		SettlementProviderID: providerID,
+		IdempotencyKey:       idempotencyKey,
+		CreatedAt:            time.Now().UTC(),
+		UpdatedAt:            time.Now().UTC(),
 	}
 	if s.db != nil {
 		return s.createDB(trade)

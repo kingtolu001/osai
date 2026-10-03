@@ -50,18 +50,20 @@ type Credential struct {
 }
 
 type Service struct {
-	db           *sql.DB
-	mu           sync.Mutex
-	institutions map[string]*Institution
-	credentials  map[string]*Credential
-	publicToCred map[string]*Credential
+	db            *sql.DB
+	mu            sync.Mutex
+	institutions  map[string]*Institution
+	credentials   map[string]*Credential
+	publicToCred  map[string]*Credential
+	beneficiaries map[string]*Beneficiary
 }
 
 func NewService() *Service {
 	return &Service{
-		institutions: make(map[string]*Institution),
-		credentials:  make(map[string]*Credential),
-		publicToCred: make(map[string]*Credential),
+		institutions:  make(map[string]*Institution),
+		credentials:   make(map[string]*Credential),
+		publicToCred:  make(map[string]*Credential),
+		beneficiaries: make(map[string]*Beneficiary),
 	}
 }
 

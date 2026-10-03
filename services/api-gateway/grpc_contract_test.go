@@ -43,7 +43,7 @@ func (stubQuoteClient) GetQuote(institutionID, quoteID string) (QuoteResponse, e
 	return QuoteResponse{}, errors.New("not found")
 }
 
-func (stubQuoteClient) AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID string) (QuoteResponse, error) {
+func (stubQuoteClient) AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID, beneficiaryID string) (QuoteResponse, error) {
 	return QuoteResponse{QuoteID: quoteID, Status: "ACCEPTED", BaseAmountMinor: 10000, BaseCurrency: "NGN", QuoteCurrency: "USD", TradeID: "trd_999", CorrelationID: correlationID}, nil
 }
 
@@ -106,10 +106,14 @@ func TestGatewayRequiresRealReadModelClient(t *testing.T) {
 	defer server.Close()
 
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/balances", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.Header.Set("Authorization", "ApiKey ck_ok:s3cr3t")
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("expected production fallback to be unavailable without reporting client, got %d", resp.StatusCode)
@@ -126,53 +130,85 @@ func TestGatewayReadBoundariesAndCustomerSafeFields(t *testing.T) {
 
 	valid := "ApiKey ck_ok:s3cr3t"
 	tradeReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/trades/trd_123", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	tradeReq.Header.Set("Authorization", valid)
 	tradeResp, err := http.DefaultClient.Do(tradeReq)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer tradeResp.Body.Close()
-	if tradeResp.StatusCode != http.StatusOK { t.Fatalf("expected 200 on trade read, got %d", tradeResp.StatusCode) }
+	if tradeResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on trade read, got %d", tradeResp.StatusCode)
+	}
 
 	settlementReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/settlements/si_456", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	settlementReq.Header.Set("Authorization", valid)
 	settlementResp, err := http.DefaultClient.Do(settlementReq)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer settlementResp.Body.Close()
-	if settlementResp.StatusCode != http.StatusOK { t.Fatalf("expected 200 on settlement read, got %d", settlementResp.StatusCode) }
+	if settlementResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on settlement read, got %d", settlementResp.StatusCode)
+	}
 
 	balanceReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/balances", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	balanceReq.Header.Set("Authorization", valid)
 	balanceResp, err := http.DefaultClient.Do(balanceReq)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer balanceResp.Body.Close()
-	if balanceResp.StatusCode != http.StatusOK { t.Fatalf("expected 200 on balances, got %d", balanceResp.StatusCode) }
+	if balanceResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on balances, got %d", balanceResp.StatusCode)
+	}
 
 	transactionsReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/transactions", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	transactionsReq.Header.Set("Authorization", valid)
 	transactionsResp, err := http.DefaultClient.Do(transactionsReq)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer transactionsResp.Body.Close()
-	if transactionsResp.StatusCode != http.StatusOK { t.Fatalf("expected 200 on transactions, got %d", transactionsResp.StatusCode) }
+	if transactionsResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on transactions, got %d", transactionsResp.StatusCode)
+	}
 
 	forbiddenHeader := "ApiKey ck_ok:s3cr3t"
 	forbiddenTradeReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/trades/trd_999", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	forbiddenTradeReq.Header.Set("Authorization", forbiddenHeader)
 	forbiddenTradeResp, err := http.DefaultClient.Do(forbiddenTradeReq)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer forbiddenTradeResp.Body.Close()
 	if forbiddenTradeResp.StatusCode != http.StatusForbidden && forbiddenTradeResp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected access control on cross-institution trade read, got %d", forbiddenTradeResp.StatusCode)
 	}
 
 	forbiddenBalanceReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/balances", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	forbiddenBalanceReq.Header.Set("Authorization", "ApiKey ck_ok:s3cr3t")
 	forbiddenBalanceResp, err := http.DefaultClient.Do(forbiddenBalanceReq)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer forbiddenBalanceResp.Body.Close()
 	if forbiddenBalanceResp.StatusCode != http.StatusOK && forbiddenBalanceResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected balance route to be institution-scoped, got %d", forbiddenBalanceResp.StatusCode)
@@ -187,6 +223,8 @@ func readBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
 	buf := make([]byte, 4096)
 	_, err := resp.Body.Read(buf)
-	if err != nil && err.Error() != "EOF" { t.Fatal(err) }
+	if err != nil && err.Error() != "EOF" {
+		t.Fatal(err)
+	}
 	return string(buf)
 }

@@ -109,7 +109,7 @@ func (q *quoteServiceClientAdapter) GetQuote(institutionID, quoteID string) (Quo
 	return QuoteResponse{QuoteID: quote.ID, Status: string(quote.Status), BaseAmountMinor: quote.Request.BaseAmountMinor, BaseCurrency: quote.Request.BaseCurrency, QuoteCurrency: quote.Request.QuoteCurrency, DestinationRail: quote.Request.DestinationRail, AmountOutMinor: quote.AmountOutMinor, RateMinor: quote.RateMinor, FeeMinor: quote.FeeMinor, ExpiresAt: quote.ExpiresAt}, nil
 }
 
-func (q *quoteServiceClientAdapter) AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID string) (QuoteResponse, error) {
+func (q *quoteServiceClientAdapter) AcceptQuote(institutionID, quoteID, idempotencyKey, correlationID, beneficiaryID string) (QuoteResponse, error) {
 	quote, ok := q.store.Get(quoteID)
 	if !ok {
 		return QuoteResponse{}, fmt.Errorf("quote not found")

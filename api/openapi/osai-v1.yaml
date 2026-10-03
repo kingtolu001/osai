@@ -16,6 +16,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /v1/beneficiaries:
+    post:
+      operationId: registerBeneficiary
+      summary: Register an institution beneficiary for review
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterBeneficiaryRequest'
+      responses:
+        '202':
+          description: Beneficiary registered pending approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BeneficiaryRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
   /v1/quotes:
     post:
       summary: Create a quote
@@ -190,6 +213,28 @@ components:
       schema:
         type: string
   schemas:
+    RegisterBeneficiaryRequest:
+      type: object
+      required: [name, bank_code, account_number]
+      properties:
+        name:
+          type: string
+        bank_code:
+          type: string
+        account_number:
+          type: string
+    BeneficiaryRegistrationResponse:
+      type: object
+      required: [beneficiary_id, status, approval_status, request_id]
+      properties:
+        beneficiary_id:
+          type: string
+        status:
+          type: string
+        approval_status:
+          type: string
+        request_id:
+          type: string
     ErrorEnvelope:
       type: object
       required: [error]
@@ -267,6 +312,9 @@ components:
       properties:
         quote_id:
           type: string
+        beneficiary_id:
+          type: string
+          description: Required when the selected settlement route uses an approved bank beneficiary.
     AcceptQuoteResponse:
       type: object
       required: [quote_id, trade_id, status]
