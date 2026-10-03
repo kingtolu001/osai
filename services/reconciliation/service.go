@@ -17,7 +17,7 @@ import (
 type BreakType string
 
 const (
-	BreakTypeUnmatchedExternal      BreakType = "unmatched_external"
+	BreakTypeUnmatchedExternal       BreakType = "unmatched_external"
 	BreakTypeMissingExternalEvidence BreakType = "missing_external_evidence"
 	BreakTypeDuplicateExternal       BreakType = "duplicate_external"
 	BreakTypeAmbiguousMatch          BreakType = "ambiguous_match"
@@ -29,20 +29,20 @@ const (
 )
 
 const (
-	BreakStateOpen                = "OPEN"
-	BreakStateUnderReview         = "UNDER_REVIEW"
-	BreakStateResolutionProposed  = "RESOLUTION_PROPOSED"
-	BreakStateResolved            = "RESOLVED"
-	BreakStateReopened            = "REOPENED"
+	BreakStateOpen               = "OPEN"
+	BreakStateUnderReview        = "UNDER_REVIEW"
+	BreakStateResolutionProposed = "RESOLUTION_PROPOSED"
+	BreakStateResolved           = "RESOLVED"
+	BreakStateReopened           = "REOPENED"
 )
 
 // DriftType marks a provider statement scenario that intentionally drifts from expected economics.
 type DriftType string
 
 const (
-	DriftNone     DriftType = "none"
-	DriftAmount   DriftType = "amount_drift"
-	DriftBalance  DriftType = "balance_drift"
+	DriftNone      DriftType = "none"
+	DriftAmount    DriftType = "amount_drift"
+	DriftBalance   DriftType = "balance_drift"
 	DriftStatement DriftType = "statement_drift"
 )
 
@@ -69,21 +69,21 @@ type Evidence struct {
 type MatchStrategy string
 
 const (
-	MatchStrategyExact    MatchStrategy = "exact"
+	MatchStrategyExact     MatchStrategy = "exact"
 	MatchStrategyComposite MatchStrategy = "composite"
-	MatchStrategyManual   MatchStrategy = "manual"
+	MatchStrategyManual    MatchStrategy = "manual"
 )
 
 // MatchResult records whether an evidence row matched an internal expectation.
 type MatchResult struct {
-	ID        string        `json:"id"`
-	RunID     string        `json:"run_id,omitempty"`
-	EvidenceID string       `json:"evidence_id,omitempty"`
-	InternalID string       `json:"internal_id,omitempty"`
-	Strategy  MatchStrategy `json:"strategy,omitempty"`
-	Matched   bool          `json:"matched"`
-	BreakID   string        `json:"break_id,omitempty"`
-	CreatedAt time.Time     `json:"created_at"`
+	ID         string        `json:"id"`
+	RunID      string        `json:"run_id,omitempty"`
+	EvidenceID string        `json:"evidence_id,omitempty"`
+	InternalID string        `json:"internal_id,omitempty"`
+	Strategy   MatchStrategy `json:"strategy,omitempty"`
+	Matched    bool          `json:"matched"`
+	BreakID    string        `json:"break_id,omitempty"`
+	CreatedAt  time.Time     `json:"created_at"`
 }
 
 // Watermark captures the most recently processed provider boundary for a scope.
@@ -97,17 +97,17 @@ type Watermark struct {
 
 // Approval records a maker-checker decision for a reconciliation adjustment.
 type Approval struct {
-	ID                 string         `json:"id"`
-	BreakID            string         `json:"break_id"`
-	Proposer           string         `json:"proposer"`
-	Approver           string         `json:"approver"`
-	Reason             string         `json:"reason,omitempty"`
-	EvidenceIDs        []string       `json:"evidence_ids,omitempty"`
-	ProposedEffect     map[string]any `json:"proposed_ledger_effect,omitempty"`
-	ResultingJournalRef string        `json:"resulting_journal_ref,omitempty"`
-	Status             string         `json:"status,omitempty"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
+	ID                  string         `json:"id"`
+	BreakID             string         `json:"break_id"`
+	Proposer            string         `json:"proposer"`
+	Approver            string         `json:"approver"`
+	Reason              string         `json:"reason,omitempty"`
+	EvidenceIDs         []string       `json:"evidence_ids,omitempty"`
+	ProposedEffect      map[string]any `json:"proposed_ledger_effect,omitempty"`
+	ResultingJournalRef string         `json:"resulting_journal_ref,omitempty"`
+	Status              string         `json:"status,omitempty"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
 }
 
 // ResolutionEvent records a reconciliation break resolution action.
@@ -164,6 +164,7 @@ type ReconciliationBreak struct {
 // ExpectedTransaction describes the internal ledger truth for one movement.
 type ExpectedTransaction struct {
 	ID          string
+	Provider    string
 	ClientRef   string
 	ProviderRef string
 	AmountMinor int64
@@ -176,21 +177,21 @@ type ExpectedTransaction struct {
 
 // StatementRow is an ingested provider statement or transaction record.
 type StatementRow struct {
-	ID             string
-	Provider       string
-	Source         string
-	ProviderRef    string
-	ClientRef      string
-	AmountMinor    int64
-	Currency       string
-	Beneficiary    string
-	FeeMinor       int64
-	Account        string
-	RawHash        string
-	Watermark      string
-	IngestionTS    time.Time
-	Drift          DriftType
-	PagingToken    string
+	ID          string
+	Provider    string
+	Source      string
+	ProviderRef string
+	ClientRef   string
+	AmountMinor int64
+	Currency    string
+	Beneficiary string
+	FeeMinor    int64
+	Account     string
+	RawHash     string
+	Watermark   string
+	IngestionTS time.Time
+	Drift       DriftType
+	PagingToken string
 }
 
 type Adjustment struct {
@@ -281,6 +282,13 @@ func NewServiceWithStore(store StoreReaderWriter) *Service {
 			}
 		}
 	}
+	if breaks, err := store.LoadBreaks(); err == nil {
+		for _, brk := range breaks {
+			if brk != nil {
+				svc.breaks[brk.ID] = brk
+			}
+		}
+	}
 	if approvals, err := store.LoadApprovals(); err == nil {
 		for _, approval := range approvals {
 			if approval == nil {
@@ -308,7 +316,13 @@ func NewServiceWithStore(store StoreReaderWriter) *Service {
 }
 
 func (s *Service) NewBreak(breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
-	id := fmt.Sprintf("break_%d", s.nextSequence())
+	return s.newBreakWithID("", breakType, provider, currency, expected, observed, delta, value, age, owner, state, evidence, comments, resolution)
+}
+
+func (s *Service) newBreakWithID(id string, breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+	if id == "" {
+		id = fmt.Sprintf("break_%d", s.nextSequence())
+	}
 	now := time.Now().UTC()
 	brk := &ReconciliationBreak{
 		ID:         id,
@@ -351,42 +365,47 @@ func (s *Service) ReconcileTransaction(expected ExpectedTransaction, observed St
 	if expected.ID == "" && observed.ID == "" {
 		return nil
 	}
+	newBreak := func(breakType BreakType, provider, currency string, expectedValue, observedValue, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+		return s.upsertTransactionBreak(expected, breakType, provider, currency, expectedValue, observedValue, delta, value, age, owner, state, evidence, comments, resolution)
+	}
 	if observed.ID == "" || observed.AmountMinor == 0 && observed.Currency == "" && observed.Beneficiary == "" {
-		return s.newBreak(BreakTypeMissingExternalEvidence, expected.ProviderRef, expected.Currency, expected.AmountMinor, 0, expected.AmountMinor, expected.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"missing external evidence"}, "suspense")
+		return newBreak(BreakTypeMissingExternalEvidence, expected.ProviderRef, expected.Currency, expected.AmountMinor, 0, expected.AmountMinor, expected.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"missing external evidence"}, "suspense")
 	}
 	if observed.Watermark != "" && expected.Watermark != "" {
 		obsTS, errObs := parseTime(observed.Watermark)
 		expTS, errExp := parseTime(expected.Watermark)
 		if errObs == nil && errExp == nil && obsTS.Before(expTS) {
-			return s.newBreak(BreakTypeLateEvidence, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, expTS.Sub(obsTS), "ops", BreakStateOpen, nil, []string{"late evidence"}, "manual_review")
+			return newBreak(BreakTypeLateEvidence, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, expTS.Sub(obsTS), "ops", BreakStateOpen, nil, []string{"late evidence"}, "manual_review")
 		}
 	}
 	if observed.Drift == DriftAmount || observed.Drift == DriftStatement {
 		s.scenarios["amount_drift"] = true
 		s.scenarios["statement_drift"] = true
 	}
-	if observed.Provider != "" && observed.ProviderRef != "" && observed.Provider != observed.ProviderRef && observed.Provider != expected.ProviderRef {
-		return s.newBreak(BreakTypeUnmatchedExternal, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider status conflict"}, "manual_review")
+	if expected.Provider != "" && observed.Provider != "" && expected.Provider != observed.Provider {
+		return newBreak(BreakTypeUnmatchedExternal, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider status conflict"}, "manual_review")
 	}
 	if expected.AmountMinor == observed.AmountMinor && expected.Currency == observed.Currency && expected.Beneficiary == observed.Beneficiary && expected.FeeMinor == observed.FeeMinor {
 		if observed.ProviderRef != "" && expected.ProviderRef != "" && observed.ProviderRef != expected.ProviderRef {
-			return s.newBreak(BreakTypeUnmatchedExternal, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider reference mismatch"}, "manual_review")
+			return newBreak(BreakTypeUnmatchedExternal, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider reference mismatch"}, "manual_review")
 		}
+		s.resolveTransactionBreaks(expected)
 		return nil
 	}
 	if expected.Currency != observed.Currency {
-		return s.newBreak(BreakTypeCurrencyMismatch, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"currency mismatch"}, "manual_review")
+		return newBreak(BreakTypeCurrencyMismatch, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"currency mismatch"}, "manual_review")
 	}
 	if expected.AmountMinor != observed.AmountMinor {
-		return s.newBreak(BreakTypeAmountMismatch, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"amount mismatch"}, "manual_review")
+		return newBreak(BreakTypeAmountMismatch, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"amount mismatch"}, "manual_review")
 	}
 	if expected.FeeMinor != observed.FeeMinor {
-		return s.newBreak(BreakTypeFeeMismatch, observed.Provider, observed.Currency, expected.FeeMinor, observed.FeeMinor, expected.FeeMinor-observed.FeeMinor, observed.FeeMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"fee mismatch"}, "manual_review")
+		return newBreak(BreakTypeFeeMismatch, observed.Provider, observed.Currency, expected.FeeMinor, observed.FeeMinor, expected.FeeMinor-observed.FeeMinor, observed.FeeMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"fee mismatch"}, "manual_review")
 	}
 	if expected.Currency == observed.Currency && expected.Beneficiary == observed.Beneficiary {
+		s.resolveTransactionBreaks(expected)
 		return nil
 	}
-	return s.newBreak(BreakTypeUnmatchedExternal, observed.Provider, expected.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"no permitted composite fallback"}, "manual_review")
+	return newBreak(BreakTypeUnmatchedExternal, observed.Provider, expected.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"no permitted composite fallback"}, "manual_review")
 }
 
 func (s *Service) ReconcileBalance(account string, internalNostro, providerClosing, inFlight int64) *ReconciliationBreak {
@@ -395,6 +414,52 @@ func (s *Service) ReconcileBalance(account string, internalNostro, providerClosi
 		return nil
 	}
 	return s.newBreak(BreakTypeBalanceMismatch, account, "USD", expected, providerClosing, expected-providerClosing, providerClosing, 0, "treasury", BreakStateOpen, nil, []string{"nostro closing balance mismatch"}, "manual_review")
+}
+
+func transactionBreakID(expected ExpectedTransaction, breakType BreakType) string {
+	ref := expected.ID
+	if ref == "" {
+		ref = expected.ClientRef
+	}
+	if ref == "" {
+		ref = expected.ProviderRef
+	}
+	sum := sha256.Sum256([]byte(expected.Provider + "\x00" + ref + "\x00" + string(breakType)))
+	return "break_tx_" + hex.EncodeToString(sum[:])
+}
+
+func (s *Service) upsertTransactionBreak(expected ExpectedTransaction, breakType BreakType, provider, currency string, expectedValue, observedValue, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+	id := transactionBreakID(expected, breakType)
+	s.mu.Lock()
+	if existing := s.breaks[id]; existing != nil {
+		existing.LastSeen = time.Now().UTC()
+		existing.Observed = observedValue
+		existing.Delta = delta
+		wasResolved := existing.State == BreakStateResolved
+		if s.store != nil {
+			_ = s.store.SaveBreak(existing)
+		}
+		s.mu.Unlock()
+		if wasResolved {
+			_ = s.TransitionBreak(id, BreakStateReopened, "reconciliation", "discrepancy reappeared", "")
+		}
+		return existing
+	}
+	s.mu.Unlock()
+	return s.newBreakWithID(id, breakType, provider, currency, expectedValue, observedValue, delta, value, age, owner, state, evidence, comments, resolution)
+}
+
+func (s *Service) resolveTransactionBreaks(expected ExpectedTransaction) {
+	for _, kind := range []BreakType{BreakTypeMissingExternalEvidence, BreakTypeLateEvidence, BreakTypeUnmatchedExternal, BreakTypeCurrencyMismatch, BreakTypeAmountMismatch, BreakTypeFeeMismatch} {
+		id := transactionBreakID(expected, kind)
+		s.mu.Lock()
+		brk := s.breaks[id]
+		open := brk != nil && brk.State != BreakStateResolved
+		s.mu.Unlock()
+		if open {
+			_ = s.ResolveBreak(id, "reconciliation", "matching provider evidence received", "")
+		}
+	}
 }
 
 func (s *Service) IngestProviderEvidence(ev providerpkg.Evidence, row StatementRow) (StatementRow, error) {
@@ -577,15 +642,15 @@ func (s *Service) ProposeAdjustment(breakID, maker, checker string, amountMinor 
 	s.adjustments[breakID] = adj
 	if s.store != nil {
 		approval := &Approval{
-			ID:                 fmt.Sprintf("approval_%s", breakID),
-			BreakID:            breakID,
-			Proposer:           maker,
-			Approver:           checker,
-			Reason:             comment,
-			ProposedEffect:     map[string]any{"amount_minor": amountMinor, "currency": currency, "break_id": breakID},
-			Status:             "PROPOSED",
-			CreatedAt:          adj.CreatedAt,
-			UpdatedAt:          adj.UpdatedAt,
+			ID:             fmt.Sprintf("approval_%s", breakID),
+			BreakID:        breakID,
+			Proposer:       maker,
+			Approver:       checker,
+			Reason:         comment,
+			ProposedEffect: map[string]any{"amount_minor": amountMinor, "currency": currency, "break_id": breakID},
+			Status:         "PROPOSED",
+			CreatedAt:      adj.CreatedAt,
+			UpdatedAt:      adj.UpdatedAt,
 		}
 		_ = s.store.SaveApproval(approval)
 	}
@@ -616,15 +681,15 @@ func (s *Service) ApproveAdjustment(breakID, maker, checker string) error {
 	adj.UpdatedAt = time.Now().UTC()
 	if s.store != nil {
 		approval := &Approval{
-			ID:                 fmt.Sprintf("approval_%s", breakID),
-			BreakID:            breakID,
-			Proposer:           adj.Maker,
-			Approver:           adj.Checker,
-			Reason:             adj.Comment,
-			ProposedEffect:     map[string]any{"amount_minor": adj.AmountMinor, "currency": adj.Currency, "break_id": breakID},
-			Status:             "APPROVED",
-			CreatedAt:          adj.CreatedAt,
-			UpdatedAt:          adj.UpdatedAt,
+			ID:             fmt.Sprintf("approval_%s", breakID),
+			BreakID:        breakID,
+			Proposer:       adj.Maker,
+			Approver:       adj.Checker,
+			Reason:         adj.Comment,
+			ProposedEffect: map[string]any{"amount_minor": adj.AmountMinor, "currency": adj.Currency, "break_id": breakID},
+			Status:         "APPROVED",
+			CreatedAt:      adj.CreatedAt,
+			UpdatedAt:      adj.UpdatedAt,
 		}
 		_ = s.store.SaveApproval(approval)
 	}
@@ -652,15 +717,15 @@ func (s *Service) RejectAdjustment(breakID, checker, reason string) error {
 	}
 	if s.store != nil {
 		approval := &Approval{
-			ID:                 fmt.Sprintf("approval_%s", breakID),
-			BreakID:            breakID,
-			Proposer:           adj.Maker,
-			Approver:           adj.Checker,
-			Reason:             adj.Comment,
-			ProposedEffect:     map[string]any{"amount_minor": adj.AmountMinor, "currency": adj.Currency, "break_id": breakID},
-			Status:             "REJECTED",
-			CreatedAt:          adj.CreatedAt,
-			UpdatedAt:          adj.UpdatedAt,
+			ID:             fmt.Sprintf("approval_%s", breakID),
+			BreakID:        breakID,
+			Proposer:       adj.Maker,
+			Approver:       adj.Checker,
+			Reason:         adj.Comment,
+			ProposedEffect: map[string]any{"amount_minor": adj.AmountMinor, "currency": adj.Currency, "break_id": breakID},
+			Status:         "REJECTED",
+			CreatedAt:      adj.CreatedAt,
+			UpdatedAt:      adj.UpdatedAt,
 		}
 		_ = s.store.SaveApproval(approval)
 	}

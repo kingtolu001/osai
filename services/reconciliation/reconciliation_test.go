@@ -38,6 +38,37 @@ func TestExactMatchDoesNotCreateBreak(t *testing.T) {
 	}
 }
 
+func TestMismatchReplayRetainsOneBreakAndResolvesAfterRestart(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewServiceWithStore(store)
+	expected := ExpectedTransaction{ID: "si_replay", Provider: "flutterwave", ClientRef: "si_replay", AmountMinor: 10000, Currency: "NGN", Beneficiary: "0690000040"}
+	observed := StatementRow{ID: "external_replay", Provider: "flutterwave", ClientRef: "si_replay", AmountMinor: 9000, Currency: "NGN", Beneficiary: "0690000040"}
+	first := svc.ReconcileTransaction(expected, observed)
+	for range 4 {
+		again := svc.ReconcileTransaction(expected, observed)
+		if again.ID != first.ID {
+			t.Fatalf("replay changed break identity: %s != %s", again.ID, first.ID)
+		}
+	}
+	restarted := NewServiceWithStore(store)
+	again := restarted.ReconcileTransaction(expected, observed)
+	if again.ID != first.ID {
+		t.Fatal("restart changed break identity")
+	}
+	breaks, err := store.LoadBreaks()
+	if err != nil || len(breaks) != 1 {
+		t.Fatalf("expected one durable break, got %d: %v", len(breaks), err)
+	}
+	observed.AmountMinor = expected.AmountMinor
+	if brk := restarted.ReconcileTransaction(expected, observed); brk != nil {
+		t.Fatalf("matching evidence left a break: %+v", brk)
+	}
+	breaks, err = store.LoadBreaks()
+	if err != nil || len(breaks) != 1 || breaks[0].State != BreakStateResolved {
+		t.Fatalf("break lifecycle not resolved: %+v %v", breaks, err)
+	}
+}
+
 func TestCompositeFallbackMatchUsesAmountCurrencyBeneficiary(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_2", ClientRef: "si_2002", AmountMinor: 2000, Currency: "EUR", Beneficiary: "acct_2", FeeMinor: 20, Account: "NOSTRO_EUR", Watermark: "2026-09-19T10:00:00Z"}
@@ -305,9 +336,9 @@ func TestPersistedBreakTypesCoverCoreMismatchScenarios(t *testing.T) {
 		{name: "missing_external", expected: ExpectedTransaction{ID: "tx_4", ProviderRef: "prov_4", ClientRef: "client_4", AmountMinor: 400, Currency: "USD", Beneficiary: "acct_4", FeeMinor: 5}, observed: StatementRow{}, breakType: BreakTypeMissingExternalEvidence},
 		{name: "amount_mismatch", expected: ExpectedTransaction{ID: "tx_5", ProviderRef: "prov_5", ClientRef: "client_5", AmountMinor: 500, Currency: "USD", Beneficiary: "acct_5", FeeMinor: 5}, observed: StatementRow{ID: "row_5", ProviderRef: "prov_5", ClientRef: "client_5", AmountMinor: 450, Currency: "USD", Beneficiary: "acct_5", FeeMinor: 5}, breakType: BreakTypeAmountMismatch},
 		{name: "currency_mismatch", expected: ExpectedTransaction{ID: "tx_6", ProviderRef: "prov_6", ClientRef: "client_6", AmountMinor: 600, Currency: "USD", Beneficiary: "acct_6", FeeMinor: 5}, observed: StatementRow{ID: "row_6", ProviderRef: "prov_6", ClientRef: "client_6", AmountMinor: 600, Currency: "EUR", Beneficiary: "acct_6", FeeMinor: 5}, breakType: BreakTypeCurrencyMismatch},
-		{name: "provider_status_conflict", expected: ExpectedTransaction{ID: "tx_7", ProviderRef: "prov_7", ClientRef: "client_7", AmountMinor: 700, Currency: "USD", Beneficiary: "acct_7", FeeMinor: 5}, observed: StatementRow{ID: "row_7", ProviderRef: "prov_7", ClientRef: "client_7", AmountMinor: 700, Currency: "USD", Beneficiary: "acct_7", FeeMinor: 5, Provider: "provider_7"}, breakType: BreakTypeUnmatchedExternal},
+		{name: "provider_status_conflict", expected: ExpectedTransaction{ID: "tx_7", Provider: "expected_provider", ProviderRef: "prov_7", ClientRef: "client_7", AmountMinor: 700, Currency: "USD", Beneficiary: "acct_7", FeeMinor: 5}, observed: StatementRow{ID: "row_7", ProviderRef: "prov_7", ClientRef: "client_7", AmountMinor: 700, Currency: "USD", Beneficiary: "acct_7", FeeMinor: 5, Provider: "provider_7"}, breakType: BreakTypeUnmatchedExternal},
 		{name: "duplicate_external", expected: ExpectedTransaction{ID: "tx_8", ProviderRef: "prov_8", ClientRef: "client_8", AmountMinor: 800, Currency: "USD", Beneficiary: "acct_8", FeeMinor: 8}, observed: StatementRow{ID: "row_8", ProviderRef: "prov_8", ClientRef: "client_8", AmountMinor: 800, Currency: "USD", Beneficiary: "acct_8", FeeMinor: 8, RawHash: "dup_hash"}, breakType: ""},
-		{name: "ambiguous_match", expected: ExpectedTransaction{ID: "tx_9", ProviderRef: "prov_9", ClientRef: "client_9", AmountMinor: 900, Currency: "USD", Beneficiary: "acct_9", FeeMinor: 9}, observed: StatementRow{ID: "row_9", ProviderRef: "prov_9", ClientRef: "client_9", AmountMinor: 900, Currency: "USD", Beneficiary: "acct_9", FeeMinor: 9, Provider: "provider_9"}, breakType: BreakTypeUnmatchedExternal},
+		{name: "ambiguous_match", expected: ExpectedTransaction{ID: "tx_9", Provider: "expected_provider", ProviderRef: "prov_9", ClientRef: "client_9", AmountMinor: 900, Currency: "USD", Beneficiary: "acct_9", FeeMinor: 9}, observed: StatementRow{ID: "row_9", ProviderRef: "prov_9", ClientRef: "client_9", AmountMinor: 900, Currency: "USD", Beneficiary: "acct_9", FeeMinor: 9, Provider: "provider_9"}, breakType: BreakTypeUnmatchedExternal},
 		{name: "late_evidence", expected: ExpectedTransaction{ID: "tx_10", ProviderRef: "prov_10", ClientRef: "client_10", AmountMinor: 1000, Currency: "USD", Beneficiary: "acct_10", FeeMinor: 10, Watermark: "2026-09-19T10:00:00Z"}, observed: StatementRow{ID: "row_10", ProviderRef: "prov_10", ClientRef: "client_10", AmountMinor: 1000, Currency: "USD", Beneficiary: "acct_10", FeeMinor: 10, Watermark: "2026-09-19T09:00:00Z"}, breakType: BreakTypeLateEvidence},
 	}
 	for _, tc := range cases {

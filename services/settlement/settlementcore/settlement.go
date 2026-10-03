@@ -33,6 +33,9 @@ type Instruction struct {
 	CorrelationID string
 	ClientRef     string
 	ProviderRef   string
+	ProviderID    string
+	BankCode      string
+	AccountNumber string
 	Beneficiary   string
 	AmountMinor   int64
 	Currency      string

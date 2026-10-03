@@ -2,6 +2,7 @@ package webhookcore
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/provider"
 	"github.com/osai/osai/workflows"
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 )
 
@@ -20,15 +22,29 @@ type Signaler interface {
 type TemporalSignaler struct{ Client client.Client }
 
 func (s TemporalSignaler) SignalSettlement(ctx context.Context, clientRef string, event provider.WebhookEvent) error {
-	return s.Client.SignalWorkflow(ctx, "settlement-"+clientRef, "", workflows.CallbackSignal, event)
+	id := "settlement-" + clientRef
+	err := s.Client.SignalWorkflow(ctx, id, "", workflows.CallbackSignal, event)
+	if err == nil {
+		return nil
+	}
+	// A late callback is still acknowledged when the matching workflow has
+	// already completed successfully after authoritative polling.
+	description, describeErr := s.Client.DescribeWorkflowExecution(ctx, id, "")
+	if describeErr == nil && description.GetWorkflowExecutionInfo().GetStatus() == enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED {
+		return nil
+	}
+	return err
 }
 
 type Handler struct {
 	providers map[string]provider.SettlementRail
 	signaler  Signaler
+	inbox     ProviderInbox
 	mu        sync.Mutex
 	accepted  map[string]struct{}
 }
+
+func (h *Handler) SetProviderInbox(inbox ProviderInbox) { h.inbox = inbox }
 
 func NewHandler(providers map[string]provider.SettlementRail, signaler Signaler) *Handler {
 	return &Handler{providers: providers, signaler: signaler, accepted: make(map[string]struct{})}
@@ -65,16 +81,48 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	event, err := adapter.VerifyWebhook(raw, headers)
 	if err != nil {
-		writeError(response, http.StatusUnauthorized, "webhook verification failed")
+		switch {
+		case errors.Is(err, provider.ErrProviderUnavailable):
+			writeError(response, http.StatusServiceUnavailable, "provider webhook unavailable")
+		case errors.Is(err, provider.ErrMalformedWebhook):
+			writeError(response, http.StatusBadRequest, "malformed webhook body")
+		case errors.Is(err, provider.ErrWebhookIgnored):
+			response.WriteHeader(http.StatusOK)
+		default:
+			writeError(response, http.StatusUnauthorized, "webhook verification failed")
+		}
 		return
 	}
 	if event.ProviderEventID == "" || event.ClientRef == "" {
 		writeError(response, http.StatusBadRequest, "webhook event is incomplete")
 		return
 	}
+	if h.inbox != nil {
+		if h.signaler == nil {
+			writeError(response, http.StatusServiceUnavailable, "workflow signaler unavailable")
+			return
+		}
+		duplicate, err := h.inbox.Accept(request.Context(), parts[3], event, func() error {
+			return h.signaler.SignalSettlement(request.Context(), event.ClientRef, event)
+		})
+		if err != nil {
+			writeError(response, http.StatusServiceUnavailable, "webhook could not be accepted")
+			return
+		}
+		if duplicate {
+			response.WriteHeader(http.StatusOK)
+			return
+		}
+		if acknowledger, ok := adapter.(interface{ WebhookAcceptedStatus() int }); ok {
+			response.WriteHeader(acknowledger.WebhookAcceptedStatus())
+			return
+		}
+		response.WriteHeader(http.StatusAccepted)
+		return
+	}
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	_, duplicate := h.accepted[event.ProviderEventID]
-	h.mu.Unlock()
 	if duplicate {
 		response.WriteHeader(http.StatusOK)
 		return
@@ -87,9 +135,11 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeError(response, http.StatusServiceUnavailable, "webhook could not be accepted")
 		return
 	}
-	h.mu.Lock()
 	h.accepted[event.ProviderEventID] = struct{}{}
-	h.mu.Unlock()
+	if acknowledger, ok := adapter.(interface{ WebhookAcceptedStatus() int }); ok {
+		response.WriteHeader(acknowledger.WebhookAcceptedStatus())
+		return
+	}
 	response.WriteHeader(http.StatusAccepted)
 }
 

@@ -20,6 +20,7 @@ func StartSettlementWorker(ctx context.Context, temporalClient client.Client, ac
 	w.RegisterActivityWithOptions(activities.GetTransfer, activity.RegisterOptions{Name: "SettlementActivities.GetTransfer"})
 	w.RegisterActivityWithOptions(activities.ConfirmLedger, activity.RegisterOptions{Name: "SettlementActivities.ConfirmLedger"})
 	w.RegisterActivityWithOptions(activities.FailLedger, activity.RegisterOptions{Name: "SettlementActivities.FailLedger"})
+	w.RegisterActivityWithOptions(activities.ManualReview, activity.RegisterOptions{Name: "SettlementActivities.ManualReview"})
 	if err := w.Start(); err != nil {
 		return nil, err
 	}

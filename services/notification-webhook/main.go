@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/osai/osai/adapters/firstpair"
+	"github.com/osai/osai/adapters/flutterwave"
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/postgres"
 	"github.com/osai/osai/pkg/provider"
@@ -116,10 +117,27 @@ func main() {
 	}
 	defer temporalClient.Close()
 	pair := firstpair.New()
-	handler := webhookcore.NewHandler(map[string]provider.SettlementRail{"sim_lp_1": pair.Settlement}, webhookcore.TemporalSignaler{Client: temporalClient})
+	handler := webhookcore.NewHandler(providerRails(pair.Settlement), webhookcore.TemporalSignaler{Client: temporalClient})
+	inbox := webhookcore.PostgresProviderInbox{DB: db}
+	if err := inbox.EnsureSchema(); err != nil {
+		log.Fatal(err)
+	}
+	handler.SetProviderInbox(inbox)
 	server := &http.Server{Addr: port, Handler: handler}
 	log.Printf("provider webhook ingress listening on %s", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
+	}
+}
+
+func providerRails(simulator provider.SettlementRail) map[string]provider.SettlementRail {
+	return map[string]provider.SettlementRail{
+		"sim_lp_1": simulator,
+		"flutterwave": flutterwave.New(flutterwave.Config{
+			BaseURL:    os.Getenv("FLW_BASE_URL"),
+			SecretKey:  os.Getenv("FLW_SECRET_KEY"),
+			SecretHash: os.Getenv("FLW_SECRET_HASH"),
+			Env:        os.Getenv("FLW_ENV"),
+		}),
 	}
 }
