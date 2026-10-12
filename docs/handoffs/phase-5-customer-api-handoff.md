@@ -5,22 +5,27 @@
 This addendum supersedes conflicting status statements in the dated historical
 sections below. **Phase 5 is not complete.** The repository has advanced since
 the 2026-09-21 closure snapshot. Trade listing and settlement reports are now
-implemented through their owner services. Provider status remains absent
-because the entitlement name and safe public status fields are unresolved. The
-independent-services acceptance test passed after the latest changes. Its
-runtime proof covers the exercised customer/quote/trade/settlement/webhook
-flow and restart/replay cases; it does not exercise every new list/report
-filter, the provider-status route, or the credential lifecycle API.
+implemented through their owner services. The approved inferred provider
+status contract is now implemented through the Quote owner's gRPC API and the
+gateway, gated by `providers:read`, and returns customer-facing route IDs,
+availability and capabilities only. The prior independent-services acceptance
+run has now been repeated against the current revision. It covers provider
+status, Settlement-owned event publication, supported trade and settlement
+report filters, and Customer/Notification restart behavior. It does not
+exercise public credential creation, rotation, or revocation through
+independently running services.
 
 The user-defined quote product decision recorded on 2026-10-11 is
 `total_cost_minor = base_amount_minor + fee_minor`, denominated in
 `base_currency` (source/funding currency); `amount_out_minor` remains a
 separate destination-currency amount. This is not specified by the original
 architecture sources. The current implementation is inconsistent with that
-definition: the simulator does not apply its rate to calculate output, quote
-acceptance sends destination amount/currency to Trade Orchestrator, the
-orchestrator reserves that amount/currency in Ledger, and the fee is not sent
-to Trade or Ledger. Do not expose `total_cost_minor` as a payable amount until
+definition: the current quote/trade execution path supports only same-currency,
+zero-fee transfers. Quote acceptance fails closed for priced FX/fee flows, and
+Trade Orchestrator now rejects direct cross-currency or mismatched
+source/output-amount requests before creating a trade or reserving funds. These
+guards do not implement the required source funding, fee, and destination
+payout lifecycle. Do not expose `total_cost_minor` as a payable amount until
 owner-local quote, trade, settlement and ledger behavior can represent source
 funding including the fee separately from destination payout, with ledger
 accounting invariants preserved. The user approved the direction of a
@@ -83,6 +88,26 @@ Implemented and tested since that snapshot:
   entitlements, plus per-institution and per-credential token buckets
   (100 requests/minute, burst 10 each). The buckets are process-local and not
   shared between gateway replicas.
+- `GET /v1/providers/status` requires the approved `providers:read` entitlement.
+  Quote owner returns stable route IDs (`simulator`, `ngn-bank-transfer`),
+  `AVAILABLE`/`UNAVAILABLE`, and supported capabilities; it does not expose
+  provider identities, internal diagnostics, or an unsupported maintenance
+  schedule.
+- Quote expiry and Trade accepted, funding-required, and funded transitions
+  are inserted into owner-local transactional outboxes and relayed with stable
+  IDs to Notification. Settlement now publishes processing and successful
+  settlement events from its own transactional outbox; Trade no longer emits
+  those Settlement-owned events. FX, failed/reversed, and reconciliation-break
+  events remain withheld where the source domain lacks verified FX/recovery
+  finality or safe customer identity.
+- Ledger core now validates executor, currencies, integer minor-unit amounts,
+  exact decimal rate and direction, independent source/destination evidence
+  references, and fee evidence. Its journal builder requires explicit
+  Finance-approved debit/credit account mappings and validates source and
+  destination currency journals independently with overflow-safe totals.
+  These primitives are not yet durably persisted or wired to an execution
+  endpoint; FX posting and fee recognition remain blocked pending mappings and
+  integration.
 
 Current verification evidence:
 
@@ -95,7 +120,9 @@ Current verification evidence:
 - `go test -p 1 -ldflags='-w' -count=1 ./...` with PostgreSQL enabled and Temporal unset — passed on 2026-10-11.
 - `go vet -p 1 ./...` — passed on 2026-10-11.
 - `git diff --check` — passed.
-- `go test -p 1 -ldflags='-w' -count=1 -run '^TestProviderSandboxSeparateServices$' -v ./integration` with local PostgreSQL and Temporal — **passed on the current revision in 139.36s** (test runtime 136.82s). Evidence includes independent service starts/restarts, webhook configuration and delivery, callback replay, UNKNOWN recovery, callback-before-create ordering, funding/hold invariants, and hold release after failure.
+- Earlier independent-services run — passed in 139.36s before the latest route/filter additions; its evidence is superseded by the current-revision run below.
+- Current-revision rerun on 2026-10-12 with PostgreSQL 16 and Temporal 1.24.2 — **passed**: `go test -p 1 -ldflags=-w -count=1 -timeout=10m -run '^TestProviderSandboxSeparateServices$' -v ./integration` (package 283.496s; test 279.43s). It additionally verified Customer credentials/entitlements after Customer restart, provider status, supported date/currency/status/customer-reference/page filters, and Settlement outbox delivery. The run was repeated after the Trade Orchestrator fail-closed guard was added.
+- `go test -p 1 -ldflags=-w -count=1 -timeout=10m ./...` — all packages passed on 2026-10-12 with PostgreSQL enabled against a fresh isolated database; Temporal was paused only during this database-only suite and restarted afterward.
 - `go test -p 1 -ldflags=-w -count=1 ./services/customer-kyb ./services/api-gateway` — passed after the credential gRPC lifecycle and authorization changes. The customer PostgreSQL lifecycle test is conditional on `OSAI_POSTGRES_DSN`; an unconfigured environment skips that test.
 
 The Technical Handoff specifies `GET /v1/trades` filters (date, currency,
@@ -110,16 +137,14 @@ per-client and per-institution rate limiting, an event-ID-bound webhook
 signature, and idempotency behavior. These are requirements, not all complete
 wire schemas.
 
-Unresolved Phase 5 gates include entitled provider status; total-cost,
-funding-requirement and other quote-contract semantics; shared rate-limit state
-across gateway replicas; complete entitlement verification; and the complete
-customer webhook event payload catalog and emission. Credential lifecycle has
-local owner/gRPC coverage but not an independent-services acceptance run. The
-current independent-services proof does not exercise every public list/report
-filter or the missing provider-status route.
-Do not guess route response fields or entitlement names where the source
-documents do not specify them. See the linked readiness assessment for the
-gate-by-gate status. The prior
+Unresolved Phase 5 gates include total-cost,
+funding-requirement and other quote-contract semantics; cross-currency
+source-funding/FX execution and Finance-approved account mappings; shared
+rate-limit state across gateway replicas; public credential lifecycle
+verification; and the complete customer webhook event payload catalog and
+emission. Do not claim these gates passed until their implementation and
+evidence are complete. See the linked readiness assessment for the gate-by-gate
+status. The prior
 2026-09-21 failure inventory below is historical and must not be treated as a
 description of the current code.
 

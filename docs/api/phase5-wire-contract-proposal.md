@@ -325,37 +325,34 @@ equal test amounts or the simulator as proof of FX accounting.
 
 ### Provider-status entitlement and response
 
-Proposed entitlement key: `providers:read`.
+**Approved decision:** the public endpoint requires `providers:read` and
+returns stable customer-facing route IDs, normalized availability, and
+supported capabilities. It does not expose provider IDs, internal health
+details, or maintenance fields because no authoritative maintenance schedule
+exists.
 
-Proposed response:
+```http
+GET /v1/providers/status
+```
 
 ```json
 {
   "items": [
     {
-      "provider_id": "customer-visible-provider-id",
+      "route_id": "simulator",
       "status": "AVAILABLE",
-      "capabilities": ["quotes", "fx", "payout"],
-      "maintenance": null
+      "capabilities": ["quotes", "fx", "payout"]
     }
   ],
   "request_id": "req_..."
 }
 ```
 
-Proposed types: `provider_id` and capability names are strings; `status` is
-`AVAILABLE | DEGRADED | UNAVAILABLE`; `maintenance` is `null` or an object
-`{ "starts_at": RFC3339 string, "ends_at": RFC3339 string|null }`.
-All `items` fields and `request_id` are required. These fields/vocabulary and
-the `providers:read` entitlement are inferred. The Technical Handoff only says
-provider capability/maintenance status is optional and entitled; it does not
-name the entitlement or authorize disclosing provider identity.
-
-Recommendation: expose only partner-approved provider identities; otherwise
-replace `provider_id` with a stable customer-facing `route_id`. This requires a
-commercial/security decision. The current provider-health model reports
-internal `up`, latency, capabilities, and degraded reasons; it has no
-maintenance schedule, and internal health details must not be returned raw.
+`items` and `request_id` are required. Each item requires `route_id` (string),
+`status` (`AVAILABLE | UNAVAILABLE`), and `capabilities` (array of strings
+selected from `quotes`, `fx`, `payout`). Current route identifiers are
+`simulator` and `ngn-bank-transfer`. The response and entitlement are
+implemented through Quote-owner gRPC and API Gateway.
 
 ### Credential lifecycle paths
 

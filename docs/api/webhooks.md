@@ -69,5 +69,25 @@ The Technical Handoff lists the minimum customer-relevant events:
 `quote.expired`, `trade.accepted`, `trade.funding_required`, `trade.funded`,
 `trade.fx_executed`, `trade.settlement_processing`, `trade.settled`,
 `trade.failed`, `trade.reversed`, and customer-relevant
-`reconciliation.break_created`. The implementation currently exercises only a
-subset; each event must be published from its authoritative domain transition.
+`reconciliation.break_created`.
+
+The historical `quote.accepted` notification remains available for existing
+subscribers for compatibility; new integrations should consume
+`trade.accepted`, which is emitted by the Trade Orchestrator's durable
+trade-state outbox.
+
+Quote expiry and Trade acceptance, funding-required, and funded events are
+written to their owning services' PostgreSQL outboxes in the same transaction
+as the corresponding state transition. Settlement writes
+`trade.settlement_processing` and successful `trade.settled` events to its own
+PostgreSQL outbox in the same transaction as the provider-state transition.
+Each owner relay retries notification publication until it receives a durable
+event receipt; event IDs are stable across retries.
+
+The remaining catalog entries are intentionally not synthesized from
+unrelated state: the current flow has no verified FX execution transition, no
+approved reversal transition, and reconciliation breaks do not carry a
+customer institution identity for safe tenant-targeted publication. A
+settlement failure is not published as `trade.failed` until that public event's
+meaning and its relationship to payout/FX recovery are approved. These are
+contract/domain blockers, not evidence that event delivery itself is durable.

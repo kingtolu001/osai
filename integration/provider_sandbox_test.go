@@ -92,8 +92,9 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 		"OSAI_LEDGER_GRPC_ADDR": ports["ledger"], "OSAI_NOTIFICATION_GRPC_ADDR": ports["notification_grpc"], "OSAI_WEBHOOK_PORT": ports["webhook"],
 		"OSAI_SETTLEMENT_GRPC_ADDR": ports["settlement_grpc"], "OSAI_SETTLEMENT_PORT": ports["settlement_http"], "OSAI_TRADE_GRPC_ADDR": ports["trade"],
 		"OSAI_QUOTE_GRPC_ADDR": ports["quote_grpc"], "OSAI_QUOTE_PORT": ports["quote_http"], "OSAI_REPORTING_GRPC_ADDR": ports["reporting"], "OSAI_API_GATEWAY_PORT": ports["gateway"],
-		"OSAI_SANDBOX_SEED": "1", "OSAI_SANDBOX_INSTITUTION_ID": institution, "OSAI_SANDBOX_CLIENT_ID": clientID, "OSAI_SANDBOX_CLIENT_SECRET": clientSecret,
-		"OSAI_SANDBOX_ENTITLEMENTS":       "quotes:read,quotes:write,webhooks:write",
+		"OSAI_API_ENVIRONMENT": "sandbox",
+		"OSAI_SANDBOX_SEED":    "1", "OSAI_SANDBOX_INSTITUTION_ID": institution, "OSAI_SANDBOX_CLIENT_ID": clientID, "OSAI_SANDBOX_CLIENT_SECRET": clientSecret,
+		"OSAI_SANDBOX_ENTITLEMENTS":       "quotes:read,quotes:write,webhooks:write,providers:read,beneficiaries:write,trades:read,settlements:read,reports:read,balances:read,transactions:read",
 		"OSAI_BENEFICIARY_OPERATORS_JSON": string(operatorJSON), "OSAI_BENEFICIARY_WRITE_TOKEN": writeToken,
 		"OSAI_QUOTE_PRICING_OPERATORS_JSON": string(pricingOperatorJSON), "OSAI_QUOTE_PRICING_ADMIN_ADDR": ports["quote_admin"],
 		"OSAI_NOTIFICATION_TOKEN": notifyToken, "OSAI_WEBHOOK_SECRET": webhookSecret, "OSAI_WEBHOOK_ADMIN_TOKEN": webhookAdminToken,
@@ -162,6 +163,17 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	call := func(method, endpoint, auth, key, body string) (int, map[string]any) {
 		return proofHTTP(t, method, endpoint, auth, key, correlation, body)
 	}
+	providerStatusCode, providerStatus := call(http.MethodGet, api+"/v1/providers/status", clientAuth, "", "")
+	routes, routesOK := providerStatus["items"].([]any)
+	if providerStatusCode != http.StatusOK || !routesOK || len(routes) == 0 {
+		t.Fatalf("provider status: code=%d response=%v", providerStatusCode, providerStatus)
+	}
+	for _, rawRoute := range routes {
+		route, ok := rawRoute.(map[string]any)
+		if !ok || route["route_id"] == "" || route["provider_id"] != nil {
+			t.Fatalf("provider status leaked identity or malformed route: %v", rawRoute)
+		}
+	}
 	webhookConfigBody, err := json.Marshal(map[string]any{
 		"endpoint_url":           customerWebhook.URL,
 		"signing_secret":         webhookProbe.secret,
@@ -175,19 +187,15 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 		t.Fatalf("configure customer webhook through public API: code=%d response=%v", webhookStatus, webhookConfig)
 	}
 	if proofCount(db, `SELECT count(*) FROM customer_credentials WHERE public_id=$1 AND institution_id=$2`, clientID, institution) != 1 ||
-		proofCount(db, `SELECT count(*) FROM customer_institutions WHERE id=$1 AND body->'entitlements' @> '["quotes:read","quotes:write","webhooks:write"]'::jsonb`, institution) != 1 ||
+		proofCount(db, `SELECT count(*) FROM customer_institutions WHERE id=$1 AND body->'entitlements' @> '["quotes:read","quotes:write","webhooks:write","providers:read"]'::jsonb`, institution) != 1 ||
 		proofCount(db, `SELECT count(*) FROM customer_webhook_config WHERE institution_id=$1`, institution) != 1 {
 		t.Fatal("customer credentials, entitlements, and webhook configuration must be persisted by customer-kyb")
 	}
 	runtime.stop("customer")
 	runtime.start("customer", "./services/customer-kyb", ports["customer_grpc"])
-	var restartedCustomerStatus int
-	waitFor(t, 15*time.Second, func() bool {
-		restartedCustomerStatus, _ = call("GET", api+"/v1/balances", clientAuth, "", "")
-		return restartedCustomerStatus == http.StatusOK
-	})
+	restartedCustomerStatus, restartedCustomerResponse := call("GET", api+"/v1/providers/status", clientAuth, "", "")
 	if restartedCustomerStatus != http.StatusOK {
-		t.Fatalf("customer API credential did not survive customer-kyb restart: %d", restartedCustomerStatus)
+		t.Fatalf("customer API credential did not survive customer-kyb restart: code=%d response=%v", restartedCustomerStatus, restartedCustomerResponse)
 	}
 	ledgerConn, err := grpc.Dial(ports["ledger"], grpc.WithInsecure())
 	if err != nil {
@@ -211,7 +219,7 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	if code, _ := call("POST", op+"/v1/operator/beneficiaries/approve", "Bearer "+checkerToken, "", operatorBody); code != http.StatusNoContent {
 		t.Fatalf("checker approval: %d", code)
 	}
-	statusCode, quote := call("POST", api+"/v1/quotes", clientAuth, "quote-1", `{"base_amount_minor":10000,"base_currency":"NGN","quote_currency":"NGN","destination_rail":"flutterwave"}`)
+	statusCode, quote := call("POST", api+"/v1/quotes", clientAuth, "quote-1", `{"base_amount_minor":10000,"base_currency":"NGN","quote_currency":"NGN","destination_rail":"flutterwave","customer_reference":"proof-order-1"}`)
 	if statusCode != http.StatusOK || quote["amount_out_minor"] != float64(10000) ||
 		quote["quote_mode"] != "FIXED_SOURCE" || quote["source_principal_minor"] != float64(10000) ||
 		quote["total_debit_minor"] != float64(10000) || quote["fee_schedule_id"] == "" {
@@ -224,6 +232,9 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 		t.Fatalf("quote acceptance: code=%d response=%v", statusCode, accepted)
 	}
 	tradeID := stringField(t, accepted, "trade_id")
+	waitFor(t, 20*time.Second, func() bool {
+		return proofCount(db, `SELECT count(*) FROM trade_outbox WHERE trade_id=$1 AND event_type='trade.accepted' AND delivered_at IS NOT NULL`, tradeID) == 1
+	})
 	eventID := "evt_quote_accepted_" + quoteID
 	waitFor(t, 20*time.Second, func() bool {
 		return proofCount(db, `SELECT count(*) FROM outbound_events WHERE event_id=$1 AND status='RETRY' AND attempt_count=1`, eventID) == 1
@@ -351,6 +362,30 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	})
 	if statusCode != http.StatusOK || finalTrade["status"] != "SETTLED" || proofCount(db, `SELECT count(*) FROM trade_settlement_event_inbox WHERE event_id=$1`, "settlement_finality:"+settlementID+":CONFIRMED") != 1 {
 		t.Fatalf("customer trade final status: code=%d response=%v", statusCode, finalTrade)
+	}
+	reportFrom := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	reportTo := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	tradesURL := fmt.Sprintf("%s/v1/trades?page=1&page_size=1&from=%s&to=%s&currency=NGN&status=SETTLED&customer_reference=proof-order-1",
+		api, url.QueryEscape(reportFrom), url.QueryEscape(reportTo))
+	statusCode, tradesPage := call(http.MethodGet, tradesURL, clientAuth, "", "")
+	tradeItems, tradeItemsOK := tradesPage["items"].([]any)
+	var listedTrade map[string]any
+	var listedTradeOK bool
+	if len(tradeItems) == 1 {
+		listedTrade, listedTradeOK = tradeItems[0].(map[string]any)
+	}
+	if statusCode != http.StatusOK || tradesPage["total"] != float64(1) || tradesPage["page"] != float64(1) ||
+		!tradeItemsOK || !listedTradeOK || listedTrade["trade_id"] != tradeID ||
+		listedTrade["customer_reference"] != "proof-order-1" {
+		t.Fatalf("filtered customer trade list: code=%d response=%v", statusCode, tradesPage)
+	}
+	settlementsURL := fmt.Sprintf("%s/v1/reports/settlements?page=1&page_size=1&from=%s&to=%s&currency=NGN&status=CONFIRMED",
+		api, url.QueryEscape(reportFrom), url.QueryEscape(reportTo))
+	statusCode, settlementPage := call(http.MethodGet, settlementsURL, clientAuth, "", "")
+	settlementItems, settlementItemsOK := settlementPage["items"].([]any)
+	if statusCode != http.StatusOK || settlementPage["total"] != float64(1) || settlementPage["page"] != float64(1) ||
+		len(settlementItems) != 1 || !settlementItemsOK {
+		t.Fatalf("filtered customer settlement report: code=%d response=%v", statusCode, settlementPage)
 	}
 	runtime.start("reconciliation", "./cmd/reconciliation", "")
 	waitFor(t, 20*time.Second, func() bool {

@@ -28,10 +28,15 @@ sandbox transaction. The `OSAI_LOCAL_PROOF_MODE` setting is restricted to
 local-proof use and must not be enabled in production. Never place real
 provider credentials in test output or source files.
 
-Trade listing, settlement reports, per-process rate limits, and the
-environment-scoped credential lifecycle are implemented. The Phase 5 partner
-API remains incomplete: provider status and the agreed source-funding/FX
-execution behavior are not implemented, webhook event publication is partial,
-and the full public flow has not been re-run against independent services in
-this environment. See the Phase 5 handoff and readiness assessment before
+Trade listing, settlement reports, per-process rate limits, the
+environment-scoped credential lifecycle, and the entitled
+`GET /v1/providers/status` route are implemented. The provider-status route
+returns stable customer-facing route IDs, normalized availability, and
+capabilities; it does not expose provider identities or internal health
+details. Customer event publication is durable for quote expiry and the trade
+acceptance/funding/settlement-processing/confirmed transitions. The full
+catalog and public flow are not yet proven in this environment: FX execution,
+source-currency fee funding/accounting, reversal and reconciliation customer
+events, and an independent-services run covering the new provider-status route
+remain outstanding. See the Phase 5 handoff and readiness assessment before
 treating this local proof as partner acceptance.
