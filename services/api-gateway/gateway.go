@@ -75,6 +75,7 @@ type QuoteResponse struct {
 	QuoteMode                string
 	SourcePrincipalMinor     int64
 	TotalDebitMinor          int64
+	TotalCostMinor           int64
 	DestinationTargetMinor   int64
 	DestinationSurplusMinor  int64
 	RateDirection            string
@@ -99,6 +100,28 @@ type TradeReadResponse struct {
 	CustomerReference string
 	CorrelationID     string
 	RequestID         string
+	PricingSnapshot   *TradePricingSnapshot
+}
+
+type TradePricingSnapshot struct {
+	QuoteMode                string `json:"quote_mode"`
+	RequestedAmountMinor     int64  `json:"requested_amount_minor"`
+	SourcePrincipalMinor     int64  `json:"source_principal_minor"`
+	FeeMinor                 int64  `json:"fee_minor"`
+	TotalDebitMinor          int64  `json:"total_debit_minor"`
+	DestinationAmountMinor   int64  `json:"destination_amount_minor"`
+	DestinationTargetMinor   int64  `json:"destination_target_minor"`
+	DestinationSurplusMinor  int64  `json:"destination_surplus_minor"`
+	SourceCurrency           string `json:"source_currency"`
+	DestinationCurrency      string `json:"destination_currency"`
+	RateScaled               int64  `json:"rate_scaled"`
+	RateDirection            string `json:"rate_direction"`
+	RateScale                int64  `json:"rate_scale"`
+	FeeScheduleID            string `json:"fee_schedule_id"`
+	FeeScheduleVersion       int64  `json:"fee_schedule_version"`
+	SourceMinorExponent      uint32 `json:"source_minor_exponent"`
+	DestinationMinorExponent uint32 `json:"destination_minor_exponent"`
+	ExpiresAt                string `json:"expires_at"`
 }
 
 type SettlementReadResponse struct {
@@ -965,6 +988,7 @@ func quoteResponsePayload(quote QuoteResponse, requestID string) map[string]any 
 		"amount_out_minor": quote.AmountOutMinor, "rate_minor": quote.RateMinor, "fee_minor": quote.FeeMinor,
 		"quote_mode": quote.QuoteMode, "source_principal_minor": quote.SourcePrincipalMinor,
 		"total_debit_minor": quote.TotalDebitMinor, "destination_target_minor": quote.DestinationTargetMinor,
+		"total_cost_minor": quote.TotalCostMinor, "total_cost_currency": quote.BaseCurrency,
 		"destination_surplus_minor": quote.DestinationSurplusMinor, "rate_direction": quote.RateDirection,
 		"rate_scale": quote.RateScale, "fee_schedule_id": quote.FeeScheduleID,
 		"fee_schedule_version":  quote.FeeScheduleVersion,
@@ -1145,6 +1169,9 @@ func (g *Gateway) handleListTrades(w http.ResponseWriter, r *http.Request, custo
 
 func tradeResponsePayload(trade TradeReadResponse, requestID string) map[string]any {
 	payload := map[string]any{"trade_id": trade.TradeID, "quote_id": trade.QuoteID, "institution_id": trade.InstitutionID, "status": trade.Status, "base_amount_minor": trade.BaseAmountMinor, "base_currency": trade.BaseCurrency, "quote_currency": trade.QuoteCurrency, "settlement_id": trade.SettlementID, "request_id": requestID}
+	if trade.PricingSnapshot != nil {
+		payload["pricing_snapshot"] = trade.PricingSnapshot
+	}
 	if trade.CustomerReference != "" {
 		payload["customer_reference"] = trade.CustomerReference
 	}

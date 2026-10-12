@@ -73,6 +73,274 @@ func (x *Money) GetCurrency() string {
 	return ""
 }
 
+type PricingSnapshot struct {
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	QuoteMode                   string                 `protobuf:"bytes,1,opt,name=quote_mode,json=quoteMode,proto3" json:"quote_mode,omitempty"`
+	RequestedAmountMinor        int64                  `protobuf:"varint,2,opt,name=requested_amount_minor,json=requestedAmountMinor,proto3" json:"requested_amount_minor,omitempty"`
+	SourcePrincipalMinor        int64                  `protobuf:"varint,3,opt,name=source_principal_minor,json=sourcePrincipalMinor,proto3" json:"source_principal_minor,omitempty"`
+	FeeMinor                    int64                  `protobuf:"varint,4,opt,name=fee_minor,json=feeMinor,proto3" json:"fee_minor,omitempty"`
+	TotalDebitMinor             int64                  `protobuf:"varint,5,opt,name=total_debit_minor,json=totalDebitMinor,proto3" json:"total_debit_minor,omitempty"`
+	DestinationAmountMinor      int64                  `protobuf:"varint,6,opt,name=destination_amount_minor,json=destinationAmountMinor,proto3" json:"destination_amount_minor,omitempty"`
+	DestinationTargetMinor      int64                  `protobuf:"varint,7,opt,name=destination_target_minor,json=destinationTargetMinor,proto3" json:"destination_target_minor,omitempty"`
+	DestinationSurplusMinor     int64                  `protobuf:"varint,8,opt,name=destination_surplus_minor,json=destinationSurplusMinor,proto3" json:"destination_surplus_minor,omitempty"`
+	SourceCurrency              string                 `protobuf:"bytes,9,opt,name=source_currency,json=sourceCurrency,proto3" json:"source_currency,omitempty"`
+	DestinationCurrency         string                 `protobuf:"bytes,10,opt,name=destination_currency,json=destinationCurrency,proto3" json:"destination_currency,omitempty"`
+	RateScaled                  int64                  `protobuf:"varint,11,opt,name=rate_scaled,json=rateScaled,proto3" json:"rate_scaled,omitempty"`
+	RateDirection               string                 `protobuf:"bytes,12,opt,name=rate_direction,json=rateDirection,proto3" json:"rate_direction,omitempty"`
+	RateScale                   int64                  `protobuf:"varint,13,opt,name=rate_scale,json=rateScale,proto3" json:"rate_scale,omitempty"`
+	FeeScheduleId               string                 `protobuf:"bytes,14,opt,name=fee_schedule_id,json=feeScheduleId,proto3" json:"fee_schedule_id,omitempty"`
+	FeeScheduleVersion          int64                  `protobuf:"varint,15,opt,name=fee_schedule_version,json=feeScheduleVersion,proto3" json:"fee_schedule_version,omitempty"`
+	SourceMinorExponent         uint32                 `protobuf:"varint,16,opt,name=source_minor_exponent,json=sourceMinorExponent,proto3" json:"source_minor_exponent,omitempty"`
+	DestinationMinorExponent    uint32                 `protobuf:"varint,17,opt,name=destination_minor_exponent,json=destinationMinorExponent,proto3" json:"destination_minor_exponent,omitempty"`
+	FixedFeeMinor               int64                  `protobuf:"varint,18,opt,name=fixed_fee_minor,json=fixedFeeMinor,proto3" json:"fixed_fee_minor,omitempty"`
+	FeeBasisPoints              int64                  `protobuf:"varint,19,opt,name=fee_basis_points,json=feeBasisPoints,proto3" json:"fee_basis_points,omitempty"`
+	MinimumFeeMinor             int64                  `protobuf:"varint,20,opt,name=minimum_fee_minor,json=minimumFeeMinor,proto3" json:"minimum_fee_minor,omitempty"`
+	MaximumFeeMinor             int64                  `protobuf:"varint,21,opt,name=maximum_fee_minor,json=maximumFeeMinor,proto3" json:"maximum_fee_minor,omitempty"`
+	MinimumSourcePrincipalMinor int64                  `protobuf:"varint,22,opt,name=minimum_source_principal_minor,json=minimumSourcePrincipalMinor,proto3" json:"minimum_source_principal_minor,omitempty"`
+	MaximumSourcePrincipalMinor int64                  `protobuf:"varint,23,opt,name=maximum_source_principal_minor,json=maximumSourcePrincipalMinor,proto3" json:"maximum_source_principal_minor,omitempty"`
+	MinimumTotalDebitMinor      int64                  `protobuf:"varint,24,opt,name=minimum_total_debit_minor,json=minimumTotalDebitMinor,proto3" json:"minimum_total_debit_minor,omitempty"`
+	MaximumTotalDebitMinor      int64                  `protobuf:"varint,25,opt,name=maximum_total_debit_minor,json=maximumTotalDebitMinor,proto3" json:"maximum_total_debit_minor,omitempty"`
+	MinimumDestinationMinor     int64                  `protobuf:"varint,26,opt,name=minimum_destination_minor,json=minimumDestinationMinor,proto3" json:"minimum_destination_minor,omitempty"`
+	MaximumDestinationMinor     int64                  `protobuf:"varint,27,opt,name=maximum_destination_minor,json=maximumDestinationMinor,proto3" json:"maximum_destination_minor,omitempty"`
+	ExpiresAt                   string                 `protobuf:"bytes,28,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	SnapshotHash                string                 `protobuf:"bytes,29,opt,name=snapshot_hash,json=snapshotHash,proto3" json:"snapshot_hash,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *PricingSnapshot) Reset() {
+	*x = PricingSnapshot{}
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PricingSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PricingSnapshot) ProtoMessage() {}
+
+func (x *PricingSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PricingSnapshot.ProtoReflect.Descriptor instead.
+func (*PricingSnapshot) Descriptor() ([]byte, []int) {
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PricingSnapshot) GetQuoteMode() string {
+	if x != nil {
+		return x.QuoteMode
+	}
+	return ""
+}
+
+func (x *PricingSnapshot) GetRequestedAmountMinor() int64 {
+	if x != nil {
+		return x.RequestedAmountMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetSourcePrincipalMinor() int64 {
+	if x != nil {
+		return x.SourcePrincipalMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetFeeMinor() int64 {
+	if x != nil {
+		return x.FeeMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetTotalDebitMinor() int64 {
+	if x != nil {
+		return x.TotalDebitMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetDestinationAmountMinor() int64 {
+	if x != nil {
+		return x.DestinationAmountMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetDestinationTargetMinor() int64 {
+	if x != nil {
+		return x.DestinationTargetMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetDestinationSurplusMinor() int64 {
+	if x != nil {
+		return x.DestinationSurplusMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetSourceCurrency() string {
+	if x != nil {
+		return x.SourceCurrency
+	}
+	return ""
+}
+
+func (x *PricingSnapshot) GetDestinationCurrency() string {
+	if x != nil {
+		return x.DestinationCurrency
+	}
+	return ""
+}
+
+func (x *PricingSnapshot) GetRateScaled() int64 {
+	if x != nil {
+		return x.RateScaled
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetRateDirection() string {
+	if x != nil {
+		return x.RateDirection
+	}
+	return ""
+}
+
+func (x *PricingSnapshot) GetRateScale() int64 {
+	if x != nil {
+		return x.RateScale
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetFeeScheduleId() string {
+	if x != nil {
+		return x.FeeScheduleId
+	}
+	return ""
+}
+
+func (x *PricingSnapshot) GetFeeScheduleVersion() int64 {
+	if x != nil {
+		return x.FeeScheduleVersion
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetSourceMinorExponent() uint32 {
+	if x != nil {
+		return x.SourceMinorExponent
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetDestinationMinorExponent() uint32 {
+	if x != nil {
+		return x.DestinationMinorExponent
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetFixedFeeMinor() int64 {
+	if x != nil {
+		return x.FixedFeeMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetFeeBasisPoints() int64 {
+	if x != nil {
+		return x.FeeBasisPoints
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMinimumFeeMinor() int64 {
+	if x != nil {
+		return x.MinimumFeeMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMaximumFeeMinor() int64 {
+	if x != nil {
+		return x.MaximumFeeMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMinimumSourcePrincipalMinor() int64 {
+	if x != nil {
+		return x.MinimumSourcePrincipalMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMaximumSourcePrincipalMinor() int64 {
+	if x != nil {
+		return x.MaximumSourcePrincipalMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMinimumTotalDebitMinor() int64 {
+	if x != nil {
+		return x.MinimumTotalDebitMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMaximumTotalDebitMinor() int64 {
+	if x != nil {
+		return x.MaximumTotalDebitMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMinimumDestinationMinor() int64 {
+	if x != nil {
+		return x.MinimumDestinationMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetMaximumDestinationMinor() int64 {
+	if x != nil {
+		return x.MaximumDestinationMinor
+	}
+	return 0
+}
+
+func (x *PricingSnapshot) GetExpiresAt() string {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return ""
+}
+
+func (x *PricingSnapshot) GetSnapshotHash() string {
+	if x != nil {
+		return x.SnapshotHash
+	}
+	return ""
+}
+
 type CreateTradeFromAcceptedQuoteRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	InstitutionId        string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
@@ -86,13 +354,14 @@ type CreateTradeFromAcceptedQuoteRequest struct {
 	BeneficiaryId        string                 `protobuf:"bytes,9,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
 	SettlementProviderId string                 `protobuf:"bytes,10,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
 	CustomerReference    string                 `protobuf:"bytes,11,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
+	PricingSnapshot      *PricingSnapshot       `protobuf:"bytes,12,opt,name=pricing_snapshot,json=pricingSnapshot,proto3" json:"pricing_snapshot,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *CreateTradeFromAcceptedQuoteRequest) Reset() {
 	*x = CreateTradeFromAcceptedQuoteRequest{}
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[1]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -104,7 +373,7 @@ func (x *CreateTradeFromAcceptedQuoteRequest) String() string {
 func (*CreateTradeFromAcceptedQuoteRequest) ProtoMessage() {}
 
 func (x *CreateTradeFromAcceptedQuoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[1]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -117,7 +386,7 @@ func (x *CreateTradeFromAcceptedQuoteRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CreateTradeFromAcceptedQuoteRequest.ProtoReflect.Descriptor instead.
 func (*CreateTradeFromAcceptedQuoteRequest) Descriptor() ([]byte, []int) {
-	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{1}
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CreateTradeFromAcceptedQuoteRequest) GetInstitutionId() string {
@@ -197,6 +466,13 @@ func (x *CreateTradeFromAcceptedQuoteRequest) GetCustomerReference() string {
 	return ""
 }
 
+func (x *CreateTradeFromAcceptedQuoteRequest) GetPricingSnapshot() *PricingSnapshot {
+	if x != nil {
+		return x.PricingSnapshot
+	}
+	return nil
+}
+
 type TradeResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	TradeId              string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
@@ -211,13 +487,14 @@ type TradeResponse struct {
 	BeneficiaryId        string                 `protobuf:"bytes,10,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
 	SettlementProviderId string                 `protobuf:"bytes,11,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
 	CustomerReference    string                 `protobuf:"bytes,12,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
+	PricingSnapshot      *PricingSnapshot       `protobuf:"bytes,13,opt,name=pricing_snapshot,json=pricingSnapshot,proto3" json:"pricing_snapshot,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *TradeResponse) Reset() {
 	*x = TradeResponse{}
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[2]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -229,7 +506,7 @@ func (x *TradeResponse) String() string {
 func (*TradeResponse) ProtoMessage() {}
 
 func (x *TradeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[2]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -242,7 +519,7 @@ func (x *TradeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TradeResponse.ProtoReflect.Descriptor instead.
 func (*TradeResponse) Descriptor() ([]byte, []int) {
-	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{2}
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TradeResponse) GetTradeId() string {
@@ -329,6 +606,13 @@ func (x *TradeResponse) GetCustomerReference() string {
 	return ""
 }
 
+func (x *TradeResponse) GetPricingSnapshot() *PricingSnapshot {
+	if x != nil {
+		return x.PricingSnapshot
+	}
+	return nil
+}
+
 type GetTradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
@@ -340,7 +624,7 @@ type GetTradeRequest struct {
 
 func (x *GetTradeRequest) Reset() {
 	*x = GetTradeRequest{}
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[3]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -352,7 +636,7 @@ func (x *GetTradeRequest) String() string {
 func (*GetTradeRequest) ProtoMessage() {}
 
 func (x *GetTradeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[3]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -365,7 +649,7 @@ func (x *GetTradeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTradeRequest.ProtoReflect.Descriptor instead.
 func (*GetTradeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{3}
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetTradeRequest) GetInstitutionId() string {
@@ -406,7 +690,7 @@ type ListTradesRequest struct {
 
 func (x *ListTradesRequest) Reset() {
 	*x = ListTradesRequest{}
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[4]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -418,7 +702,7 @@ func (x *ListTradesRequest) String() string {
 func (*ListTradesRequest) ProtoMessage() {}
 
 func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[4]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -431,7 +715,7 @@ func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTradesRequest.ProtoReflect.Descriptor instead.
 func (*ListTradesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{4}
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListTradesRequest) GetInstitutionId() string {
@@ -509,7 +793,7 @@ type ListTradesResponse struct {
 
 func (x *ListTradesResponse) Reset() {
 	*x = ListTradesResponse{}
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[5]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -521,7 +805,7 @@ func (x *ListTradesResponse) String() string {
 func (*ListTradesResponse) ProtoMessage() {}
 
 func (x *ListTradesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[5]
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -534,7 +818,7 @@ func (x *ListTradesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTradesResponse.ProtoReflect.Descriptor instead.
 func (*ListTradesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{5}
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListTradesResponse) GetItems() []*TradeResponse {
@@ -572,7 +856,42 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x1fproto/osai/trade/v1/trade.proto\x12\rosai.trade.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xe9\x03\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\x8a\v\n" +
+	"\x0fPricingSnapshot\x12\x1d\n" +
+	"\n" +
+	"quote_mode\x18\x01 \x01(\tR\tquoteMode\x124\n" +
+	"\x16requested_amount_minor\x18\x02 \x01(\x03R\x14requestedAmountMinor\x124\n" +
+	"\x16source_principal_minor\x18\x03 \x01(\x03R\x14sourcePrincipalMinor\x12\x1b\n" +
+	"\tfee_minor\x18\x04 \x01(\x03R\bfeeMinor\x12*\n" +
+	"\x11total_debit_minor\x18\x05 \x01(\x03R\x0ftotalDebitMinor\x128\n" +
+	"\x18destination_amount_minor\x18\x06 \x01(\x03R\x16destinationAmountMinor\x128\n" +
+	"\x18destination_target_minor\x18\a \x01(\x03R\x16destinationTargetMinor\x12:\n" +
+	"\x19destination_surplus_minor\x18\b \x01(\x03R\x17destinationSurplusMinor\x12'\n" +
+	"\x0fsource_currency\x18\t \x01(\tR\x0esourceCurrency\x121\n" +
+	"\x14destination_currency\x18\n" +
+	" \x01(\tR\x13destinationCurrency\x12\x1f\n" +
+	"\vrate_scaled\x18\v \x01(\x03R\n" +
+	"rateScaled\x12%\n" +
+	"\x0erate_direction\x18\f \x01(\tR\rrateDirection\x12\x1d\n" +
+	"\n" +
+	"rate_scale\x18\r \x01(\x03R\trateScale\x12&\n" +
+	"\x0ffee_schedule_id\x18\x0e \x01(\tR\rfeeScheduleId\x120\n" +
+	"\x14fee_schedule_version\x18\x0f \x01(\x03R\x12feeScheduleVersion\x122\n" +
+	"\x15source_minor_exponent\x18\x10 \x01(\rR\x13sourceMinorExponent\x12<\n" +
+	"\x1adestination_minor_exponent\x18\x11 \x01(\rR\x18destinationMinorExponent\x12&\n" +
+	"\x0ffixed_fee_minor\x18\x12 \x01(\x03R\rfixedFeeMinor\x12(\n" +
+	"\x10fee_basis_points\x18\x13 \x01(\x03R\x0efeeBasisPoints\x12*\n" +
+	"\x11minimum_fee_minor\x18\x14 \x01(\x03R\x0fminimumFeeMinor\x12*\n" +
+	"\x11maximum_fee_minor\x18\x15 \x01(\x03R\x0fmaximumFeeMinor\x12C\n" +
+	"\x1eminimum_source_principal_minor\x18\x16 \x01(\x03R\x1bminimumSourcePrincipalMinor\x12C\n" +
+	"\x1emaximum_source_principal_minor\x18\x17 \x01(\x03R\x1bmaximumSourcePrincipalMinor\x129\n" +
+	"\x19minimum_total_debit_minor\x18\x18 \x01(\x03R\x16minimumTotalDebitMinor\x129\n" +
+	"\x19maximum_total_debit_minor\x18\x19 \x01(\x03R\x16maximumTotalDebitMinor\x12:\n" +
+	"\x19minimum_destination_minor\x18\x1a \x01(\x03R\x17minimumDestinationMinor\x12:\n" +
+	"\x19maximum_destination_minor\x18\x1b \x01(\x03R\x17maximumDestinationMinor\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x1c \x01(\tR\texpiresAt\x12#\n" +
+	"\rsnapshot_hash\x18\x1d \x01(\tR\fsnapshotHash\"\xb4\x04\n" +
 	"#CreateTradeFromAcceptedQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12'\n" +
@@ -585,7 +904,8 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x0ebeneficiary_id\x18\t \x01(\tR\rbeneficiaryId\x124\n" +
 	"\x16settlement_provider_id\x18\n" +
 	" \x01(\tR\x14settlementProviderId\x12-\n" +
-	"\x12customer_reference\x18\v \x01(\tR\x11customerReference\"\xd4\x03\n" +
+	"\x12customer_reference\x18\v \x01(\tR\x11customerReference\x12I\n" +
+	"\x10pricing_snapshot\x18\f \x01(\v2\x1e.osai.trade.v1.PricingSnapshotR\x0fpricingSnapshot\"\x9f\x04\n" +
 	"\rTradeResponse\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x19\n" +
@@ -599,7 +919,8 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x0ebeneficiary_id\x18\n" +
 	" \x01(\tR\rbeneficiaryId\x124\n" +
 	"\x16settlement_provider_id\x18\v \x01(\tR\x14settlementProviderId\x12-\n" +
-	"\x12customer_reference\x18\f \x01(\tR\x11customerReference\"z\n" +
+	"\x12customer_reference\x18\f \x01(\tR\x11customerReference\x12I\n" +
+	"\x10pricing_snapshot\x18\r \x01(\v2\x1e.osai.trade.v1.PricingSnapshotR\x0fpricingSnapshot\"z\n" +
 	"\x0fGetTradeRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12%\n" +
@@ -637,29 +958,32 @@ func file_proto_osai_trade_v1_trade_proto_rawDescGZIP() []byte {
 	return file_proto_osai_trade_v1_trade_proto_rawDescData
 }
 
-var file_proto_osai_trade_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proto_osai_trade_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_proto_osai_trade_v1_trade_proto_goTypes = []any{
-	(*Money)(nil), // 0: osai.trade.v1.Money
-	(*CreateTradeFromAcceptedQuoteRequest)(nil), // 1: osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
-	(*TradeResponse)(nil),                       // 2: osai.trade.v1.TradeResponse
-	(*GetTradeRequest)(nil),                     // 3: osai.trade.v1.GetTradeRequest
-	(*ListTradesRequest)(nil),                   // 4: osai.trade.v1.ListTradesRequest
-	(*ListTradesResponse)(nil),                  // 5: osai.trade.v1.ListTradesResponse
+	(*Money)(nil),                               // 0: osai.trade.v1.Money
+	(*PricingSnapshot)(nil),                     // 1: osai.trade.v1.PricingSnapshot
+	(*CreateTradeFromAcceptedQuoteRequest)(nil), // 2: osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
+	(*TradeResponse)(nil),                       // 3: osai.trade.v1.TradeResponse
+	(*GetTradeRequest)(nil),                     // 4: osai.trade.v1.GetTradeRequest
+	(*ListTradesRequest)(nil),                   // 5: osai.trade.v1.ListTradesRequest
+	(*ListTradesResponse)(nil),                  // 6: osai.trade.v1.ListTradesResponse
 }
 var file_proto_osai_trade_v1_trade_proto_depIdxs = []int32{
 	0, // 0: osai.trade.v1.CreateTradeFromAcceptedQuoteRequest.amount:type_name -> osai.trade.v1.Money
-	2, // 1: osai.trade.v1.ListTradesResponse.items:type_name -> osai.trade.v1.TradeResponse
-	1, // 2: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:input_type -> osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
-	3, // 3: osai.trade.v1.TradeService.GetTrade:input_type -> osai.trade.v1.GetTradeRequest
-	4, // 4: osai.trade.v1.TradeService.ListTrades:input_type -> osai.trade.v1.ListTradesRequest
-	2, // 5: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:output_type -> osai.trade.v1.TradeResponse
-	2, // 6: osai.trade.v1.TradeService.GetTrade:output_type -> osai.trade.v1.TradeResponse
-	5, // 7: osai.trade.v1.TradeService.ListTrades:output_type -> osai.trade.v1.ListTradesResponse
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 1: osai.trade.v1.CreateTradeFromAcceptedQuoteRequest.pricing_snapshot:type_name -> osai.trade.v1.PricingSnapshot
+	1, // 2: osai.trade.v1.TradeResponse.pricing_snapshot:type_name -> osai.trade.v1.PricingSnapshot
+	3, // 3: osai.trade.v1.ListTradesResponse.items:type_name -> osai.trade.v1.TradeResponse
+	2, // 4: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:input_type -> osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
+	4, // 5: osai.trade.v1.TradeService.GetTrade:input_type -> osai.trade.v1.GetTradeRequest
+	5, // 6: osai.trade.v1.TradeService.ListTrades:input_type -> osai.trade.v1.ListTradesRequest
+	3, // 7: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:output_type -> osai.trade.v1.TradeResponse
+	3, // 8: osai.trade.v1.TradeService.GetTrade:output_type -> osai.trade.v1.TradeResponse
+	6, // 9: osai.trade.v1.TradeService.ListTrades:output_type -> osai.trade.v1.ListTradesResponse
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_osai_trade_v1_trade_proto_init() }
@@ -673,7 +997,7 @@ func file_proto_osai_trade_v1_trade_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_trade_v1_trade_proto_rawDesc), len(file_proto_osai_trade_v1_trade_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

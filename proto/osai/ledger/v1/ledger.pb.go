@@ -780,13 +780,17 @@ func (x *LocalPrefundCommand) GetCorrelationId() string {
 }
 
 type FundingReservationCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
-	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	Amount        *Money                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
-	CorrelationId string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId        string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	TradeId              string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	Amount               *Money                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	CorrelationId        string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	SourcePrincipalMinor int64                  `protobuf:"varint,5,opt,name=source_principal_minor,json=sourcePrincipalMinor,proto3" json:"source_principal_minor,omitempty"`
+	FeeMinor             int64                  `protobuf:"varint,6,opt,name=fee_minor,json=feeMinor,proto3" json:"fee_minor,omitempty"`
+	PricingHash          string                 `protobuf:"bytes,7,opt,name=pricing_hash,json=pricingHash,proto3" json:"pricing_hash,omitempty"`
+	PricingSnapshotJson  string                 `protobuf:"bytes,8,opt,name=pricing_snapshot_json,json=pricingSnapshotJson,proto3" json:"pricing_snapshot_json,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *FundingReservationCommand) Reset() {
@@ -843,6 +847,34 @@ func (x *FundingReservationCommand) GetAmount() *Money {
 func (x *FundingReservationCommand) GetCorrelationId() string {
 	if x != nil {
 		return x.CorrelationId
+	}
+	return ""
+}
+
+func (x *FundingReservationCommand) GetSourcePrincipalMinor() int64 {
+	if x != nil {
+		return x.SourcePrincipalMinor
+	}
+	return 0
+}
+
+func (x *FundingReservationCommand) GetFeeMinor() int64 {
+	if x != nil {
+		return x.FeeMinor
+	}
+	return 0
+}
+
+func (x *FundingReservationCommand) GetPricingHash() string {
+	if x != nil {
+		return x.PricingHash
+	}
+	return ""
+}
+
+func (x *FundingReservationCommand) GetPricingSnapshotJson() string {
+	if x != nil {
+		return x.PricingSnapshotJson
 	}
 	return ""
 }
@@ -973,12 +1005,16 @@ const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12-\n" +
 	"\x06amount\x18\x02 \x01(\v2\x15.osai.ledger.v1.MoneyR\x06amount\x12-\n" +
 	"\x12evidence_reference\x18\x03 \x01(\tR\x11evidenceReference\x12%\n" +
-	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\"\xb3\x01\n" +
+	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\"\xdd\x02\n" +
 	"\x19FundingReservationCommand\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12-\n" +
 	"\x06amount\x18\x03 \x01(\v2\x15.osai.ledger.v1.MoneyR\x06amount\x12%\n" +
-	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\"z\n" +
+	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\x124\n" +
+	"\x16source_principal_minor\x18\x05 \x01(\x03R\x14sourcePrincipalMinor\x12\x1b\n" +
+	"\tfee_minor\x18\x06 \x01(\x03R\bfeeMinor\x12!\n" +
+	"\fpricing_hash\x18\a \x01(\tR\vpricingHash\x122\n" +
+	"\x15pricing_snapshot_json\x18\b \x01(\tR\x13pricingSnapshotJson\"z\n" +
 	"\x1aFundingReservationResponse\x12\x1d\n" +
 	"\n" +
 	"journal_id\x18\x01 \x01(\tR\tjournalId\x12\x14\n" +

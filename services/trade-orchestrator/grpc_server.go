@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/osai/osai/pkg/pricing"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
@@ -61,14 +63,29 @@ func (s *tradeServer) validateApprovedBeneficiary(ctx context.Context, instituti
 	return nil
 }
 
-func (s *tradeServer) reserveFunding(ctx context.Context, institutionID, tradeID, currency string, amountMinor int64) error {
+func (s *tradeServer) reserveFunding(ctx context.Context, institutionID, tradeID, currency string, amountMinor int64, snapshot *pricing.Snapshot) error {
 	if s == nil || s.ledgerClient == nil {
 		return nil
 	}
 	if amountMinor <= 0 {
 		return status.Error(codes.InvalidArgument, "amount must be positive")
 	}
-	resp, err := s.ledgerClient.ReserveFunding(ctx, &ledgerv1.FundingReservationCommand{InstitutionId: institutionID, TradeId: tradeID, Amount: &ledgerv1.Money{AmountMinor: amountMinor, Currency: currency}, CorrelationId: tradeID})
+	command := &ledgerv1.FundingReservationCommand{
+		InstitutionId: institutionID, TradeId: tradeID,
+		Amount:        &ledgerv1.Money{AmountMinor: amountMinor, Currency: currency},
+		CorrelationId: tradeID, SourcePrincipalMinor: amountMinor,
+	}
+	if snapshot != nil {
+		snapshotJSON, err := json.Marshal(snapshot)
+		if err != nil {
+			return status.Error(codes.Internal, "pricing snapshot serialization failed")
+		}
+		command.SourcePrincipalMinor = snapshot.SourcePrincipalMinor
+		command.FeeMinor = snapshot.FeeMinor
+		command.PricingHash = snapshot.Hash
+		command.PricingSnapshotJson = string(snapshotJSON)
+	}
+	resp, err := s.ledgerClient.ReserveFunding(ctx, command)
 	if err != nil {
 		return err
 	}
@@ -94,21 +111,52 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 	if req.Amount != nil && req.Amount.AmountMinor <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "amount must be positive")
 	}
-	amountMinor := req.BaseAmountMinor
-	currency := req.BaseCurrency
-	if req.Amount != nil {
-		amountMinor = req.Amount.AmountMinor
-		if strings.TrimSpace(req.Amount.Currency) != "" {
-			currency = req.Amount.Currency
+	currency := strings.ToUpper(strings.TrimSpace(req.BaseCurrency))
+	payoutAmountMinor := req.BaseAmountMinor
+	reservationAmountMinor := req.BaseAmountMinor
+	var pricingSnapshot *pricing.Snapshot
+	if req.PricingSnapshot != nil {
+		converted := pricingSnapshotFromProto(req.PricingSnapshot)
+		if err := pricing.Validate(converted); err != nil {
+			return nil, status.Error(codes.InvalidArgument, "pricing snapshot is invalid")
 		}
-	}
-	if strings.TrimSpace(currency) == "" {
-		return nil, status.Error(codes.InvalidArgument, "currency required")
-	}
-	if !strings.EqualFold(req.BaseCurrency, req.QuoteCurrency) ||
-		!strings.EqualFold(currency, req.BaseCurrency) ||
-		amountMinor != req.BaseAmountMinor {
-		return nil, status.Error(codes.FailedPrecondition, "cross-currency or fee-bearing funding requires verified FX execution support")
+		if converted.SourceCurrency != strings.ToUpper(strings.TrimSpace(req.BaseCurrency)) ||
+			converted.DestinationCurrency != strings.ToUpper(strings.TrimSpace(req.QuoteCurrency)) ||
+			converted.SourcePrincipalMinor != req.BaseAmountMinor ||
+			req.Amount == nil || converted.DestinationAmountMinor != req.Amount.AmountMinor ||
+			!strings.EqualFold(req.Amount.Currency, converted.DestinationCurrency) {
+			return nil, status.Error(codes.FailedPrecondition, "trade amount does not match immutable pricing snapshot")
+		}
+		if _, exists := s.store.GetByQuoteID(req.QuoteId); !exists {
+			expiresAt, _ := time.Parse(time.RFC3339Nano, converted.ExpiresAt)
+			if !expiresAt.After(time.Now()) {
+				return nil, status.Error(codes.FailedPrecondition, "quote expired before trade acceptance")
+			}
+		}
+		if converted.SourceCurrency != converted.DestinationCurrency {
+			return nil, status.Error(codes.FailedPrecondition, "cross-currency funding requires verified FX execution and Ledger posting")
+		}
+		if s.ledgerClient == nil {
+			return nil, status.Error(codes.Unavailable, "durable Ledger funding is required")
+		}
+		pricingSnapshot = &converted
+		payoutAmountMinor = converted.DestinationAmountMinor
+		reservationAmountMinor = converted.TotalDebitMinor
+	} else {
+		amountMinor := req.BaseAmountMinor
+		if req.Amount != nil {
+			amountMinor = req.Amount.AmountMinor
+			if strings.TrimSpace(req.Amount.Currency) != "" {
+				currency = strings.ToUpper(strings.TrimSpace(req.Amount.Currency))
+			}
+		}
+		if !strings.EqualFold(req.BaseCurrency, req.QuoteCurrency) ||
+			!strings.EqualFold(currency, req.BaseCurrency) ||
+			amountMinor != req.BaseAmountMinor {
+			return nil, status.Error(codes.FailedPrecondition, "cross-currency or fee-bearing funding requires an immutable pricing snapshot")
+		}
+		payoutAmountMinor = amountMinor
+		reservationAmountMinor = amountMinor
 	}
 	if strings.EqualFold(req.SettlementProviderId, "flutterwave") && os.Getenv("OSAI_FLW_TRADE_ROUTING_ENABLED") != "true" {
 		return nil, status.Error(codes.FailedPrecondition, "flutterwave trade routing is disabled")
@@ -116,29 +164,53 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 	if err := s.validateApprovedBeneficiary(ctx, req.InstitutionId, req.BeneficiaryId); err != nil {
 		return nil, err
 	}
-	trade, err := s.store.CreateTrade(req.InstitutionId, req.QuoteId, req.IdempotencyKey, req.CorrelationId, req.BaseAmountMinor, req.BaseCurrency, req.QuoteCurrency, req.BeneficiaryId, req.SettlementProviderId, req.CustomerReference)
+	var trade *tradecore.Trade
+	var err error
+	if pricingSnapshot != nil {
+		trade, err = s.store.CreateTradeWithPricing(req.InstitutionId, req.QuoteId, req.IdempotencyKey, req.CorrelationId,
+			pricingSnapshot.SourcePrincipalMinor, req.BaseCurrency, req.QuoteCurrency, *pricingSnapshot,
+			req.BeneficiaryId, req.SettlementProviderId, req.CustomerReference)
+	} else {
+		trade, err = s.store.CreateTrade(req.InstitutionId, req.QuoteId, req.IdempotencyKey, req.CorrelationId,
+			req.BaseAmountMinor, req.BaseCurrency, req.QuoteCurrency, req.BeneficiaryId, req.SettlementProviderId, req.CustomerReference)
+	}
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if err := s.store.SetStatus(trade.ID, tradecore.StateFundingRequired); err != nil {
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	if trade.State != tradecore.StateFunded && trade.State != tradecore.StateSettling &&
+		trade.State != tradecore.StateFeeAccountingRequired {
+		if err := s.store.SetStatus(trade.ID, tradecore.StateFundingRequired); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		trade.State = tradecore.StateFundingRequired
+		trade.Status = string(tradecore.StateFundingRequired)
 	}
-	trade.State = tradecore.StateFundingRequired
-	trade.Status = string(tradecore.StateFundingRequired)
-	if err := s.reserveFunding(ctx, req.InstitutionId, trade.ID, currency, amountMinor); err != nil {
+	if err := s.reserveFunding(ctx, req.InstitutionId, trade.ID, currency, reservationAmountMinor, pricingSnapshot); err != nil {
 		if status.Code(err) == codes.ResourceExhausted {
-			return &tradev1.TradeResponse{TradeId: trade.ID, InstitutionId: trade.InstitutionID, QuoteId: trade.QuoteID, Status: string(tradecore.StateFundingRequired), BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency, QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID, BeneficiaryId: req.BeneficiaryId, SettlementProviderId: req.SettlementProviderId, CustomerReference: trade.CustomerReference}, nil
+			return tradeResponse(trade, string(tradecore.StateFundingRequired)), nil
 		}
 		if setErr := s.store.SetStatus(trade.ID, tradecore.StateFundingRequired); setErr != nil {
 			log.Printf("funding gate rejected but trade status could not be updated: %v", setErr)
 		}
 		return nil, err
 	}
-	if err := s.store.SetStatus(trade.ID, tradecore.StateFunded); err != nil {
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	if trade.State != tradecore.StateFunded && trade.State != tradecore.StateSettling {
+		if err := s.store.SetStatus(trade.ID, tradecore.StateFunded); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		trade.State = tradecore.StateFunded
+		trade.Status = string(tradecore.StateFunded)
 	}
-	trade.State = tradecore.StateFunded
-	trade.Status = string(tradecore.StateFunded)
+	if pricingSnapshot != nil && pricingSnapshot.FeeMinor > 0 {
+		if trade.State != tradecore.StateFeeAccountingRequired {
+			if err := s.store.SetStatus(trade.ID, tradecore.StateFeeAccountingRequired); err != nil {
+				return nil, status.Error(codes.Internal, "fee accounting state persistence failed")
+			}
+			trade.State = tradecore.StateFeeAccountingRequired
+			trade.Status = string(tradecore.StateFeeAccountingRequired)
+		}
+		return tradeResponse(trade, trade.Status), nil
+	}
 	if s.settlementClient != nil {
 		resp, err := s.settlementClient.CreateSettlementForTrade(ctx, &settlementv1.CreateSettlementForTradeRequest{
 			InstitutionId:  req.InstitutionId,
@@ -148,7 +220,7 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 			CorrelationId:  req.CorrelationId,
 			BeneficiaryId:  req.BeneficiaryId,
 			ProviderId:     req.SettlementProviderId,
-			Amount:         &settlementv1.Money{AmountMinor: amountMinor, Currency: currency},
+			Amount:         &settlementv1.Money{AmountMinor: payoutAmountMinor, Currency: currency},
 			Purpose:        "trade-acceptance",
 		})
 		if err != nil {
@@ -173,7 +245,59 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 		trade.Status = string(tradecore.StateSettling)
 	}
 	log.Printf("trade created: trade_id=%s quote_id=%s institution_id=%s settlement_id=%s correlation_id=%s", trade.ID, trade.QuoteID, trade.InstitutionID, trade.SettlementID, trade.CorrelationID)
-	return &tradev1.TradeResponse{TradeId: trade.ID, InstitutionId: trade.InstitutionID, QuoteId: trade.QuoteID, Status: trade.Status, BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency, QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID, SettlementId: trade.SettlementID, BeneficiaryId: req.BeneficiaryId, SettlementProviderId: req.SettlementProviderId, CustomerReference: trade.CustomerReference}, nil
+	return tradeResponse(trade, trade.Status), nil
+}
+
+func pricingSnapshotFromProto(snapshot *tradev1.PricingSnapshot) pricing.Snapshot {
+	return pricing.Snapshot{
+		Mode: snapshot.GetQuoteMode(), RequestedAmountMinor: snapshot.GetRequestedAmountMinor(),
+		SourcePrincipalMinor: snapshot.GetSourcePrincipalMinor(), FeeMinor: snapshot.GetFeeMinor(),
+		TotalDebitMinor: snapshot.GetTotalDebitMinor(), DestinationAmountMinor: snapshot.GetDestinationAmountMinor(),
+		DestinationTargetMinor: snapshot.GetDestinationTargetMinor(), DestinationSurplusMinor: snapshot.GetDestinationSurplusMinor(),
+		SourceCurrency: snapshot.GetSourceCurrency(), DestinationCurrency: snapshot.GetDestinationCurrency(),
+		RateScaled: snapshot.GetRateScaled(), RateDirection: snapshot.GetRateDirection(), RateScale: snapshot.GetRateScale(),
+		SourceExponent: snapshot.GetSourceMinorExponent(), DestinationExponent: snapshot.GetDestinationMinorExponent(),
+		FeeScheduleID: snapshot.GetFeeScheduleId(), FeeScheduleVersion: snapshot.GetFeeScheduleVersion(),
+		FixedFeeMinor: snapshot.GetFixedFeeMinor(), FeeBasisPoints: snapshot.GetFeeBasisPoints(),
+		MinimumFeeMinor: snapshot.GetMinimumFeeMinor(), MaximumFeeMinor: snapshot.GetMaximumFeeMinor(),
+		MinimumPrincipalMinor: snapshot.GetMinimumSourcePrincipalMinor(), MaximumPrincipalMinor: snapshot.GetMaximumSourcePrincipalMinor(),
+		MinimumDebitMinor: snapshot.GetMinimumTotalDebitMinor(), MaximumDebitMinor: snapshot.GetMaximumTotalDebitMinor(),
+		MinimumDestinationMinor: snapshot.GetMinimumDestinationMinor(), MaximumDestinationMinor: snapshot.GetMaximumDestinationMinor(),
+		ExpiresAt: snapshot.GetExpiresAt(), Hash: snapshot.GetSnapshotHash(),
+	}
+}
+
+func tradeResponse(trade *tradecore.Trade, statusValue string) *tradev1.TradeResponse {
+	response := &tradev1.TradeResponse{
+		TradeId: trade.ID, InstitutionId: trade.InstitutionID, QuoteId: trade.QuoteID,
+		Status: statusValue, BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency,
+		QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID, SettlementId: trade.SettlementID,
+		BeneficiaryId: trade.BeneficiaryID, SettlementProviderId: trade.SettlementProviderID,
+		CustomerReference: trade.CustomerReference,
+	}
+	if trade.PricingSnapshot != nil {
+		response.PricingSnapshot = pricingSnapshotToProto(*trade.PricingSnapshot)
+	}
+	return response
+}
+
+func pricingSnapshotToProto(snapshot pricing.Snapshot) *tradev1.PricingSnapshot {
+	return &tradev1.PricingSnapshot{
+		QuoteMode: snapshot.Mode, RequestedAmountMinor: snapshot.RequestedAmountMinor,
+		SourcePrincipalMinor: snapshot.SourcePrincipalMinor, FeeMinor: snapshot.FeeMinor,
+		TotalDebitMinor: snapshot.TotalDebitMinor, DestinationAmountMinor: snapshot.DestinationAmountMinor,
+		DestinationTargetMinor: snapshot.DestinationTargetMinor, DestinationSurplusMinor: snapshot.DestinationSurplusMinor,
+		SourceCurrency: snapshot.SourceCurrency, DestinationCurrency: snapshot.DestinationCurrency,
+		RateScaled: snapshot.RateScaled, RateDirection: snapshot.RateDirection, RateScale: snapshot.RateScale,
+		FeeScheduleId: snapshot.FeeScheduleID, FeeScheduleVersion: snapshot.FeeScheduleVersion,
+		SourceMinorExponent: snapshot.SourceExponent, DestinationMinorExponent: snapshot.DestinationExponent,
+		FixedFeeMinor: snapshot.FixedFeeMinor, FeeBasisPoints: snapshot.FeeBasisPoints,
+		MinimumFeeMinor: snapshot.MinimumFeeMinor, MaximumFeeMinor: snapshot.MaximumFeeMinor,
+		MinimumSourcePrincipalMinor: snapshot.MinimumPrincipalMinor, MaximumSourcePrincipalMinor: snapshot.MaximumPrincipalMinor,
+		MinimumTotalDebitMinor: snapshot.MinimumDebitMinor, MaximumTotalDebitMinor: snapshot.MaximumDebitMinor,
+		MinimumDestinationMinor: snapshot.MinimumDestinationMinor, MaximumDestinationMinor: snapshot.MaximumDestinationMinor,
+		ExpiresAt: snapshot.ExpiresAt, SnapshotHash: snapshot.Hash,
+	}
 }
 
 func (s *tradeServer) GetTrade(ctx context.Context, req *tradev1.GetTradeRequest) (*tradev1.TradeResponse, error) {
@@ -193,7 +317,7 @@ func (s *tradeServer) GetTrade(ctx context.Context, req *tradev1.GetTradeRequest
 	if trade.InstitutionID != req.InstitutionId {
 		return nil, status.Error(codes.PermissionDenied, "forbidden")
 	}
-	return &tradev1.TradeResponse{TradeId: trade.ID, InstitutionId: trade.InstitutionID, QuoteId: trade.QuoteID, Status: trade.Status, BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency, QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID, SettlementId: trade.SettlementID, BeneficiaryId: trade.BeneficiaryID, SettlementProviderId: trade.SettlementProviderID, CustomerReference: trade.CustomerReference}, nil
+	return tradeResponse(trade, trade.Status), nil
 }
 
 func (s *tradeServer) ListTrades(ctx context.Context, req *tradev1.ListTradesRequest) (*tradev1.ListTradesResponse, error) {
@@ -229,13 +353,7 @@ func (s *tradeServer) ListTrades(ctx context.Context, req *tradev1.ListTradesReq
 	}
 	response := &tradev1.ListTradesResponse{Items: make([]*tradev1.TradeResponse, 0, len(trades)), Page: req.Page, PageSize: req.PageSize, Total: int32(total)}
 	for _, trade := range trades {
-		response.Items = append(response.Items, &tradev1.TradeResponse{
-			TradeId: trade.ID, InstitutionId: trade.InstitutionID, QuoteId: trade.QuoteID,
-			Status: trade.Status, BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency,
-			QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID,
-			SettlementId: trade.SettlementID, BeneficiaryId: trade.BeneficiaryID,
-			SettlementProviderId: trade.SettlementProviderID, CustomerReference: trade.CustomerReference,
-		})
+		response.Items = append(response.Items, tradeResponse(&trade, trade.Status))
 	}
 	return response, nil
 }

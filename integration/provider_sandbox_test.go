@@ -640,6 +640,100 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	if fundingCredits := proofCount(db, `SELECT count(*) FROM ledger_entries WHERE owner=$1 AND account_code='2000' AND credit>0`, institution); fundingCredits == 0 {
 		t.Errorf("funding gate absent: three provider payouts completed without any institution prefund journal; public balance=%v", balance)
 	}
+
+	feeSchedule, err := json.Marshal(map[string]any{
+		"institution_id": institution, "source_currency": "NGN", "destination_currency": "NGN",
+		"source_minor_exponent": 2, "destination_minor_exponent": 2,
+		"minimum_source_principal_minor": 1, "maximum_source_principal_minor": 100_000_000,
+		"minimum_total_debit_minor": 1, "maximum_total_debit_minor": 100_000_000,
+		"minimum_destination_minor": 1, "maximum_destination_minor": 100_000_000,
+		"fixed_fee_minor": 500, "fee_basis_points": 0, "minimum_fee_minor": 500, "maximum_fee_minor": 500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	feeProposalBody, err := json.Marshal(map[string]any{"fee_schedule": json.RawMessage(feeSchedule), "reason": "exercise fee-bearing funding"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	feeCorrelation := "pricing-fee-" + institution
+	feeProposalCode, feeProposal := proofHTTP(t, http.MethodPost, quoteAdmin+"/v1/operator/pricing/propose", "Bearer "+pricingMakerToken, "", feeCorrelation, string(feeProposalBody))
+	if feeProposalCode != http.StatusCreated {
+		t.Fatalf("fee schedule proposal: code=%d response=%v", feeProposalCode, feeProposal)
+	}
+	feeDecisionBody, err := json.Marshal(map[string]string{
+		"proposal_id": stringField(t, feeProposal, "proposal_id"), "institution_id": institution,
+		"reason": "approve fee-bearing integration fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := proofHTTP(t, http.MethodPost, quoteAdmin+"/v1/operator/pricing/approve", "Bearer "+pricingCheckerToken, "", feeCorrelation, string(feeDecisionBody)); code != http.StatusNoContent {
+		t.Fatalf("fee schedule approval: code=%d", code)
+	}
+	feeQuoteCode, feeQuote := call(http.MethodPost, api+"/v1/quotes", clientAuth, "quote-fee-1", `{"base_amount_minor":20000,"base_currency":"NGN","quote_currency":"NGN","destination_rail":"sim_lp_1","customer_reference":"proof-fee-order"}`)
+	if feeQuoteCode != http.StatusOK || feeQuote["source_principal_minor"] != float64(19500) ||
+		feeQuote["fee_minor"] != float64(500) || feeQuote["total_debit_minor"] != float64(20000) {
+		t.Fatalf("fee-bearing quote: code=%d response=%v", feeQuoteCode, feeQuote)
+	}
+	feeQuoteID := stringField(t, feeQuote, "quote_id")
+	feeAcceptBody := `{}`
+	feeAcceptCode, feeAcceptance := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody)
+	if feeAcceptCode != http.StatusOK || feeAcceptance["trade_id"] == "" {
+		t.Fatalf("fee-bearing quote acceptance: code=%d response=%v", feeAcceptCode, feeAcceptance)
+	}
+	feeTradeID := stringField(t, feeAcceptance, "trade_id")
+	feeTradeCode, feeTrade := call(http.MethodGet, api+"/v1/trades/"+feeTradeID, clientAuth, "", "")
+	if feeTradeCode != http.StatusOK || feeTrade["status"] != "FUNDING_REQUIRED" {
+		t.Fatalf("unfunded fee-bearing trade must remain recoverable: code=%d trade=%v", feeTradeCode, feeTrade)
+	}
+	if replayCode, replay := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody); replayCode != http.StatusOK || replay["trade_id"] != feeTradeID {
+		t.Fatalf("fee acceptance replay changed identity: code=%d response=%v", replayCode, replay)
+	}
+	if _, err = ledgerClient.PostLocalPrefund(fixtureContext, &ledgerv1.LocalPrefundCommand{
+		InstitutionId: institution, Amount: &ledgerv1.Money{AmountMinor: 9_999, Currency: "NGN"},
+		EvidenceReference: "bank_fee_short_" + randomHex(t, 6), CorrelationId: correlation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
+		t.Fatalf("insufficient fee funding retry lost trade identity: code=%d response=%v", code, response)
+	}
+	if proofCount(db, `SELECT count(*) FROM ledger_funding_reservations WHERE trade_id=$1`, feeTradeID) != 0 {
+		t.Fatal("insufficient all-in fee debit created a partial Ledger hold")
+	}
+	if _, err = ledgerClient.PostLocalPrefund(fixtureContext, &ledgerv1.LocalPrefundCommand{
+		InstitutionId: institution, Amount: &ledgerv1.Money{AmountMinor: 1, Currency: "NGN"},
+		EvidenceReference: "bank_fee_remainder_" + randomHex(t, 6), CorrelationId: correlation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
+		t.Fatalf("fee-bearing funding did not recover after exact prefund: code=%d response=%v", code, response)
+	}
+	feeTradeCode, feeTrade = call(http.MethodGet, api+"/v1/trades/"+feeTradeID, clientAuth, "", "")
+	pricingSnapshot, snapshotOK := feeTrade["pricing_snapshot"].(map[string]any)
+	if feeTradeCode != http.StatusOK || feeTrade["status"] != "FEE_ACCOUNTING_REQUIRED" || !snapshotOK ||
+		pricingSnapshot["source_principal_minor"] != float64(19_500) ||
+		pricingSnapshot["fee_minor"] != float64(500) || pricingSnapshot["total_debit_minor"] != float64(20_000) {
+		t.Fatalf("funded trade did not expose immutable fee terms or remain payout-gated: code=%d trade=%v", feeTradeCode, feeTrade)
+	}
+	var reservedPrincipal, reservedFee int64
+	var pricingHash, reservationState string
+	if err = db.QueryRow(`SELECT source_principal_minor,fee_minor,pricing_hash,state FROM ledger_funding_reservations WHERE trade_id=$1`, feeTradeID).Scan(&reservedPrincipal, &reservedFee, &pricingHash, &reservationState); err != nil {
+		t.Fatal(err)
+	}
+	if reservedPrincipal != 19_500 || reservedFee != 500 || len(pricingHash) != 64 || reservationState != "ACTIVE" ||
+		proofCount(db, `SELECT count(*) FROM settlement_instructions WHERE trade_id=$1`, feeTradeID) != 0 ||
+		proofCount(db, `SELECT count(*) FROM ledger_journals WHERE dedup_key=$1`, "hold:"+feeTradeID) != 1 {
+		t.Fatalf("Ledger did not atomically reserve the exact all-in debit or trade reached payout: principal=%d fee=%d hash=%q state=%s", reservedPrincipal, reservedFee, pricingHash, reservationState)
+	}
+	feeBalancesCode, feeBalances := call(http.MethodGet, api+"/v1/balances", clientAuth, "", "")
+	feeNGN := balanceForCurrency(t, feeBalances, "NGN")
+	if feeBalancesCode != http.StatusOK || feeNGN["available_minor"] != float64(0) || feeNGN["held_minor"] != float64(20_000) || provider.postCount() != 4 {
+		t.Fatalf("all-in fee hold or fail-closed payout gate incorrect: code=%d balance=%v provider_posts=%d", feeBalancesCode, feeBalances, provider.postCount())
+	}
+	t.Logf("FEE_FUNDING trade=%s principal=19500 fee=500 reserved=20000 state=FEE_ACCOUNTING_REQUIRED payout=blocked", feeTradeID)
 }
 
 type fakeTransferProvider struct {

@@ -47,6 +47,7 @@ message QuoteResponse {
   int64 fee_schedule_version = 21;
   uint32 source_minor_exponent = 22;
   uint32 destination_minor_exponent = 23;
+  int64 total_cost_minor = 24;
 }
 
 message GetQuoteRequest {

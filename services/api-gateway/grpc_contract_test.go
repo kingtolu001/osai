@@ -400,6 +400,10 @@ func TestFixedDestinationQuoteRequestForwardsOnlyTargetAmount(t *testing.T) {
 	if result.StatusCode != http.StatusOK {
 		t.Fatalf("fixed-destination quote request failed: %+v", result)
 	}
+	if result.Body["total_cost_minor"] != result.Body["total_debit_minor"] ||
+		result.Body["total_cost_currency"] != "USD" {
+		t.Fatalf("quote total cost must be the source-currency all-in debit: %+v", result.Body)
+	}
 	if len(quoteClient.requests) != 1 || quoteClient.requests[0].QuoteMode != "FIXED_DESTINATION" ||
 		quoteClient.requests[0].BaseAmountMinor != 0 ||
 		quoteClient.requests[0].DestinationAmountMinor != 15_000_000 {

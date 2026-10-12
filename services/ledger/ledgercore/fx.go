@@ -31,8 +31,10 @@ type FXExecutionEvidence struct {
 	QuoteID                  string
 	Executor                 string
 	SourceCurrency           string
-	SourceDebitMinor         int64
+	SourceExponent           uint8
+	SourcePrincipalMinor     int64
 	DestinationCurrency      string
+	DestinationExponent      uint8
 	DestinationProceedsMinor int64
 	AppliedRate              string
 	RateDirection            FXRateDirection
@@ -44,13 +46,15 @@ type FXExecutionEvidence struct {
 }
 
 type FXAccount struct {
-	Code  string
-	Name  string
-	Owner string
+	Code     string
+	Name     string
+	Owner    string
+	Currency string
 }
 
-// FXJournalMapping contains the debit/credit accounts approved for posting.
-// The Ledger does not infer account classifications or sides from role names.
+// FXJournalMapping supplies explicit debit/credit accounts for the FX legs.
+// Approval and account classification are deployment concerns; the Ledger
+// does not infer them from role names.
 type FXJournalMapping struct {
 	SourceDebit       FXAccount
 	SourceCredit      FXAccount
@@ -64,11 +68,14 @@ func ValidateFXExecutionEvidence(evidence FXExecutionEvidence) error {
 		evidence.SourceEvidenceReference == "" || evidence.DestinationEvidenceRef == "" {
 		return errors.New("FX execution identity and independent evidence references are required")
 	}
-	if evidence.SourceCurrency == "" || evidence.DestinationCurrency == "" ||
+	if !validFXCurrency(evidence.SourceCurrency) || !validFXCurrency(evidence.DestinationCurrency) ||
 		strings.EqualFold(evidence.SourceCurrency, evidence.DestinationCurrency) {
 		return errors.New("FX execution requires distinct source and destination currencies")
 	}
-	if evidence.SourceDebitMinor <= 0 || evidence.DestinationProceedsMinor <= 0 {
+	if evidence.SourceExponent > 9 || evidence.DestinationExponent > 9 {
+		return errors.New("FX currency exponent is unsupported")
+	}
+	if evidence.SourcePrincipalMinor <= 0 || evidence.DestinationProceedsMinor <= 0 {
 		return errors.New("FX execution amounts must be positive minor units")
 	}
 	if evidence.RateDirection != SourcePerDestination && evidence.RateDirection != DestinationPerSource {
@@ -83,11 +90,66 @@ func ValidateFXExecutionEvidence(evidence FXExecutionEvidence) error {
 	}
 	for _, fee := range evidence.Fees {
 		if fee.Kind == "" || fee.AmountMinor < 0 || fee.Currency == "" ||
+			(!strings.EqualFold(fee.Currency, evidence.SourceCurrency) && !strings.EqualFold(fee.Currency, evidence.DestinationCurrency)) ||
 			(fee.AmountMinor > 0 && fee.EvidenceReference == "") {
 			return fmt.Errorf("invalid FX fee evidence for kind %q", fee.Kind)
 		}
 	}
+	expectedProceeds, err := fxDestinationProceeds(evidence)
+	if err != nil {
+		return err
+	}
+	if expectedProceeds != evidence.DestinationProceedsMinor {
+		return fmt.Errorf("FX proceeds mismatch: applied rate yields %d minor units, evidence reports %d", expectedProceeds, evidence.DestinationProceedsMinor)
+	}
 	return nil
+}
+
+func fxDestinationProceeds(evidence FXExecutionEvidence) (int64, error) {
+	rate, ok := new(big.Rat).SetString(evidence.AppliedRate)
+	if !ok || rate.Sign() <= 0 {
+		return 0, errors.New("invalid applied FX rate")
+	}
+	numerator := new(big.Int).Set(big.NewInt(evidence.SourcePrincipalMinor))
+	denominator := new(big.Int)
+	switch evidence.RateDirection {
+	case SourcePerDestination:
+		numerator.Mul(numerator, rate.Denom())
+		denominator.Set(rate.Num())
+		numerator.Mul(numerator, pow10FX(evidence.DestinationExponent))
+		denominator.Mul(denominator, pow10FX(evidence.SourceExponent))
+	case DestinationPerSource:
+		numerator.Mul(numerator, rate.Num())
+		denominator.Set(rate.Denom())
+		numerator.Mul(numerator, pow10FX(evidence.DestinationExponent))
+		denominator.Mul(denominator, pow10FX(evidence.SourceExponent))
+	default:
+		return 0, errors.New("FX rate direction is required")
+	}
+	if denominator.Sign() <= 0 {
+		return 0, errors.New("invalid FX conversion denominator")
+	}
+	proceeds := numerator.Quo(numerator, denominator)
+	if !proceeds.IsInt64() {
+		return 0, errors.New("FX destination proceeds exceed supported integer range")
+	}
+	return proceeds.Int64(), nil
+}
+
+func pow10FX(exponent uint8) *big.Int {
+	return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(exponent)), nil)
+}
+
+func validFXCurrency(currency string) bool {
+	if len(currency) != 3 {
+		return false
+	}
+	for _, character := range currency {
+		if character < 'A' || character > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 func BuildFXExecutionJournals(evidence FXExecutionEvidence, mapping FXJournalMapping) ([]Journal, error) {
@@ -100,9 +162,16 @@ func BuildFXExecutionJournals(evidence FXExecutionEvidence, mapping FXJournalMap
 		mapping.DestinationDebit,
 		mapping.DestinationCredit,
 	}
-	for _, account := range accounts {
+	for index, account := range accounts {
 		if account.Code == "" || account.Name == "" || account.Owner == "" {
-			return nil, errors.New("complete Finance-approved FX account mapping is required")
+			return nil, errors.New("complete explicit FX account mapping is required")
+		}
+		expectedCurrency := evidence.SourceCurrency
+		if index >= 2 {
+			expectedCurrency = evidence.DestinationCurrency
+		}
+		if account.Currency != expectedCurrency {
+			return nil, fmt.Errorf("FX account %q currency %q does not match journal currency %q", account.Code, account.Currency, expectedCurrency)
 		}
 	}
 	if mapping.SourceDebit.Code == mapping.SourceCredit.Code ||
@@ -113,9 +182,9 @@ func BuildFXExecutionJournals(evidence FXExecutionEvidence, mapping FXJournalMap
 	source := NewJournal("jt_fx_"+evidence.TradeID+"_source", evidence.TradeID, evidence.SourceCurrency)
 	source.InstitutionID = evidence.InstitutionID
 	source.AddEntry(mapping.SourceDebit.Code, mapping.SourceDebit.Name, mapping.SourceDebit.Owner,
-		evidence.SourceCurrency, evidence.SourceDebitMinor, 0, evidence.ExecutionReference+":source:debit")
+		evidence.SourceCurrency, evidence.SourcePrincipalMinor, 0, evidence.ExecutionReference+":source:debit")
 	source.AddEntry(mapping.SourceCredit.Code, mapping.SourceCredit.Name, mapping.SourceCredit.Owner,
-		evidence.SourceCurrency, 0, evidence.SourceDebitMinor, evidence.ExecutionReference+":source:credit")
+		evidence.SourceCurrency, 0, evidence.SourcePrincipalMinor, evidence.ExecutionReference+":source:credit")
 
 	destination := NewJournal("jt_fx_"+evidence.TradeID+"_destination", evidence.TradeID, evidence.DestinationCurrency)
 	destination.InstitutionID = evidence.InstitutionID

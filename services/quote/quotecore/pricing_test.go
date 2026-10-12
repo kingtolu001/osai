@@ -68,6 +68,13 @@ func TestPriceFixedDestinationUsesConservativeRoundingAndTracksSurplus(t *testin
 		got.TotalDebitMinor != got.SourcePrincipalMinor+got.FeeMinor {
 		t.Fatalf("unexpected fixed-destination result: %+v", got)
 	}
+	previousProceeds, err := ConvertMinorUnits(got.SourcePrincipalMinor-1, 150_000_000_000, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if previousProceeds >= 15_000_001 {
+		t.Fatalf("fixed-destination principal was not minimal: principal=%d previous_proceeds=%d", got.SourcePrincipalMinor, previousProceeds)
+	}
 }
 
 func TestPriceQuoteUsesCurrencyExponents(t *testing.T) {
@@ -111,6 +118,34 @@ func TestPriceQuoteAppliesFeeMinimumAndMaximum(t *testing.T) {
 	}
 	if got.FeeMinor != 25 || got.SourcePrincipalMinor != 1_000 {
 		t.Fatalf("fee bounds not applied: %+v", got)
+	}
+}
+
+func TestPercentageFeeRoundsUpAndConversionRoundsDown(t *testing.T) {
+	policy := testFeeSchedule()
+	policy.FixedFeeMinor = 2
+	policy.FeeBasisPoints = 1
+	policy.MinimumFeeMinor = 0
+	policy.MaximumFeeMinor = 0
+
+	got, err := PriceQuote(policy, QuotePricingInput{
+		Mode:              QuoteModeFixedSource,
+		SourceAmountMinor: 4,
+		RateScaled:        RateScale,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SourcePrincipalMinor != 1 || got.FeeMinor != 3 || got.TotalDebitMinor != 4 {
+		t.Fatalf("percentage fee must round up before adding fixed fee: %+v", got)
+	}
+
+	proceeds, err := ConvertMinorUnits(1_499, 66_667, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proceeds != 0 {
+		t.Fatalf("positive conversion must floor minor units; got %d", proceeds)
 	}
 }
 

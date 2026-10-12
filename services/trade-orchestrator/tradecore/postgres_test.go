@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/osai/osai/pkg/pricing"
 )
 
 func TestPostgresListTradesFiltersAndPaginates(t *testing.T) {
@@ -86,4 +87,102 @@ func TestPostgresListTradesFiltersAndPaginates(t *testing.T) {
 	if total != 2 || len(pageOne) != 1 || pageOne[0].ID != second.ID {
 		t.Fatalf("unexpected first page: total=%d trades=%+v", total, pageOne)
 	}
+}
+
+func TestPostgresPricingSnapshotPersistsAndRejectsAlteredReplay(t *testing.T) {
+	dsn := os.Getenv("OSAI_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("OSAI_POSTGRES_DSN is not configured")
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.Ping(); err != nil {
+		t.Skipf("PostgreSQL unavailable: %v", err)
+	}
+	store, err := NewPostgresStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	institutionID := "inst_pricing_snapshot_" + uuid.NewString()
+	quoteID := "quo_pricing_snapshot_" + uuid.NewString()
+	snapshot := persistedFeeSnapshot(t)
+	trade, err := store.CreateTradeWithPricing(institutionID, quoteID, "accept-first", "corr-first",
+		snapshot.SourcePrincipalMinor, snapshot.SourceCurrency, snapshot.DestinationCurrency, snapshot,
+		"", "sim_lp_1", "pricing-order")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM trade_outbox WHERE trade_id=$1`, trade.ID)
+		_, _ = db.Exec(`DELETE FROM trade_transitions WHERE trade_id=$1`, trade.ID)
+		_, _ = db.Exec(`DELETE FROM trades WHERE id=$1`, trade.ID)
+	})
+	restarted, err := NewPostgresStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, ok := restarted.GetByQuoteID(quoteID)
+	if !ok || loaded.PricingSnapshot == nil || *loaded.PricingSnapshot != snapshot {
+		t.Fatalf("pricing snapshot did not survive Trade store restart: trade=%+v found=%v", loaded, ok)
+	}
+
+	type result struct {
+		trade *Trade
+		err   error
+	}
+	results := make(chan result, 2)
+	for _, key := range []string{"accept-retry-a", "accept-retry-b"} {
+		go func(key string) {
+			replayed, replayErr := restarted.CreateTradeWithPricing(institutionID, quoteID, key, "corr-retry",
+				snapshot.SourcePrincipalMinor, snapshot.SourceCurrency, snapshot.DestinationCurrency, snapshot,
+				"", "sim_lp_1", "pricing-order")
+			results <- result{trade: replayed, err: replayErr}
+		}(key)
+	}
+	for i := 0; i < 2; i++ {
+		replayed := <-results
+		if replayed.err != nil || replayed.trade == nil || replayed.trade.ID != trade.ID {
+			t.Fatalf("concurrent pricing replay created a second trade: trade=%+v err=%v", replayed.trade, replayed.err)
+		}
+	}
+
+	altered := snapshot
+	altered.ExpiresAt = time.Now().UTC().Add(2 * time.Minute).Format(time.RFC3339Nano)
+	altered.Hash, err = pricing.Hash(altered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = restarted.CreateTradeWithPricing(institutionID, quoteID, "accept-altered", "corr-altered",
+		altered.SourcePrincipalMinor, altered.SourceCurrency, altered.DestinationCurrency, altered,
+		"", "sim_lp_1", "pricing-order"); err == nil {
+		t.Fatal("altered immutable pricing snapshot replay accepted")
+	}
+}
+
+func persistedFeeSnapshot(t *testing.T) pricing.Snapshot {
+	t.Helper()
+	snapshot := pricing.Snapshot{
+		Mode: "FIXED_SOURCE", RequestedAmountMinor: 10_000, SourcePrincipalMinor: 9_500,
+		FeeMinor: 500, TotalDebitMinor: 10_000, DestinationAmountMinor: 9_500,
+		SourceCurrency: "NGN", DestinationCurrency: "NGN", RateScaled: pricing.RateScale,
+		RateDirection: "NGN_PER_NGN", RateScale: pricing.RateScale,
+		SourceExponent: 2, DestinationExponent: 2, FeeScheduleID: "fee_test", FeeScheduleVersion: 1,
+		FixedFeeMinor: 500, MinimumFeeMinor: 500, MaximumFeeMinor: 500,
+		MinimumPrincipalMinor: 1, MaximumPrincipalMinor: 1_000_000,
+		MinimumDebitMinor: 1, MaximumDebitMinor: 2_000_000,
+		MinimumDestinationMinor: 1, MaximumDestinationMinor: 2_000_000,
+		ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano),
+	}
+	hash, err := pricing.Hash(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Hash = hash
+	if err = pricing.Validate(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
 }

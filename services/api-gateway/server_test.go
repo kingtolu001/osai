@@ -18,7 +18,12 @@ type recordingQuoteClient struct {
 
 func (c *recordingQuoteClient) CreateQuote(request QuoteRequest) (QuoteResponse, error) {
 	c.requests = append(c.requests, request)
-	return c.stubQuoteClient.CreateQuote(request)
+	response, err := c.stubQuoteClient.CreateQuote(request)
+	if err == nil {
+		response.TotalDebitMinor = response.BaseAmountMinor
+		response.TotalCostMinor = response.TotalDebitMinor
+	}
+	return response, err
 }
 
 func TestGatewayQuoteFlowAndIdempotency(t *testing.T) {
@@ -70,6 +75,10 @@ func TestGatewayQuoteFlowAndIdempotency(t *testing.T) {
 		t.Fatalf("decode quote response: %v", err)
 	}
 	quoteID := first["quote_id"].(string)
+	if first["total_cost_minor"] != first["total_debit_minor"] ||
+		first["total_cost_currency"] != first["base_currency"] {
+		t.Fatalf("quote total cost should be the source-currency all-in debit: %+v", first)
+	}
 
 	request, _ = http.NewRequest(http.MethodPost, server.URL+"/v1/quotes", strings.NewReader(string(body)))
 	request.Header.Set("Authorization", "ApiKey "+clientHeader)

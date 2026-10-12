@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/osai/osai/pkg/pricing"
 	"github.com/osai/osai/services/ledger/ledgercore"
 )
 
@@ -42,22 +43,30 @@ type PrefundCommand struct {
 }
 
 type FundingCommand struct {
-	InstitutionID string
-	TradeID       string
-	Currency      string
-	AmountMinor   int64
-	CorrelationID string
+	InstitutionID        string
+	TradeID              string
+	Currency             string
+	AmountMinor          int64
+	SourcePrincipalMinor int64
+	FeeMinor             int64
+	PricingHash          string
+	PricingSnapshot      *pricing.Snapshot
+	CorrelationID        string
 }
 
 type FundingReservation struct {
-	TradeID       string
-	InstitutionID string
-	Currency      string
-	AmountMinor   int64
-	State         string
-	JournalID     string
-	SettlementID  string
-	SettlementRef string
+	TradeID              string
+	InstitutionID        string
+	Currency             string
+	AmountMinor          int64
+	SourcePrincipalMinor int64
+	FeeMinor             int64
+	PricingHash          string
+	PricingSnapshot      *pricing.Snapshot
+	State                string
+	JournalID            string
+	SettlementID         string
+	SettlementRef        string
 }
 
 var ErrInsufficientFunding = errors.New("insufficient institution prefund")

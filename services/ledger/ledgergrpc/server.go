@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"time"
 
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/pricing"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	"github.com/osai/osai/services/ledger/ledgerapi"
 	"google.golang.org/grpc/codes"
@@ -42,7 +44,19 @@ func (s *Server) ReserveFunding(ctx context.Context, req *ledgerv1.FundingReserv
 	if s.Service == nil || req == nil || req.Amount == nil {
 		return nil, status.Error(codes.InvalidArgument, "funding command required")
 	}
-	reservation, replay, err := s.Service.ReserveFunding(ctx, ledgerapi.FundingCommand{InstitutionID: req.InstitutionId, TradeID: req.TradeId, Currency: req.Amount.Currency, AmountMinor: req.Amount.AmountMinor, CorrelationID: req.CorrelationId})
+	var snapshot *pricing.Snapshot
+	if req.PricingSnapshotJson != "" {
+		snapshot = &pricing.Snapshot{}
+		if err := json.Unmarshal([]byte(req.PricingSnapshotJson), snapshot); err != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid pricing snapshot")
+		}
+	}
+	reservation, replay, err := s.Service.ReserveFunding(ctx, ledgerapi.FundingCommand{
+		InstitutionID: req.InstitutionId, TradeID: req.TradeId, Currency: req.Amount.Currency,
+		AmountMinor: req.Amount.AmountMinor, SourcePrincipalMinor: req.SourcePrincipalMinor,
+		FeeMinor: req.FeeMinor, PricingHash: req.PricingHash, PricingSnapshot: snapshot,
+		CorrelationID: req.CorrelationId,
+	})
 	if err != nil {
 		if errors.Is(err, ledgerapi.ErrInsufficientFunding) {
 			return nil, status.Error(codes.ResourceExhausted, "insufficient institution prefund")

@@ -65,6 +65,10 @@ message FundingReservationCommand {
   string trade_id = 2;
   Money amount = 3;
   string correlation_id = 4;
+  int64 source_principal_minor = 5;
+  int64 fee_minor = 6;
+  string pricing_hash = 7;
+  string pricing_snapshot_json = 8;
 }
 message FundingReservationResponse {
   string journal_id = 1;

@@ -470,7 +470,8 @@ func quoteResponseFromProto(resp *quotev1.QuoteResponse) QuoteResponse {
 		BaseAmountMinor: resp.BaseAmountMinor, BaseCurrency: resp.BaseCurrency, QuoteCurrency: resp.QuoteCurrency,
 		DestinationRail: resp.DestinationRail, AmountOutMinor: resp.AmountOutMinor, RateMinor: resp.RateMinor,
 		FeeMinor: resp.FeeMinor, QuoteMode: resp.QuoteMode, SourcePrincipalMinor: resp.SourcePrincipalMinor,
-		TotalDebitMinor: resp.TotalDebitMinor, DestinationTargetMinor: resp.DestinationTargetMinor,
+		TotalDebitMinor: resp.TotalDebitMinor, TotalCostMinor: resp.TotalCostMinor,
+		DestinationTargetMinor:  resp.DestinationTargetMinor,
 		DestinationSurplusMinor: resp.DestinationSurplusMinor, RateDirection: resp.RateDirection,
 		RateScale: resp.RateScale, FeeScheduleID: resp.FeeScheduleId, FeeScheduleVersion: resp.FeeScheduleVersion,
 		SourceMinorExponent: resp.SourceMinorExponent, DestinationMinorExponent: resp.DestinationMinorExponent,
@@ -483,7 +484,7 @@ func (t *grpcTradeClient) GetTrade(institutionID, tradeID string) (TradeReadResp
 	if err != nil {
 		return TradeReadResponse{}, err
 	}
-	return TradeReadResponse{TradeID: resp.TradeId, InstitutionID: resp.InstitutionId, QuoteID: resp.QuoteId, Status: resp.Status, BaseAmountMinor: resp.BaseAmountMinor, BaseCurrency: resp.BaseCurrency, QuoteCurrency: resp.QuoteCurrency, SettlementID: resp.SettlementId, CustomerReference: resp.CustomerReference, CorrelationID: resp.CorrelationId}, nil
+	return TradeReadResponse{TradeID: resp.TradeId, InstitutionID: resp.InstitutionId, QuoteID: resp.QuoteId, Status: resp.Status, BaseAmountMinor: resp.BaseAmountMinor, BaseCurrency: resp.BaseCurrency, QuoteCurrency: resp.QuoteCurrency, SettlementID: resp.SettlementId, CustomerReference: resp.CustomerReference, CorrelationID: resp.CorrelationId, PricingSnapshot: tradePricingSnapshotFromProto(resp.PricingSnapshot)}, nil
 }
 
 func (t *grpcTradeClient) ListTrades(institutionID string, request TradeListRequest) (TradePage, error) {
@@ -518,9 +519,27 @@ func (t *grpcTradeClient) ListTrades(institutionID string, request TradeListRequ
 			Status: item.Status, BaseAmountMinor: item.BaseAmountMinor, BaseCurrency: item.BaseCurrency,
 			QuoteCurrency: item.QuoteCurrency, SettlementID: item.SettlementId,
 			CustomerReference: item.CustomerReference, CorrelationID: item.CorrelationId,
+			PricingSnapshot: tradePricingSnapshotFromProto(item.PricingSnapshot),
 		})
 	}
 	return TradePage{Items: items, Page: int(resp.Page), PageSize: int(resp.PageSize), Total: int(resp.Total)}, nil
+}
+
+func tradePricingSnapshotFromProto(snapshot *tradev1.PricingSnapshot) *TradePricingSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &TradePricingSnapshot{
+		QuoteMode: snapshot.GetQuoteMode(), RequestedAmountMinor: snapshot.GetRequestedAmountMinor(),
+		SourcePrincipalMinor: snapshot.GetSourcePrincipalMinor(), FeeMinor: snapshot.GetFeeMinor(),
+		TotalDebitMinor: snapshot.GetTotalDebitMinor(), DestinationAmountMinor: snapshot.GetDestinationAmountMinor(),
+		DestinationTargetMinor: snapshot.GetDestinationTargetMinor(), DestinationSurplusMinor: snapshot.GetDestinationSurplusMinor(),
+		SourceCurrency: snapshot.GetSourceCurrency(), DestinationCurrency: snapshot.GetDestinationCurrency(),
+		RateScaled: snapshot.GetRateScaled(), RateDirection: snapshot.GetRateDirection(), RateScale: snapshot.GetRateScale(),
+		FeeScheduleID: snapshot.GetFeeScheduleId(), FeeScheduleVersion: snapshot.GetFeeScheduleVersion(),
+		SourceMinorExponent: snapshot.GetSourceMinorExponent(), DestinationMinorExponent: snapshot.GetDestinationMinorExponent(),
+		ExpiresAt: snapshot.GetExpiresAt(),
+	}
 }
 
 func (s *grpcSettlementClient) GetSettlement(institutionID, settlementID string) (SettlementReadResponse, error) {

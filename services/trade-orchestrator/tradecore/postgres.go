@@ -49,10 +49,16 @@ func (s *Store) createDB(trade *Trade) (*Trade, error) {
 		if err = json.Unmarshal(raw, &old); err != nil {
 			return nil, err
 		}
-		if old.InstitutionID != trade.InstitutionID || old.BaseAmountMinor != trade.BaseAmountMinor || old.BaseCurrency != trade.BaseCurrency || old.QuoteCurrency != trade.QuoteCurrency || old.BeneficiaryID != trade.BeneficiaryID || old.SettlementProviderID != trade.SettlementProviderID || old.CustomerReference != trade.CustomerReference {
+		if old.InstitutionID != trade.InstitutionID || old.BaseAmountMinor != trade.BaseAmountMinor ||
+			old.BaseCurrency != trade.BaseCurrency || old.QuoteCurrency != trade.QuoteCurrency ||
+			old.BeneficiaryID != trade.BeneficiaryID || old.SettlementProviderID != trade.SettlementProviderID ||
+			old.CustomerReference != trade.CustomerReference || !samePricingSnapshot(old.PricingSnapshot, trade.PricingSnapshot) {
 			return nil, errors.New("trade replay conflict")
 		}
-		return &old, tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return cloneTrade(&old), nil
 	}
 	if err != sql.ErrNoRows {
 		return nil, err
@@ -248,8 +254,9 @@ func (s *Store) setStatusDB(tradeID string, state TradeState) error {
 		return err
 	}
 	eventType := map[TradeState]string{
-		StateFundingRequired: "trade.funding_required",
-		StateFunded:          "trade.funded",
+		StateFundingRequired:       "trade.funding_required",
+		StateFunded:                "trade.funded",
+		StateFeeAccountingRequired: "trade.fee_accounting_required",
 	}[state]
 	if eventType != "" {
 		if err = insertTradeEvent(tx, &trade, eventType, trade.UpdatedAt); err != nil {

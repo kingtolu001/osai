@@ -9,6 +9,7 @@ import (
 
 	"github.com/osai/osai/adapters/flutterwave"
 	"github.com/osai/osai/adapters/simulator/simcore"
+	"github.com/osai/osai/pkg/pricing"
 	quotev1 "github.com/osai/osai/proto/osai/quote/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/quote/quotecore"
@@ -220,6 +221,9 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	if s.store == nil || req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request required")
 	}
+	if strings.TrimSpace(req.InstitutionId) == "" || strings.TrimSpace(req.IdempotencyKey) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id and idempotency_key are required")
+	}
 	quote, ok := s.store.Get(req.QuoteId)
 	if !ok {
 		return nil, status.Error(codes.NotFound, "quote not found")
@@ -227,26 +231,26 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	if quote.Request.CustomerID != req.InstitutionId {
 		return nil, status.Error(codes.PermissionDenied, "forbidden")
 	}
-	if quote.Pricing != nil &&
-		(quote.Request.BaseCurrency != quote.Request.QuoteCurrency ||
-			quote.FeeMinor != 0 ||
-			quote.Pricing.TotalDebitMinor != quote.AmountOutMinor) {
-		return nil, status.Error(codes.FailedPrecondition, "trade funding does not yet support this priced FX or fee flow")
+	if quote.Request.BaseCurrency != quote.Request.QuoteCurrency {
+		return nil, status.Error(codes.FailedPrecondition, "cross-currency funding requires verified FX execution and Ledger posting")
+	}
+	if quote.Pricing == nil {
+		return nil, status.Error(codes.FailedPrecondition, "immutable pricing snapshot is required for quote acceptance")
 	}
 	if quote.Status == quotecore.QuoteStatusAccepted {
-		var trade *tradev1.TradeResponse
-		if req.BeneficiaryId != "" {
-			if s.tradeClient == nil {
-				return nil, status.Error(codes.Unavailable, "trade service unavailable")
-			}
-			var err error
-			trade, err = s.tradeClient.GetTrade(ctx, &tradev1.GetTradeRequest{InstitutionId: req.InstitutionId, TradeId: quote.AcceptedTradeID})
-			if err != nil || trade.BeneficiaryId != req.BeneficiaryId {
-				return nil, status.Error(codes.AlreadyExists, "quote beneficiary selection conflict")
-			}
+		if s.tradeClient == nil {
+			return nil, status.Error(codes.Unavailable, "trade service unavailable")
 		}
-		if trade != nil && (trade.Status == "FUNDING_REQUIRED" || trade.Status == "FUNDED") {
-			_, err := s.tradeClient.CreateTradeFromAcceptedQuote(ctx, &tradev1.CreateTradeFromAcceptedQuoteRequest{InstitutionId: req.InstitutionId, QuoteId: req.QuoteId, IdempotencyKey: req.IdempotencyKey, CorrelationId: req.CorrelationId, BaseAmountMinor: quote.Request.BaseAmountMinor, BaseCurrency: quote.Request.BaseCurrency, QuoteCurrency: quote.Request.QuoteCurrency, Amount: &tradev1.Money{AmountMinor: quote.AmountOutMinor, Currency: quote.Request.QuoteCurrency}, BeneficiaryId: req.BeneficiaryId, SettlementProviderId: quote.Request.DestinationRail, CustomerReference: quote.Request.CustomerReference})
+		trade, err := s.tradeClient.GetTrade(ctx, &tradev1.GetTradeRequest{InstitutionId: req.InstitutionId, TradeId: quote.AcceptedTradeID})
+		if err != nil || trade.BeneficiaryId != req.BeneficiaryId {
+			return nil, status.Error(codes.AlreadyExists, "quote beneficiary selection conflict")
+		}
+		if trade.Status == "FUNDING_REQUIRED" || trade.Status == "FUNDED" || trade.Status == "FEE_ACCOUNTING_REQUIRED" {
+			tradeRequest, requestErr := tradeRequestFromQuote(req, quote)
+			if requestErr != nil {
+				return nil, status.Error(codes.Internal, "accepted quote pricing snapshot could not be serialized")
+			}
+			_, err := s.tradeClient.CreateTradeFromAcceptedQuote(ctx, tradeRequest)
 			if err != nil {
 				return nil, status.Error(codes.Unavailable, "trade funding resume unavailable")
 			}
@@ -261,19 +265,11 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	if quote.IsExpiredAt(time.Now()) || quote.Status != quotecore.QuoteStatusQuoted {
 		return nil, status.Error(codes.FailedPrecondition, "quote is not executable")
 	}
-	tradeResp, err := s.tradeClient.CreateTradeFromAcceptedQuote(ctx, &tradev1.CreateTradeFromAcceptedQuoteRequest{
-		InstitutionId:        req.InstitutionId,
-		QuoteId:              req.QuoteId,
-		IdempotencyKey:       req.IdempotencyKey,
-		CorrelationId:        req.CorrelationId,
-		BaseAmountMinor:      quote.Request.BaseAmountMinor,
-		BaseCurrency:         quote.Request.BaseCurrency,
-		QuoteCurrency:        quote.Request.QuoteCurrency,
-		Amount:               &tradev1.Money{AmountMinor: quote.AmountOutMinor, Currency: quote.Request.QuoteCurrency},
-		BeneficiaryId:        req.BeneficiaryId,
-		SettlementProviderId: quote.Request.DestinationRail,
-		CustomerReference:    quote.Request.CustomerReference,
-	})
+	tradeRequest, err := tradeRequestFromQuote(req, quote)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "quote pricing snapshot could not be serialized")
+	}
+	tradeResp, err := s.tradeClient.CreateTradeFromAcceptedQuote(ctx, tradeRequest)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -290,6 +286,83 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	resp.TradeId = tradeID
 	println("quote accepted: quote_id=" + req.QuoteId + " trade_id=" + tradeID + " institution_id=" + req.InstitutionId + " correlation_id=" + req.CorrelationId)
 	return resp, nil
+}
+
+func tradeRequestFromQuote(req *quotev1.AcceptQuoteRequest, quote *quotecore.ExecutableQuote) (*tradev1.CreateTradeFromAcceptedQuoteRequest, error) {
+	request := &tradev1.CreateTradeFromAcceptedQuoteRequest{
+		InstitutionId: req.InstitutionId, QuoteId: req.QuoteId, IdempotencyKey: req.IdempotencyKey,
+		CorrelationId: req.CorrelationId, BaseAmountMinor: quote.Request.BaseAmountMinor,
+		BaseCurrency: quote.Request.BaseCurrency, QuoteCurrency: quote.Request.QuoteCurrency,
+		Amount:        &tradev1.Money{AmountMinor: quote.AmountOutMinor, Currency: quote.Request.QuoteCurrency},
+		BeneficiaryId: req.BeneficiaryId, SettlementProviderId: quote.Request.DestinationRail,
+		CustomerReference: quote.Request.CustomerReference,
+	}
+	if quote.Pricing == nil {
+		return request, nil
+	}
+	snapshot := pricing.Snapshot{
+		Mode:                    string(quote.Pricing.Mode),
+		RequestedAmountMinor:    quote.Pricing.TotalDebitMinor,
+		SourcePrincipalMinor:    quote.Pricing.SourcePrincipalMinor,
+		FeeMinor:                quote.Pricing.TotalDebitMinor - quote.Pricing.SourcePrincipalMinor,
+		TotalDebitMinor:         quote.Pricing.TotalDebitMinor,
+		DestinationAmountMinor:  quote.AmountOutMinor,
+		DestinationTargetMinor:  quote.Pricing.DestinationTargetMinor,
+		DestinationSurplusMinor: quote.Pricing.DestinationSurplusMinor,
+		SourceCurrency:          quote.Request.BaseCurrency,
+		DestinationCurrency:     quote.Request.QuoteCurrency,
+		RateScaled:              quote.RateMinor,
+		RateDirection:           quote.Pricing.RateDirection,
+		RateScale:               quote.Pricing.RateScale,
+		SourceExponent:          uint32(quote.Pricing.SourceExponent),
+		DestinationExponent:     uint32(quote.Pricing.DestinationExponent),
+		FeeScheduleID:           quote.Pricing.FeeSchedule.ID,
+		FeeScheduleVersion:      quote.Pricing.FeeSchedule.Version,
+		FixedFeeMinor:           quote.Pricing.FeeSchedule.FixedFeeMinor,
+		FeeBasisPoints:          quote.Pricing.FeeSchedule.FeeBasisPoints,
+		MinimumFeeMinor:         quote.Pricing.FeeSchedule.MinimumFeeMinor,
+		MaximumFeeMinor:         quote.Pricing.FeeSchedule.MaximumFeeMinor,
+		MinimumPrincipalMinor:   quote.Pricing.FeeSchedule.MinimumSourcePrincipalMinor,
+		MaximumPrincipalMinor:   quote.Pricing.FeeSchedule.MaximumSourcePrincipalMinor,
+		MinimumDebitMinor:       quote.Pricing.FeeSchedule.MinimumTotalDebitMinor,
+		MaximumDebitMinor:       quote.Pricing.FeeSchedule.MaximumTotalDebitMinor,
+		MinimumDestinationMinor: quote.Pricing.FeeSchedule.MinimumDestinationMinor,
+		MaximumDestinationMinor: quote.Pricing.FeeSchedule.MaximumDestinationMinor,
+		ExpiresAt:               quote.ExpiresAt.UTC().Format(time.RFC3339Nano),
+	}
+	if quote.Pricing.Mode == quotecore.QuoteModeFixedSource {
+		snapshot.RequestedAmountMinor = quote.Pricing.TotalDebitMinor
+		request.BaseAmountMinor = quote.Pricing.SourcePrincipalMinor
+	} else {
+		snapshot.RequestedAmountMinor = quote.Pricing.DestinationTargetMinor
+		request.BaseAmountMinor = quote.Pricing.SourcePrincipalMinor
+	}
+	hash, err := pricing.Hash(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.Hash = hash
+	request.PricingSnapshot = pricingSnapshotToProto(snapshot)
+	return request, nil
+}
+
+func pricingSnapshotToProto(snapshot pricing.Snapshot) *tradev1.PricingSnapshot {
+	return &tradev1.PricingSnapshot{
+		QuoteMode: snapshot.Mode, RequestedAmountMinor: snapshot.RequestedAmountMinor,
+		SourcePrincipalMinor: snapshot.SourcePrincipalMinor, FeeMinor: snapshot.FeeMinor,
+		TotalDebitMinor: snapshot.TotalDebitMinor, DestinationAmountMinor: snapshot.DestinationAmountMinor,
+		DestinationTargetMinor: snapshot.DestinationTargetMinor, DestinationSurplusMinor: snapshot.DestinationSurplusMinor,
+		SourceCurrency: snapshot.SourceCurrency, DestinationCurrency: snapshot.DestinationCurrency,
+		RateScaled: snapshot.RateScaled, RateDirection: snapshot.RateDirection, RateScale: snapshot.RateScale,
+		FeeScheduleId: snapshot.FeeScheduleID, FeeScheduleVersion: snapshot.FeeScheduleVersion,
+		SourceMinorExponent: snapshot.SourceExponent, DestinationMinorExponent: snapshot.DestinationExponent,
+		FixedFeeMinor: snapshot.FixedFeeMinor, FeeBasisPoints: snapshot.FeeBasisPoints,
+		MinimumFeeMinor: snapshot.MinimumFeeMinor, MaximumFeeMinor: snapshot.MaximumFeeMinor,
+		MinimumSourcePrincipalMinor: snapshot.MinimumPrincipalMinor, MaximumSourcePrincipalMinor: snapshot.MaximumPrincipalMinor,
+		MinimumTotalDebitMinor: snapshot.MinimumDebitMinor, MaximumTotalDebitMinor: snapshot.MaximumDebitMinor,
+		MinimumDestinationMinor: snapshot.MinimumDestinationMinor, MaximumDestinationMinor: snapshot.MaximumDestinationMinor,
+		ExpiresAt: snapshot.ExpiresAt, SnapshotHash: snapshot.Hash,
+	}
 }
 
 func toQuoteResponse(quote *quotecore.ExecutableQuote) *quotev1.QuoteResponse {
@@ -321,6 +394,7 @@ func toQuoteResponse(quote *quotecore.ExecutableQuote) *quotev1.QuoteResponse {
 		response.QuoteMode = string(quote.Pricing.Mode)
 		response.SourcePrincipalMinor = quote.Pricing.SourcePrincipalMinor
 		response.TotalDebitMinor = quote.Pricing.TotalDebitMinor
+		response.TotalCostMinor = quote.Pricing.TotalDebitMinor
 		response.DestinationTargetMinor = quote.Pricing.DestinationTargetMinor
 		response.DestinationSurplusMinor = quote.Pricing.DestinationSurplusMinor
 		response.RateDirection = quote.Pricing.RateDirection

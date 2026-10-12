@@ -222,6 +222,7 @@ type QuoteResponse struct {
 	FeeScheduleVersion       int64                  `protobuf:"varint,21,opt,name=fee_schedule_version,json=feeScheduleVersion,proto3" json:"fee_schedule_version,omitempty"`
 	SourceMinorExponent      uint32                 `protobuf:"varint,22,opt,name=source_minor_exponent,json=sourceMinorExponent,proto3" json:"source_minor_exponent,omitempty"`
 	DestinationMinorExponent uint32                 `protobuf:"varint,23,opt,name=destination_minor_exponent,json=destinationMinorExponent,proto3" json:"destination_minor_exponent,omitempty"`
+	TotalCostMinor           int64                  `protobuf:"varint,24,opt,name=total_cost_minor,json=totalCostMinor,proto3" json:"total_cost_minor,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -413,6 +414,13 @@ func (x *QuoteResponse) GetSourceMinorExponent() uint32 {
 func (x *QuoteResponse) GetDestinationMinorExponent() uint32 {
 	if x != nil {
 		return x.DestinationMinorExponent
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetTotalCostMinor() int64 {
+	if x != nil {
+		return x.TotalCostMinor
 	}
 	return 0
 }
@@ -714,7 +722,7 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"\n" +
 	"quote_mode\x18\n" +
 	" \x01(\tR\tquoteMode\x128\n" +
-	"\x18destination_amount_minor\x18\v \x01(\x03R\x16destinationAmountMinor\"\xb5\a\n" +
+	"\x18destination_amount_minor\x18\v \x01(\x03R\x16destinationAmountMinor\"\xdf\a\n" +
 	"\rQuoteResponse\x12\x19\n" +
 	"\bquote_id\x18\x01 \x01(\tR\aquoteId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12*\n" +
@@ -743,7 +751,8 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"\x0ffee_schedule_id\x18\x14 \x01(\tR\rfeeScheduleId\x120\n" +
 	"\x14fee_schedule_version\x18\x15 \x01(\x03R\x12feeScheduleVersion\x122\n" +
 	"\x15source_minor_exponent\x18\x16 \x01(\rR\x13sourceMinorExponent\x12<\n" +
-	"\x1adestination_minor_exponent\x18\x17 \x01(\rR\x18destinationMinorExponent\"z\n" +
+	"\x1adestination_minor_exponent\x18\x17 \x01(\rR\x18destinationMinorExponent\x12(\n" +
+	"\x10total_cost_minor\x18\x18 \x01(\x03R\x0etotalCostMinor\"z\n" +
 	"\x0fGetQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12%\n" +

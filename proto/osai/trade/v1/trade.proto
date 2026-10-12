@@ -9,6 +9,38 @@ message Money {
   string currency = 2;
 }
 
+message PricingSnapshot {
+  string quote_mode = 1;
+  int64 requested_amount_minor = 2;
+  int64 source_principal_minor = 3;
+  int64 fee_minor = 4;
+  int64 total_debit_minor = 5;
+  int64 destination_amount_minor = 6;
+  int64 destination_target_minor = 7;
+  int64 destination_surplus_minor = 8;
+  string source_currency = 9;
+  string destination_currency = 10;
+  int64 rate_scaled = 11;
+  string rate_direction = 12;
+  int64 rate_scale = 13;
+  string fee_schedule_id = 14;
+  int64 fee_schedule_version = 15;
+  uint32 source_minor_exponent = 16;
+  uint32 destination_minor_exponent = 17;
+  int64 fixed_fee_minor = 18;
+  int64 fee_basis_points = 19;
+  int64 minimum_fee_minor = 20;
+  int64 maximum_fee_minor = 21;
+  int64 minimum_source_principal_minor = 22;
+  int64 maximum_source_principal_minor = 23;
+  int64 minimum_total_debit_minor = 24;
+  int64 maximum_total_debit_minor = 25;
+  int64 minimum_destination_minor = 26;
+  int64 maximum_destination_minor = 27;
+  string expires_at = 28;
+  string snapshot_hash = 29;
+}
+
 message CreateTradeFromAcceptedQuoteRequest {
   string institution_id = 1;
   string quote_id = 2;
@@ -21,6 +53,7 @@ message CreateTradeFromAcceptedQuoteRequest {
   string beneficiary_id = 9;
   string settlement_provider_id = 10;
   string customer_reference = 11;
+  PricingSnapshot pricing_snapshot = 12;
 }
 
 message TradeResponse {
@@ -36,6 +69,7 @@ message TradeResponse {
   string beneficiary_id = 10;
   string settlement_provider_id = 11;
   string customer_reference = 12;
+  PricingSnapshot pricing_snapshot = 13;
 }
 
 message GetTradeRequest {

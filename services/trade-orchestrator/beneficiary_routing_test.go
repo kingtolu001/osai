@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+	"time"
 
+	"github.com/osai/osai/pkg/pricing"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
@@ -12,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type testCustomerClient struct {
@@ -32,9 +36,14 @@ type testSettlementClient struct {
 type testLedgerClient struct {
 	ledgerv1.LedgerServiceClient
 	reject bool
+	calls  *[]*ledgerv1.FundingReservationCommand
 }
 
-func (c testLedgerClient) ReserveFunding(context.Context, *ledgerv1.FundingReservationCommand, ...grpc.CallOption) (*ledgerv1.FundingReservationResponse, error) {
+func (c testLedgerClient) ReserveFunding(_ context.Context, request *ledgerv1.FundingReservationCommand, _ ...grpc.CallOption) (*ledgerv1.FundingReservationResponse, error) {
+	if c.calls != nil {
+		copy := proto.Clone(request).(*ledgerv1.FundingReservationCommand)
+		*c.calls = append(*c.calls, copy)
+	}
 	if c.reject {
 		return nil, status.Error(codes.ResourceExhausted, "insufficient institution prefund")
 	}
@@ -158,6 +167,126 @@ func TestTradeCreationPersistsFundingRequiredWithoutSettlement(t *testing.T) {
 	if settlement.request != nil {
 		t.Fatalf("unfunded trade still reached settlement: %+v", settlement.request)
 	}
+}
+
+func TestPricedFeeTradeReservesExactDebitAndWithholdsPayout(t *testing.T) {
+	t.Setenv("OSAI_FLW_TRADE_ROUTING_ENABLED", "true")
+	snapshot := pricedFeeSnapshot(t, time.Now().UTC().Add(time.Minute))
+	protoSnapshot := pricingSnapshotToProto(snapshot)
+	var commands []*ledgerv1.FundingReservationCommand
+	settlement := &testSettlementClient{}
+	store := tradecore.NewStore()
+	server := newTradeServer(store, settlement).withLedgerClient(testLedgerClient{calls: &commands})
+	request := &tradev1.CreateTradeFromAcceptedQuoteRequest{
+		InstitutionId: "inst_fee", QuoteId: "quo_fee", IdempotencyKey: "accept-fee",
+		BaseAmountMinor: snapshot.SourcePrincipalMinor, BaseCurrency: snapshot.SourceCurrency,
+		QuoteCurrency:        snapshot.DestinationCurrency,
+		Amount:               &tradev1.Money{AmountMinor: snapshot.DestinationAmountMinor, Currency: snapshot.DestinationCurrency},
+		SettlementProviderId: "sim_lp_1", PricingSnapshot: protoSnapshot,
+	}
+	response, err := server.CreateTradeFromAcceptedQuote(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status != string(tradecore.StateFeeAccountingRequired) ||
+		response.BaseAmountMinor != snapshot.SourcePrincipalMinor ||
+		response.PricingSnapshot.GetTotalDebitMinor() != snapshot.TotalDebitMinor {
+		t.Fatalf("fee-bearing trade did not retain its immutable terms: %+v", response)
+	}
+	if len(commands) != 1 || commands[0].Amount.AmountMinor != 10_000 ||
+		commands[0].SourcePrincipalMinor != 9_500 || commands[0].FeeMinor != 500 ||
+		commands[0].PricingHash != snapshot.Hash {
+		t.Fatalf("Ledger did not receive exact all-in reservation terms: %+v", commands)
+	}
+	var ledgerSnapshot pricing.Snapshot
+	if err := json.Unmarshal([]byte(commands[0].PricingSnapshotJson), &ledgerSnapshot); err != nil ||
+		ledgerSnapshot != snapshot {
+		t.Fatalf("Ledger did not receive the complete immutable pricing snapshot: snapshot=%+v err=%v", ledgerSnapshot, err)
+	}
+	if settlement.request != nil {
+		t.Fatalf("fee-bearing trade reached payout before Ledger fee accounting exists: %+v", settlement.request)
+	}
+
+	replay, err := server.CreateTradeFromAcceptedQuote(context.Background(), request)
+	if err != nil || replay.TradeId != response.TradeId || replay.Status != response.Status {
+		t.Fatalf("idempotent fee acceptance replay changed trade: response=%+v err=%v", replay, err)
+	}
+	if len(commands) != 2 || settlement.request != nil {
+		t.Fatalf("funding replay or payout behavior incorrect: ledger_calls=%d settlement=%+v", len(commands), settlement.request)
+	}
+	if trades, total, err := store.ListTrades("inst_fee", tradecore.TradeListFilter{Page: 1, PageSize: 10}); err != nil || total != 1 || len(trades) != 1 {
+		t.Fatalf("duplicate acceptance created another trade: total=%d err=%v", total, err)
+	}
+
+	altered := proto.Clone(request).(*tradev1.CreateTradeFromAcceptedQuoteRequest)
+	altered.PricingSnapshot = pricingSnapshotToProto(snapshot)
+	altered.PricingSnapshot.ExpiresAt = time.Now().UTC().Add(2 * time.Minute).Format(time.RFC3339Nano)
+	alteredSnapshot := pricingSnapshotFromProto(altered.PricingSnapshot)
+	alteredSnapshot.Hash, _ = pricing.Hash(alteredSnapshot)
+	altered.PricingSnapshot = pricingSnapshotToProto(alteredSnapshot)
+	if _, err = server.CreateTradeFromAcceptedQuote(context.Background(), altered); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("altered quote snapshot replay was accepted: %v", err)
+	}
+
+	expired := pricedFeeSnapshot(t, time.Now().UTC().Add(-time.Minute))
+	expiredRequest := &tradev1.CreateTradeFromAcceptedQuoteRequest{
+		InstitutionId: "inst_fee", QuoteId: "quo_expired", IdempotencyKey: "accept-expired",
+		BaseAmountMinor: expired.SourcePrincipalMinor, BaseCurrency: expired.SourceCurrency,
+		QuoteCurrency:   expired.DestinationCurrency,
+		Amount:          &tradev1.Money{AmountMinor: expired.DestinationAmountMinor, Currency: expired.DestinationCurrency},
+		PricingSnapshot: pricingSnapshotToProto(expired),
+	}
+	if _, err = server.CreateTradeFromAcceptedQuote(context.Background(), expiredRequest); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expired quote was accepted: %v", err)
+	}
+	if _, exists := store.GetByQuoteID(expiredRequest.QuoteId); exists {
+		t.Fatal("expired quote created a trade")
+	}
+}
+
+func TestPricedFeeTradeInsufficientFundsRemainsRecoverable(t *testing.T) {
+	snapshot := pricedFeeSnapshot(t, time.Now().UTC().Add(time.Minute))
+	store := tradecore.NewStore()
+	server := newTradeServer(store, &testSettlementClient{}).withLedgerClient(testLedgerClient{reject: true})
+	response, err := server.CreateTradeFromAcceptedQuote(context.Background(), &tradev1.CreateTradeFromAcceptedQuoteRequest{
+		InstitutionId: "inst_fee_short", QuoteId: "quo_fee_short", IdempotencyKey: "accept-fee-short",
+		BaseAmountMinor: snapshot.SourcePrincipalMinor, BaseCurrency: snapshot.SourceCurrency,
+		QuoteCurrency:   snapshot.DestinationCurrency,
+		Amount:          &tradev1.Money{AmountMinor: snapshot.DestinationAmountMinor, Currency: snapshot.DestinationCurrency},
+		PricingSnapshot: pricingSnapshotToProto(snapshot),
+	})
+	if err != nil || response.Status != string(tradecore.StateFundingRequired) {
+		t.Fatalf("insufficient funds should leave a recoverable trade: response=%+v err=%v", response, err)
+	}
+	if trade, ok := store.GetTrade(response.TradeId); !ok || trade.PricingSnapshot == nil ||
+		trade.PricingSnapshot.TotalDebitMinor != snapshot.TotalDebitMinor || trade.State != tradecore.StateFundingRequired {
+		t.Fatalf("funding-required trade lost the immutable quote terms: trade=%+v exists=%v", trade, ok)
+	}
+}
+
+func pricedFeeSnapshot(t *testing.T, expires time.Time) pricing.Snapshot {
+	t.Helper()
+	snapshot := pricing.Snapshot{
+		Mode: "FIXED_SOURCE", RequestedAmountMinor: 10_000, SourcePrincipalMinor: 9_500,
+		FeeMinor: 500, TotalDebitMinor: 10_000, DestinationAmountMinor: 9_500,
+		SourceCurrency: "NGN", DestinationCurrency: "NGN", RateScaled: pricing.RateScale,
+		RateDirection: "NGN_PER_NGN", RateScale: pricing.RateScale,
+		SourceExponent: 2, DestinationExponent: 2, FeeScheduleID: "fee_test", FeeScheduleVersion: 1,
+		FixedFeeMinor: 500, MinimumFeeMinor: 500, MaximumFeeMinor: 500,
+		MinimumPrincipalMinor: 1, MaximumPrincipalMinor: 1_000_000,
+		MinimumDebitMinor: 1, MaximumDebitMinor: 2_000_000,
+		MinimumDestinationMinor: 1, MaximumDestinationMinor: 2_000_000,
+		ExpiresAt: expires.UTC().Format(time.RFC3339Nano),
+	}
+	hash, err := pricing.Hash(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Hash = hash
+	if err := pricing.Validate(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
 }
 
 func TestTradeReadReflectsDeduplicatedSettlementFinality(t *testing.T) {

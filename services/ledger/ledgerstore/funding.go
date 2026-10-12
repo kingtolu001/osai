@@ -3,9 +3,11 @@ package ledgerstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/osai/osai/pkg/pricing"
 	"github.com/osai/osai/services/ledger/ledgerapi"
 	"github.com/osai/osai/services/ledger/ledgercore"
 )
@@ -74,6 +76,38 @@ func (p Postgres) ReserveFunding(ctx context.Context, cmd ledgerapi.FundingComma
 	if cmd.InstitutionID == "" || cmd.TradeID == "" || cmd.Currency == "" || cmd.AmountMinor <= 0 {
 		return ledgerapi.FundingReservation{}, false, errors.New("invalid funding command")
 	}
+	var snapshotJSON string
+	if cmd.PricingSnapshot != nil {
+		if err := pricing.Validate(*cmd.PricingSnapshot); err != nil {
+			return ledgerapi.FundingReservation{}, false, fmt.Errorf("invalid funding pricing snapshot: %w", err)
+		}
+		hash, err := pricing.Hash(*cmd.PricingSnapshot)
+		if err != nil {
+			return ledgerapi.FundingReservation{}, false, err
+		}
+		if hash != cmd.PricingSnapshot.Hash || hash != cmd.PricingHash ||
+			cmd.PricingSnapshot.TotalDebitMinor != cmd.AmountMinor ||
+			cmd.PricingSnapshot.SourcePrincipalMinor != cmd.SourcePrincipalMinor ||
+			cmd.PricingSnapshot.FeeMinor != cmd.FeeMinor ||
+			cmd.PricingSnapshot.SourceCurrency != cmd.Currency {
+			return ledgerapi.FundingReservation{}, false, errors.New("funding command does not match immutable pricing snapshot")
+		}
+		serialized, err := json.Marshal(cmd.PricingSnapshot)
+		if err != nil {
+			return ledgerapi.FundingReservation{}, false, fmt.Errorf("serialize funding pricing snapshot: %w", err)
+		}
+		snapshotJSON = string(serialized)
+	} else if cmd.PricingHash != "" {
+		return ledgerapi.FundingReservation{}, false, errors.New("complete pricing snapshot required")
+	}
+	if cmd.SourcePrincipalMinor == 0 && cmd.FeeMinor == 0 && cmd.PricingHash == "" {
+		cmd.SourcePrincipalMinor = cmd.AmountMinor
+	}
+	if cmd.SourcePrincipalMinor <= 0 || cmd.FeeMinor < 0 ||
+		cmd.SourcePrincipalMinor > cmd.AmountMinor || cmd.FeeMinor != cmd.AmountMinor-cmd.SourcePrincipalMinor ||
+		(cmd.PricingHash != "" && len(cmd.PricingHash) != 64) {
+		return ledgerapi.FundingReservation{}, false, errors.New("invalid funding pricing terms")
+	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return ledgerapi.FundingReservation{}, false, err
@@ -83,10 +117,22 @@ func (p Postgres) ReserveFunding(ctx context.Context, cmd ledgerapi.FundingComma
 		return ledgerapi.FundingReservation{}, false, err
 	}
 	var old ledgerapi.FundingReservation
-	err = tx.QueryRowContext(ctx, `SELECT trade_id,institution_id,currency,amount_minor,state,journal_id,settlement_id,settlement_ref FROM ledger_funding_reservations WHERE trade_id=$1`, cmd.TradeID).Scan(&old.TradeID, &old.InstitutionID, &old.Currency, &old.AmountMinor, &old.State, &old.JournalID, &old.SettlementID, &old.SettlementRef)
+	var oldSnapshotJSON string
+	err = tx.QueryRowContext(ctx, `SELECT trade_id,institution_id,currency,amount_minor,source_principal_minor,fee_minor,pricing_hash,pricing_snapshot_json,state,journal_id,settlement_id,settlement_ref FROM ledger_funding_reservations WHERE trade_id=$1`, cmd.TradeID).Scan(&old.TradeID, &old.InstitutionID, &old.Currency, &old.AmountMinor, &old.SourcePrincipalMinor, &old.FeeMinor, &old.PricingHash, &oldSnapshotJSON, &old.State, &old.JournalID, &old.SettlementID, &old.SettlementRef)
 	if err == nil {
-		if old.InstitutionID != cmd.InstitutionID || old.Currency != cmd.Currency || old.AmountMinor != cmd.AmountMinor {
+		if old.InstitutionID != cmd.InstitutionID || old.Currency != cmd.Currency || old.AmountMinor != cmd.AmountMinor ||
+			old.SourcePrincipalMinor != cmd.SourcePrincipalMinor || old.FeeMinor != cmd.FeeMinor || old.PricingHash != cmd.PricingHash {
 			return ledgerapi.FundingReservation{}, false, ledgerapi.ErrIdempotencyConflict
+		}
+		if oldSnapshotJSON != snapshotJSON {
+			return ledgerapi.FundingReservation{}, false, ledgerapi.ErrIdempotencyConflict
+		}
+		if oldSnapshotJSON != "" {
+			var persisted pricing.Snapshot
+			if err := json.Unmarshal([]byte(oldSnapshotJSON), &persisted); err != nil {
+				return ledgerapi.FundingReservation{}, false, fmt.Errorf("decode persisted funding pricing snapshot: %w", err)
+			}
+			old.PricingSnapshot = &persisted
 		}
 		return old, true, tx.Commit()
 	}
@@ -107,21 +153,55 @@ func (p Postgres) ReserveFunding(ctx context.Context, cmd ledgerapi.FundingComma
 	if err = insertFundingJournal(ctx, tx, "hold:"+cmd.TradeID, "hold", journal); err != nil {
 		return ledgerapi.FundingReservation{}, false, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO ledger_funding_reservations(trade_id,institution_id,currency,amount_minor,state,journal_id) VALUES($1,$2,$3,$4,'ACTIVE',$5)`, cmd.TradeID, cmd.InstitutionID, cmd.Currency, cmd.AmountMinor, journal.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO ledger_funding_reservations(trade_id,institution_id,currency,amount_minor,source_principal_minor,fee_minor,pricing_hash,pricing_snapshot_json,state,journal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'ACTIVE',$9)`, cmd.TradeID, cmd.InstitutionID, cmd.Currency, cmd.AmountMinor, cmd.SourcePrincipalMinor, cmd.FeeMinor, cmd.PricingHash, snapshotJSON, journal.ID); err != nil {
 		return ledgerapi.FundingReservation{}, false, err
 	}
-	reservation := ledgerapi.FundingReservation{TradeID: cmd.TradeID, InstitutionID: cmd.InstitutionID, Currency: cmd.Currency, AmountMinor: cmd.AmountMinor, State: "ACTIVE", JournalID: journal.ID}
+	reservation := ledgerapi.FundingReservation{TradeID: cmd.TradeID, InstitutionID: cmd.InstitutionID, Currency: cmd.Currency, AmountMinor: cmd.AmountMinor, SourcePrincipalMinor: cmd.SourcePrincipalMinor, FeeMinor: cmd.FeeMinor, PricingHash: cmd.PricingHash, PricingSnapshot: cmd.PricingSnapshot, State: "ACTIVE", JournalID: journal.ID}
 	return reservation, false, tx.Commit()
 }
 
 func (p Postgres) GetFundingReservation(ctx context.Context, cmd ledgerapi.FundingCommand) (ledgerapi.FundingReservation, error) {
 	var r ledgerapi.FundingReservation
-	err := p.DB.QueryRowContext(ctx, `SELECT trade_id,institution_id,currency,amount_minor,state,journal_id,settlement_id,settlement_ref FROM ledger_funding_reservations WHERE trade_id=$1`, cmd.TradeID).Scan(&r.TradeID, &r.InstitutionID, &r.Currency, &r.AmountMinor, &r.State, &r.JournalID, &r.SettlementID, &r.SettlementRef)
+	var snapshotJSON string
+	err := p.DB.QueryRowContext(ctx, `SELECT trade_id,institution_id,currency,amount_minor,source_principal_minor,fee_minor,pricing_hash,pricing_snapshot_json,state,journal_id,settlement_id,settlement_ref FROM ledger_funding_reservations WHERE trade_id=$1`, cmd.TradeID).Scan(&r.TradeID, &r.InstitutionID, &r.Currency, &r.AmountMinor, &r.SourcePrincipalMinor, &r.FeeMinor, &r.PricingHash, &snapshotJSON, &r.State, &r.JournalID, &r.SettlementID, &r.SettlementRef)
 	if err != nil {
 		return ledgerapi.FundingReservation{}, err
 	}
+	if snapshotJSON != "" {
+		var snapshot pricing.Snapshot
+		if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
+			return ledgerapi.FundingReservation{}, fmt.Errorf("decode persisted funding pricing snapshot: %w", err)
+		}
+		hash, err := pricing.Hash(snapshot)
+		if err != nil {
+			return ledgerapi.FundingReservation{}, err
+		}
+		if err := pricing.Validate(snapshot); err != nil || hash != r.PricingHash ||
+			snapshot.TotalDebitMinor != r.AmountMinor ||
+			snapshot.SourcePrincipalMinor != r.SourcePrincipalMinor ||
+			snapshot.FeeMinor != r.FeeMinor || snapshot.SourceCurrency != r.Currency {
+			return ledgerapi.FundingReservation{}, errors.New("persisted funding pricing snapshot is inconsistent")
+		}
+		r.PricingSnapshot = &snapshot
+	}
 	if r.InstitutionID != cmd.InstitutionID || r.Currency != cmd.Currency || r.AmountMinor != cmd.AmountMinor {
 		return ledgerapi.FundingReservation{}, ledgerapi.ErrFundingMismatch
+	}
+	if cmd.PricingHash != "" && (r.PricingHash != cmd.PricingHash ||
+		r.SourcePrincipalMinor != cmd.SourcePrincipalMinor || r.FeeMinor != cmd.FeeMinor) {
+		return ledgerapi.FundingReservation{}, ledgerapi.ErrFundingMismatch
+	}
+	if cmd.PricingSnapshot != nil {
+		if err := pricing.Validate(*cmd.PricingSnapshot); err != nil {
+			return ledgerapi.FundingReservation{}, err
+		}
+		expected, err := json.Marshal(cmd.PricingSnapshot)
+		if err != nil {
+			return ledgerapi.FundingReservation{}, err
+		}
+		if string(expected) != snapshotJSON {
+			return ledgerapi.FundingReservation{}, ledgerapi.ErrFundingMismatch
+		}
 	}
 	return r, nil
 }
@@ -139,7 +219,7 @@ func (p Postgres) FinalizeFunding(ctx context.Context, cmd ledgerapi.Command, co
 		return "", false, err
 	}
 	var r ledgerapi.FundingReservation
-	err = tx.QueryRowContext(ctx, `SELECT trade_id,institution_id,currency,amount_minor,state,journal_id,settlement_id,settlement_ref FROM ledger_funding_reservations WHERE trade_id=$1 FOR UPDATE`, cmd.TradeID).Scan(&r.TradeID, &r.InstitutionID, &r.Currency, &r.AmountMinor, &r.State, &r.JournalID, &r.SettlementID, &r.SettlementRef)
+	err = tx.QueryRowContext(ctx, `SELECT trade_id,institution_id,currency,amount_minor,source_principal_minor,fee_minor,pricing_hash,state,journal_id,settlement_id,settlement_ref FROM ledger_funding_reservations WHERE trade_id=$1 FOR UPDATE`, cmd.TradeID).Scan(&r.TradeID, &r.InstitutionID, &r.Currency, &r.AmountMinor, &r.SourcePrincipalMinor, &r.FeeMinor, &r.PricingHash, &r.State, &r.JournalID, &r.SettlementID, &r.SettlementRef)
 	if err != nil {
 		return "", false, fmt.Errorf("funding reservation required: %w", err)
 	}

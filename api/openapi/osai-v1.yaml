@@ -656,7 +656,7 @@ components:
           type: string
     QuoteResponse:
       type: object
-      required: [quote_id, status, base_amount_minor, base_currency, quote_currency, amount_out_minor, rate_minor, fee_minor, quote_mode, source_principal_minor, total_debit_minor, destination_surplus_minor, rate_direction, rate_scale, fee_schedule_id, fee_schedule_version, source_minor_exponent, destination_minor_exponent, sell_amount_minor, sell_currency, buy_amount_minor, buy_currency, expires_at]
+      required: [quote_id, status, base_amount_minor, base_currency, quote_currency, amount_out_minor, rate_minor, fee_minor, quote_mode, source_principal_minor, total_debit_minor, total_cost_minor, total_cost_currency, destination_surplus_minor, rate_direction, rate_scale, fee_schedule_id, fee_schedule_version, source_minor_exponent, destination_minor_exponent, sell_amount_minor, sell_currency, buy_amount_minor, buy_currency, expires_at]
       properties:
         quote_id:
           type: string
@@ -686,6 +686,12 @@ components:
         total_debit_minor:
           type: integer
           description: Exact all-in source-currency debit, including fee.
+        total_cost_minor:
+          type: integer
+          description: Total customer debit in source-currency minor units, including applicable customer-paid fees; equal to total_debit_minor.
+        total_cost_currency:
+          type: string
+          description: Currency of total_cost_minor; equal to base_currency.
         destination_target_minor:
           type: integer
           description: Contracted destination amount for FIXED_DESTINATION; zero for FIXED_SOURCE.
@@ -785,6 +791,48 @@ components:
           type: string
         quote_currency:
           type: string
+        pricing_snapshot:
+          type: object
+          description: Immutable accepted quote economics; present when the trade was created from a priced quote.
+          required: [quote_mode, source_principal_minor, fee_minor, total_debit_minor, destination_amount_minor, source_currency, destination_currency, rate_scaled, rate_direction, rate_scale, fee_schedule_id, fee_schedule_version, source_minor_exponent, destination_minor_exponent, expires_at]
+          properties:
+            quote_mode:
+              type: string
+              enum: [FIXED_SOURCE, FIXED_DESTINATION]
+            requested_amount_minor:
+              type: integer
+            source_principal_minor:
+              type: integer
+            fee_minor:
+              type: integer
+            total_debit_minor:
+              type: integer
+            destination_amount_minor:
+              type: integer
+            destination_target_minor:
+              type: integer
+            destination_surplus_minor:
+              type: integer
+            source_currency:
+              type: string
+            destination_currency:
+              type: string
+            rate_scaled:
+              type: integer
+            rate_direction:
+              type: string
+            rate_scale:
+              type: integer
+            fee_schedule_id:
+              type: string
+            fee_schedule_version:
+              type: integer
+            source_minor_exponent:
+              type: integer
+            destination_minor_exponent:
+              type: integer
+            expires_at:
+              type: string
         settlement_id:
           type: string
         customer_reference:

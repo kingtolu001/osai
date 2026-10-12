@@ -14,6 +14,14 @@ func EnsureSchema(db *sql.DB) error {
 		trade_id text PRIMARY KEY, institution_id text NOT NULL, currency text NOT NULL,
 		amount_minor bigint NOT NULL CHECK (amount_minor > 0), state text NOT NULL CHECK (state IN ('ACTIVE','CONSUMED','RELEASED')),
 		journal_id text NOT NULL UNIQUE REFERENCES ledger_journals(journal_id),
-		settlement_id text NOT NULL DEFAULT '', settlement_ref text NOT NULL DEFAULT '');`)
+		settlement_id text NOT NULL DEFAULT '', settlement_ref text NOT NULL DEFAULT '',
+		source_principal_minor bigint NOT NULL DEFAULT 0, fee_minor bigint NOT NULL DEFAULT 0,
+		pricing_hash text NOT NULL DEFAULT '', pricing_snapshot_json text NOT NULL DEFAULT '');
+	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS source_principal_minor bigint NOT NULL DEFAULT 0;
+	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS fee_minor bigint NOT NULL DEFAULT 0;
+	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS pricing_hash text NOT NULL DEFAULT '';
+	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS pricing_snapshot_json text NOT NULL DEFAULT '';
+	UPDATE ledger_funding_reservations SET source_principal_minor=amount_minor
+		WHERE source_principal_minor=0 AND fee_minor=0 AND pricing_hash='';`)
 	return err
 }

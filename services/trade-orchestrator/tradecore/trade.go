@@ -10,20 +10,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/osai/osai/pkg/pricing"
 )
 
 // TradeState models the durable workflow state of a trade.
 type TradeState string
 
 const (
-	StateCreated         TradeState = "CREATED"
-	StateQuoted          TradeState = "QUOTED"
-	StateAccepted        TradeState = "ACCEPTED"
-	StateFundingRequired TradeState = "FUNDING_REQUIRED"
-	StateFunded          TradeState = "FUNDED"
-	StateFailed          TradeState = "FAILED"
-	StateSettling        TradeState = "SETTLING"
-	StateSettled         TradeState = "SETTLED"
+	StateCreated               TradeState = "CREATED"
+	StateQuoted                TradeState = "QUOTED"
+	StateAccepted              TradeState = "ACCEPTED"
+	StateFundingRequired       TradeState = "FUNDING_REQUIRED"
+	StateFunded                TradeState = "FUNDED"
+	StateFailed                TradeState = "FAILED"
+	StateSettling              TradeState = "SETTLING"
+	StateSettled               TradeState = "SETTLED"
+	StateFeeAccountingRequired TradeState = "FEE_ACCOUNTING_REQUIRED"
 )
 
 // Trade captures the trade lifecycle owned by the trade-orchestrator service.
@@ -44,6 +46,7 @@ type Trade struct {
 	SettlementProviderID string
 	CustomerReference    string
 	IdempotencyKey       string
+	PricingSnapshot      *pricing.Snapshot
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
@@ -81,6 +84,14 @@ func NewStore() *Store {
 }
 
 func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string, selection ...string) (*Trade, error) {
+	return s.createTrade(institutionID, quoteID, idempotencyKey, correlationID, baseAmountMinor, baseCurrency, quoteCurrency, nil, selection...)
+}
+
+func (s *Store) CreateTradeWithPricing(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string, snapshot pricing.Snapshot, selection ...string) (*Trade, error) {
+	return s.createTrade(institutionID, quoteID, idempotencyKey, correlationID, baseAmountMinor, baseCurrency, quoteCurrency, &snapshot, selection...)
+}
+
+func (s *Store) createTrade(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string, snapshot *pricing.Snapshot, selection ...string) (*Trade, error) {
 	beneficiaryID, providerID := "", ""
 	if len(selection) > 0 {
 		beneficiaryID = selection[0]
@@ -114,16 +125,20 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 			trade := s.byID[tradeID]
 			s.mu.Unlock()
 			if trade != nil {
-				if trade.BeneficiaryID != beneficiaryID || trade.SettlementProviderID != providerID || trade.CustomerReference != customerReference {
+				if trade.BeneficiaryID != beneficiaryID || trade.SettlementProviderID != providerID ||
+					trade.CustomerReference != customerReference || !samePricingSnapshot(trade.PricingSnapshot, snapshot) {
 					return nil, errors.New("trade beneficiary replay conflict")
 				}
-				return trade, nil
+				return cloneTrade(trade), nil
 			}
 		}
 		s.mu.Unlock()
 	}
 	if existing, ok := s.GetByQuoteID(quoteID); ok {
-		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor || existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency || existing.BeneficiaryID != beneficiaryID || existing.SettlementProviderID != providerID || existing.CustomerReference != customerReference {
+		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor ||
+			existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency ||
+			existing.BeneficiaryID != beneficiaryID || existing.SettlementProviderID != providerID ||
+			existing.CustomerReference != customerReference || !samePricingSnapshot(existing.PricingSnapshot, snapshot) {
 			return nil, errors.New("trade replay conflict")
 		}
 		return existing, nil
@@ -144,6 +159,7 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 		SettlementProviderID: providerID,
 		CustomerReference:    customerReference,
 		IdempotencyKey:       idempotencyKey,
+		PricingSnapshot:      clonePricingSnapshot(snapshot),
 		CreatedAt:            time.Now().UTC(),
 		UpdatedAt:            time.Now().UTC(),
 	}
@@ -153,14 +169,44 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, ok := s.byQuoteID[quoteID]; ok {
-		return existing, nil
+		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor ||
+			existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency ||
+			existing.BeneficiaryID != beneficiaryID || existing.SettlementProviderID != providerID ||
+			existing.CustomerReference != customerReference || !samePricingSnapshot(existing.PricingSnapshot, snapshot) {
+			return nil, errors.New("trade replay conflict")
+		}
+		return cloneTrade(existing), nil
 	}
 	s.byID[trade.ID] = trade
 	s.byQuoteID[quoteID] = trade
 	if key != "|" {
 		s.byOperation[key] = trade.ID
 	}
-	return trade, nil
+	return cloneTrade(trade), nil
+}
+
+func samePricingSnapshot(left, right *pricing.Snapshot) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func clonePricingSnapshot(snapshot *pricing.Snapshot) *pricing.Snapshot {
+	if snapshot == nil {
+		return nil
+	}
+	copy := *snapshot
+	return &copy
+}
+
+func cloneTrade(trade *Trade) *Trade {
+	if trade == nil {
+		return nil
+	}
+	copy := *trade
+	copy.PricingSnapshot = clonePricingSnapshot(trade.PricingSnapshot)
+	return &copy
 }
 
 func (s *Store) GetTrade(tradeID string) (*Trade, bool) {
@@ -173,8 +219,7 @@ func (s *Store) GetTrade(tradeID string) (*Trade, bool) {
 	if !ok {
 		return nil, false
 	}
-	copy := *trade
-	return &copy, true
+	return cloneTrade(trade), true
 }
 
 func (s *Store) ListTrades(institutionID string, filter TradeListFilter) ([]Trade, int, error) {
@@ -203,7 +248,7 @@ func (s *Store) ListTrades(institutionID string, filter TradeListFilter) ([]Trad
 			(!filter.To.IsZero() && !trade.CreatedAt.Before(filter.To)) {
 			continue
 		}
-		matches = append(matches, *trade)
+		matches = append(matches, *cloneTrade(trade))
 	}
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].CreatedAt.Equal(matches[j].CreatedAt) {
@@ -233,8 +278,7 @@ func (s *Store) GetByQuoteID(quoteID string) (*Trade, bool) {
 	if !ok {
 		return nil, false
 	}
-	copy := *trade
-	return &copy, true
+	return cloneTrade(trade), true
 }
 
 func (s *Store) SetSettlementID(tradeID, settlementID string) error {

@@ -32,13 +32,17 @@ func TestListTradesFiltersByInstitutionAndCustomerReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first.CreatedAt = createdAt
-	first.UpdatedAt = createdAt
+	store.mu.Lock()
+	store.byID[first.ID].CreatedAt = createdAt
+	store.byID[first.ID].UpdatedAt = createdAt
+	store.mu.Unlock()
 	second, err := store.CreateTrade("inst_1", "quo_2", "key_2", "corr_2", 20000, "USD", "NGN", "", "", "partner-99")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second.CreatedAt = createdAt.Add(time.Minute)
+	store.mu.Lock()
+	store.byID[second.ID].CreatedAt = createdAt.Add(time.Minute)
+	store.mu.Unlock()
 	_, err = store.CreateTrade("inst_2", "quo_3", "key_3", "corr_3", 30000, "NGN", "USD", "", "", "partner-42")
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/osai/osai/adapters/firstpair"
+	"github.com/osai/osai/pkg/pricing"
 	quotev1 "github.com/osai/osai/proto/osai/quote/v1"
 	"github.com/osai/osai/services/quote/quotecore"
 	"google.golang.org/grpc/codes"
@@ -59,6 +60,9 @@ func TestCreateQuoteUsesApprovedSimulatorRoute(t *testing.T) {
 	providerQuote, ok := server.store.Get(response.QuoteId)
 	if !ok || providerQuote.ProviderID != "sim_lp_1" || len(providerQuote.RouteCandidates) != 1 || providerQuote.RouteCandidates[0].SettlementProviderID != "sim_lp_1" || providerQuote.ProviderEvidence["method"] != "getQuote" || response.AmountOutMinor != providerQuote.AmountOutMinor || response.RateMinor != providerQuote.RateMinor || response.FeeMinor != 500 || providerQuote.Pricing == nil || providerQuote.Pricing.SourcePrincipalMinor != 9500 || providerQuote.Pricing.TotalDebitMinor != 10000 || providerQuote.Pricing.FeeSchedule.ID != "fee_test" {
 		t.Fatalf("simulator economics or evidence missing: %+v", providerQuote)
+	}
+	if response.TotalCostMinor != response.TotalDebitMinor {
+		t.Fatalf("total_cost_minor must equal all-in source debit: %+v", response)
 	}
 	replay, err := server.CreateQuote(context.Background(), request)
 	if err != nil || replay.QuoteId != response.QuoteId {
@@ -219,10 +223,81 @@ func TestAcceptQuoteBlocksUntilTradeLedgerSupportsPricedFX(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	_, err = server.AcceptQuote(context.Background(), &quotev1.AcceptQuoteRequest{
 		InstitutionId: "inst_test", QuoteId: created.QuoteId, IdempotencyKey: "accept-priced-fx-trade",
 	})
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("priced FX accepted without multi-currency Ledger support: %v", err)
+	}
+}
+
+func TestAcceptedTradeRequestCarriesVerifiedPricingSnapshot(t *testing.T) {
+	policy := quoteTestPolicy("inst_same_currency")
+	policy.SourceCurrency = "NGN"
+	policy.DestinationCurrency = "NGN"
+	policy.FixedFeeMinor = 500
+	policy.MinimumFeeMinor = 500
+	policy.MaximumFeeMinor = 500
+	server := &grpcServer{
+		store: quotecore.NewQuoteStore(), pricing: staticFeeScheduleStore{policy: policy},
+		liquidity: firstpair.New().Liquidity,
+	}
+	quote, err := server.CreateQuote(context.Background(), &quotev1.CreateQuoteRequest{
+		InstitutionId: "inst_same_currency", BaseAmountMinor: 10_000,
+		BaseCurrency: "NGN", QuoteCurrency: "NGN", DestinationRail: "sim_lp_1",
+		IdempotencyKey: "fee-bearing-quote",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, ok := server.store.Get(quote.QuoteId)
+	if !ok {
+		t.Fatal("created quote missing from owner store")
+	}
+	request, err := tradeRequestFromQuote(&quotev1.AcceptQuoteRequest{
+		InstitutionId: "inst_same_currency", QuoteId: quote.QuoteId, IdempotencyKey: "accept-fee",
+	}, stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := pricing.Snapshot{
+		Mode:                    request.PricingSnapshot.GetQuoteMode(),
+		RequestedAmountMinor:    request.PricingSnapshot.GetRequestedAmountMinor(),
+		SourcePrincipalMinor:    request.PricingSnapshot.GetSourcePrincipalMinor(),
+		FeeMinor:                request.PricingSnapshot.GetFeeMinor(),
+		TotalDebitMinor:         request.PricingSnapshot.GetTotalDebitMinor(),
+		DestinationAmountMinor:  request.PricingSnapshot.GetDestinationAmountMinor(),
+		DestinationTargetMinor:  request.PricingSnapshot.GetDestinationTargetMinor(),
+		DestinationSurplusMinor: request.PricingSnapshot.GetDestinationSurplusMinor(),
+		SourceCurrency:          request.PricingSnapshot.GetSourceCurrency(),
+		DestinationCurrency:     request.PricingSnapshot.GetDestinationCurrency(),
+		RateScaled:              request.PricingSnapshot.GetRateScaled(),
+		RateDirection:           request.PricingSnapshot.GetRateDirection(),
+		RateScale:               request.PricingSnapshot.GetRateScale(),
+		SourceExponent:          request.PricingSnapshot.GetSourceMinorExponent(),
+		DestinationExponent:     request.PricingSnapshot.GetDestinationMinorExponent(),
+		FeeScheduleID:           request.PricingSnapshot.GetFeeScheduleId(),
+		FeeScheduleVersion:      request.PricingSnapshot.GetFeeScheduleVersion(),
+		FixedFeeMinor:           request.PricingSnapshot.GetFixedFeeMinor(),
+		FeeBasisPoints:          request.PricingSnapshot.GetFeeBasisPoints(),
+		MinimumFeeMinor:         request.PricingSnapshot.GetMinimumFeeMinor(),
+		MaximumFeeMinor:         request.PricingSnapshot.GetMaximumFeeMinor(),
+		MinimumPrincipalMinor:   request.PricingSnapshot.GetMinimumSourcePrincipalMinor(),
+		MaximumPrincipalMinor:   request.PricingSnapshot.GetMaximumSourcePrincipalMinor(),
+		MinimumDebitMinor:       request.PricingSnapshot.GetMinimumTotalDebitMinor(),
+		MaximumDebitMinor:       request.PricingSnapshot.GetMaximumTotalDebitMinor(),
+		MinimumDestinationMinor: request.PricingSnapshot.GetMinimumDestinationMinor(),
+		MaximumDestinationMinor: request.PricingSnapshot.GetMaximumDestinationMinor(),
+		ExpiresAt:               request.PricingSnapshot.GetExpiresAt(),
+		Hash:                    request.PricingSnapshot.GetSnapshotHash(),
+	}
+	if err := pricing.Validate(snapshot); err != nil {
+		t.Fatalf("trade request does not carry valid immutable economics: %v; %+v", err, request.PricingSnapshot)
+	}
+	if request.BaseAmountMinor != snapshot.SourcePrincipalMinor ||
+		request.Amount.AmountMinor != snapshot.DestinationAmountMinor ||
+		snapshot.TotalDebitMinor != 10_000 || snapshot.FeeMinor != 500 {
+		t.Fatalf("trade request amount fields diverge from the immutable snapshot: request=%+v", request)
 	}
 }
