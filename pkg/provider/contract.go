@@ -37,6 +37,13 @@ type Evidence struct {
 	CorrelationID  string
 }
 
+// IsCompleteFor checks the fields needed to persist evidence from an
+// authoritative provider query for the requested reference.
+func (e Evidence) IsCompleteFor(requestRef string) bool {
+	return requestRef != "" && e.ID != "" && e.Provider != "" && e.Method != "" &&
+		e.RequestRef == requestRef && e.RawPayloadHash != "" && !e.ParsedAt.IsZero()
+}
+
 type TransferInstruction struct {
 	ClientRef   string
 	Beneficiary string

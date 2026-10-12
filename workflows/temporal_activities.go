@@ -120,7 +120,7 @@ func (a *ProviderSettlementActivities) ManualReview(ctx context.Context, input T
 
 func (a *ProviderSettlementActivities) record(ctx context.Context, input TemporalSettlementInput, state settlementcore.State, ref string, evidence provider.Evidence) error {
 	if a.Recorder == nil {
-		return nil
+		return errors.New("settlement runtime recorder unavailable")
 	}
 	return a.Recorder.RecordRuntimeState(ctx, input.InstructionID, state, ref, evidence)
 }

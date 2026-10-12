@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/osai/osai/pkg/provider"
 	"github.com/osai/osai/services/ledger/ledgerapi"
@@ -13,6 +14,7 @@ type fakeRail struct {
 	creates, gets int
 	createErr     error
 	result        provider.TransferResult
+	noEvidence    bool
 }
 
 func (f *fakeRail) CreateTransfer(provider.TransferInstruction) (provider.TransferAck, error) {
@@ -22,9 +24,13 @@ func (f *fakeRail) CreateTransfer(provider.TransferInstruction) (provider.Transf
 	}
 	return provider.TransferAck{ProviderRef: "ptx_1", Status: provider.TransferAccepted}, nil
 }
-func (f *fakeRail) GetTransfer(string) (provider.TransferResult, error) {
+func (f *fakeRail) GetTransfer(clientRef string) (provider.TransferResult, error) {
 	f.gets++
-	return f.result, nil
+	result := f.result
+	if !f.noEvidence && !result.Evidence.IsCompleteFor(clientRef) {
+		result.Evidence = provider.Evidence{ID: "evidence_" + clientRef, Provider: "sim_lp_1", Method: "get_transfer", RequestRef: clientRef, RawPayloadHash: "sha256:test", ParsedAt: time.Now().UTC()}
+	}
+	return result, nil
 }
 func (f *fakeRail) VerifyWebhook([]byte, map[string]string) (provider.WebhookEvent, error) {
 	return provider.WebhookEvent{}, nil
@@ -62,9 +68,93 @@ func TestTerminalTransitionIsAbsorbingAndLedgerEffectRunsOnce(t *testing.T) {
 	if _, err = store.ResolveWebhook(si.ID, provider.WebhookEvent{ClientRef: si.ClientRef, Status: provider.TransferConfirmed, AmountMinor: 100, Currency: "USD", Beneficiary: "acct_1"}); err != nil {
 		t.Fatal(err)
 	}
+	if resolved, _ := store.Get(si.ID); resolved.State == Confirmed || ledger.confirmed != 0 {
+		t.Fatalf("callback finalized settlement without provider query: state=%s confirmations=%d", resolved.State, ledger.confirmed)
+	}
+	if _, err = store.Poll(si.ID, rail); err != nil {
+		t.Fatal(err)
+	}
 	if ledger.confirmed != 1 {
 		t.Fatalf("expected one ledger confirmation, got %d", ledger.confirmed)
 	}
+}
+
+func TestDuplicateWebhookIsEvidenceOnly(t *testing.T) {
+	store := NewStore(&fakeLedger{})
+	si, err := store.Create("acct_1", "USD", 100, "payout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := provider.WebhookEvent{
+		ProviderEventID: "evt_duplicate",
+		ClientRef:       si.ClientRef,
+		Status:          provider.TransferConfirmed,
+		AmountMinor:     100,
+		Currency:        "USD",
+		Beneficiary:     "acct_1",
+		Evidence:        provider.Evidence{ID: "evidence_duplicate"},
+	}
+	for range 2 {
+		if _, err := store.ResolveWebhook(si.ID, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resolved, _ := store.Get(si.ID)
+	if resolved.State != Created || len(resolved.Evidence) != 1 {
+		t.Fatalf("duplicate callback changed finality/evidence: state=%s evidence=%d", resolved.State, len(resolved.Evidence))
+	}
+}
+
+func TestEvidencePersistenceFailureBlocksFinality(t *testing.T) {
+	rail := &fakeRail{result: provider.TransferResult{
+		Status:      provider.TransferConfirmed,
+		AmountMinor: 100,
+		Currency:    "USD",
+		Beneficiary: "acct_1",
+	}}
+	ledger := &fakeLedger{}
+	store := NewStore(ledger)
+	si, err := store.Create("acct_1", "USD", 100, "payout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.persistence = evidenceFailurePersistence{}
+	resolved, err := store.Poll(si.ID, rail)
+	if err == nil {
+		t.Fatal("expected provider evidence persistence error")
+	}
+	if resolved.State != Created || ledger.confirmed != 0 || ledger.failed != 0 {
+		t.Fatalf("failed evidence persistence authorized finality: state=%s confirmed=%d failed=%d", resolved.State, ledger.confirmed, ledger.failed)
+	}
+}
+
+func TestMissingFinalityEvidenceRequiresManualReview(t *testing.T) {
+	rail := &fakeRail{
+		result:     provider.TransferResult{Status: provider.TransferConfirmed, AmountMinor: 100, Currency: "USD", Beneficiary: "acct_1"},
+		noEvidence: true,
+	}
+	ledger := &fakeLedger{}
+	store := NewStore(ledger)
+	si, err := store.Create("acct_1", "USD", 100, "payout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Submit(si.ID, rail); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := store.Poll(si.ID, rail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.State != ManualReview || ledger.confirmed != 0 || ledger.failed != 0 {
+		t.Fatalf("incomplete provider evidence finalized: state=%s confirmed=%d failed=%d", resolved.State, ledger.confirmed, ledger.failed)
+	}
+}
+
+type evidenceFailurePersistence struct{ Persistence }
+
+func (evidenceFailurePersistence) SaveEvidence(string, provider.Evidence) error {
+	return errors.New("database unavailable")
 }
 
 func TestMismatchedConfirmationRequiresManualReview(t *testing.T) {

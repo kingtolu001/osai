@@ -3,12 +3,16 @@ package settlementstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/osai/osai/pkg/ids"
 	"github.com/osai/osai/pkg/provider"
+	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	"github.com/osai/osai/services/settlement/settlementcore"
+	"google.golang.org/grpc/metadata"
 )
 
 type Postgres struct{ DB *sql.DB }
@@ -19,6 +23,16 @@ type FinalityEvent struct {
 	SettlementID  string
 	TradeID       string
 	Status        string
+	CorrelationID string
+	OccurredAt    time.Time
+}
+
+type DomainEvent struct {
+	EventID       string
+	InstitutionID string
+	SettlementID  string
+	TradeID       string
+	EventType     string
 	CorrelationID string
 	OccurredAt    time.Time
 }
@@ -188,8 +202,20 @@ func (p Postgres) RecordRuntimeState(ctx context.Context, id string, next settle
 			return err
 		}
 		if current != string(next) {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO settlement_transitions(settlement_id,from_state,to_state,event,reason,source,occurred_at) VALUES($1,$2,$3,$4,$5,'provider',now())`, id, current, next, "provider_runtime", "provider status evidence"); err != nil {
+			var transitionID int64
+			var occurredAt time.Time
+			if err = tx.QueryRowContext(ctx, `INSERT INTO settlement_transitions(settlement_id,from_state,to_state,event,reason,source,occurred_at) VALUES($1,$2,$3,$4,$5,'provider',now()) RETURNING id,occurred_at`, id, current, next, "provider_runtime", "provider status evidence").Scan(&transitionID, &occurredAt); err != nil {
 				return err
+			}
+			eventType := map[settlementcore.State]string{
+				settlementcore.Processing: "trade.settlement_processing",
+				settlementcore.Confirmed:  "trade.settled",
+			}[next]
+			if eventType != "" && tradeID != "" {
+				eventID := fmt.Sprintf("settlement:%s:%d", eventType, transitionID)
+				if _, err = tx.ExecContext(ctx, `INSERT INTO settlement_domain_outbox(event_id,institution_id,settlement_id,trade_id,event_type,correlation_id,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(event_id) DO NOTHING`, eventID, institutionID, id, tradeID, eventType, correlationID, occurredAt); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -206,6 +232,56 @@ func (p Postgres) RecordRuntimeState(ctx context.Context, id string, next settle
 		}
 	}
 	return tx.Commit()
+}
+
+func (p Postgres) RelayDomainEvents(ctx context.Context, client notificationv1.NotificationServiceClient, token string) error {
+	if client == nil || token == "" {
+		return errors.New("notification client and token are required")
+	}
+	rows, err := p.DB.QueryContext(ctx, `SELECT event_id,institution_id,settlement_id,trade_id,event_type,correlation_id,occurred_at FROM settlement_domain_outbox WHERE delivered_at IS NULL ORDER BY occurred_at,event_id LIMIT 50`)
+	if err != nil {
+		return err
+	}
+	events := make([]DomainEvent, 0, 50)
+	for rows.Next() {
+		var event DomainEvent
+		if err := rows.Scan(&event.EventID, &event.InstitutionID, &event.SettlementID, &event.TradeID, &event.EventType, &event.CorrelationID, &event.OccurredAt); err != nil {
+			rows.Close()
+			return err
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, event := range events {
+		payload, err := json.Marshal(map[string]string{
+			"settlement_id": event.SettlementID,
+			"trade_id":      event.TradeID,
+			"status":        "PROCESSING",
+		})
+		if err != nil {
+			return err
+		}
+		callCtx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token), 5*time.Second)
+		_, err = client.PublishEvent(callCtx, &notificationv1.Event{
+			EventId: event.EventID, InstitutionId: event.InstitutionID, EventType: event.EventType,
+			CorrelationId: event.CorrelationID, AggregateId: event.TradeID,
+			OccurredAt: event.OccurredAt.UTC().Format(time.RFC3339Nano), PayloadJson: string(payload),
+		})
+		cancel()
+		if err != nil {
+			return err
+		}
+		if _, err = p.DB.ExecContext(ctx, `UPDATE settlement_domain_outbox SET delivered_at=COALESCE(delivered_at,now()) WHERE event_id=$1`, event.EventID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p Postgres) ListPendingFinalityEvents(ctx context.Context, limit int) ([]FinalityEvent, error) {

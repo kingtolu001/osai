@@ -116,6 +116,13 @@ func TemporalSettlementWorkflow(ctx workflow.Context, input TemporalSettlementIn
 			}
 			return TemporalSettlementResult{State: settlementcore.ManualReview, Polls: poll + 1}, nil
 		}
+		if (result.Status == provider.TransferConfirmed || result.Status == provider.TransferFailed) &&
+			!result.Evidence.IsCompleteFor(input.ClientRef) {
+			if err := workflow.ExecuteActivity(ctx, "SettlementActivities.ManualReview", input).Get(ctx, nil); err != nil {
+				return TemporalSettlementResult{}, err
+			}
+			return TemporalSettlementResult{State: settlementcore.ManualReview, Polls: poll + 1}, nil
+		}
 		if result.ProviderRef != "" {
 			input.ProviderRef = result.ProviderRef
 		}

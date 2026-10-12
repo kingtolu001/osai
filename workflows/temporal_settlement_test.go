@@ -15,11 +15,12 @@ import (
 )
 
 type temporalTestActivities struct {
-	ledger      *ledgerapi.Service
-	polled      provider.TransferResult
-	createErr   error
-	createCalls int
-	getCalls    int
+	ledger       *ledgerapi.Service
+	polled       provider.TransferResult
+	createErr    error
+	createCalls  int
+	getCalls     int
+	omitEvidence bool
 }
 
 type temporalLedgerAdapter struct{ service *ledgerapi.Service }
@@ -39,12 +40,22 @@ func (a *temporalTestActivities) CreateTransfer(context.Context, TemporalSettlem
 	}
 	return provider.TransferAck{Status: provider.TransferProcessing}, nil
 }
-func (a *temporalTestActivities) GetTransfer(context.Context, TemporalSettlementInput) (provider.TransferResult, error) {
+func (a *temporalTestActivities) GetTransfer(_ context.Context, input TemporalSettlementInput) (provider.TransferResult, error) {
 	a.getCalls++
+	result := a.polled
 	if a.polled.Status != "" {
-		return a.polled, nil
+		if !a.omitEvidence && !result.Evidence.IsCompleteFor(input.ClientRef) {
+			result.Evidence = provider.Evidence{ID: "temporal-evidence", Provider: "sim_lp_1", Method: "get_transfer", RequestRef: input.ClientRef, RawPayloadHash: "sha256:test", ParsedAt: time.Now().UTC()}
+		}
+		return result, nil
 	}
-	return provider.TransferResult{Status: provider.TransferConfirmed, AmountMinor: 100, Currency: "USD", Beneficiary: "acct_1"}, nil
+	return provider.TransferResult{
+		Status:      provider.TransferConfirmed,
+		AmountMinor: 100,
+		Currency:    "USD",
+		Beneficiary: "acct_1",
+		Evidence:    provider.Evidence{ID: "temporal-evidence", Provider: "sim_lp_1", Method: "get_transfer", RequestRef: input.ClientRef, RawPayloadHash: "sha256:test", ParsedAt: time.Now().UTC()},
+	}, nil
 }
 func (a *temporalTestActivities) ConfirmLedger(_ context.Context, input TemporalSettlementInput) error {
 	return temporalLedgerAdapter{service: a.ledger}.ConfirmSettlement(settlementcore.Instruction{ID: input.InstructionID, ClientRef: input.ClientRef, Beneficiary: input.Beneficiary, AmountMinor: input.AmountMinor, Currency: input.Currency})
@@ -125,6 +136,43 @@ func TestTemporalProviderMismatchNeverPostsLedger(t *testing.T) {
 				t.Fatalf("mismatch finalized: %+v", result)
 			}
 		})
+	}
+}
+
+func TestTemporalFinalityRequiresCompleteQueryEvidence(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	environment := suite.NewTestWorkflowEnvironment()
+	activities := &temporalTestActivities{
+		ledger:       ledgerapi.NewService(),
+		polled:       provider.TransferResult{Status: provider.TransferConfirmed, AmountMinor: 100, Currency: "USD", Beneficiary: "acct_1"},
+		omitEvidence: true,
+	}
+	registerTemporalActivities(environment, activities)
+	environment.ExecuteWorkflow(TemporalSettlementWorkflow, TemporalSettlementInput{InstructionID: "si_evidence", ClientRef: "si_evidence", Beneficiary: "acct_1", AmountMinor: 100, Currency: "USD", MaxPolls: 1})
+	if err := environment.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	var result TemporalSettlementResult
+	if err := environment.GetWorkflowResult(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.State != settlementcore.ManualReview || len(activities.ledger.Journals()) != 0 {
+		t.Fatalf("finality without query evidence was accepted: state=%s journals=%d", result.State, len(activities.ledger.Journals()))
+	}
+}
+
+func TestProviderActivityRequiresDurableRuntimeRecorder(t *testing.T) {
+	rail := &workflowRail{}
+	activities := &ProviderSettlementActivities{Rail: rail}
+	_, err := activities.CreateTransfer(context.Background(), TemporalSettlementInput{
+		InstructionID: "si_unrecorded",
+		ClientRef:     "ref_unrecorded",
+		Beneficiary:   "acct_1",
+		AmountMinor:   100,
+		Currency:      "USD",
+	})
+	if err == nil || rail.creates != 0 {
+		t.Fatalf("provider call proceeded without durable state recorder: creates=%d err=%v", rail.creates, err)
 	}
 }
 

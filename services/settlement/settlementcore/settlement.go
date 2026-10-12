@@ -70,6 +70,7 @@ type Persistence interface {
 
 type Store struct {
 	mu            sync.Mutex
+	webhookMu     sync.Mutex
 	instructions  map[string]*Instruction
 	transitions   map[string][]Transition
 	ledger        LedgerCommand
@@ -156,7 +157,9 @@ func (s *Store) Submit(id string, rail provider.SettlementRail) (Instruction, er
 		}
 		return s.transition(id, []State{Submitted}, Failed, "create_rejected", "provider", callErr.Error())
 	}
-	s.recordEvidence(id, ack.Evidence)
+	if err := s.recordEvidence(id, ack.Evidence); err != nil {
+		return instruction, err
+	}
 	s.mu.Lock()
 	if stored, ok := s.instructions[id]; ok {
 		stored.ProviderRef = ack.ProviderRef
@@ -184,11 +187,16 @@ func (s *Store) Poll(id string, rail provider.SettlementRail) (Instruction, erro
 	if err != nil {
 		return s.transition(id, []State{Submitted, ProviderAccepted, Processing, Unknown}, Unknown, "poll_ambiguous", "provider", err.Error())
 	}
-	s.recordEvidence(id, result.Evidence)
+	if err := s.recordEvidence(id, result.Evidence); err != nil {
+		return instruction, err
+	}
 	return s.applyResult(id, result)
 }
 
 func (s *Store) ResolveWebhook(id string, event provider.WebhookEvent) (Instruction, error) {
+	s.webhookMu.Lock()
+	defer s.webhookMu.Unlock()
+
 	instruction, ok := s.Get(id)
 	if !ok {
 		return Instruction{}, errors.New("settlement instruction not found")
@@ -199,14 +207,26 @@ func (s *Store) ResolveWebhook(id string, event provider.WebhookEvent) (Instruct
 			s.mu.Unlock()
 			return instruction, nil
 		}
+		s.mu.Unlock()
+	}
+	if err := s.recordEvidence(id, event.Evidence); err != nil {
+		return instruction, err
+	}
+	if event.ProviderEventID != "" {
+		s.mu.Lock()
 		s.webhookEvents[event.ProviderEventID] = struct{}{}
 		s.mu.Unlock()
 	}
 	if event.ClientRef != "" && event.ClientRef != instruction.ClientRef {
 		return s.transition(id, []State{Unknown, Submitted, ProviderAccepted, Processing}, ManualReview, "reference_mismatch", "provider", "webhook client reference mismatch")
 	}
-	s.recordEvidence(id, event.Evidence)
-	return s.applyResult(id, provider.TransferResult{Status: event.Status, AmountMinor: event.AmountMinor, Currency: event.Currency, Beneficiary: event.Beneficiary, Evidence: event.Evidence})
+	// A callback is persisted evidence and a wake-up hint only. Finality must
+	// come from a fresh provider query, not the callback's claimed status.
+	resolved, ok := s.Get(id)
+	if !ok {
+		return Instruction{}, errors.New("settlement instruction not found")
+	}
+	return resolved, nil
 }
 
 func (s *Store) applyResult(id string, result provider.TransferResult) (Instruction, error) {
@@ -216,6 +236,10 @@ func (s *Store) applyResult(id string, result provider.TransferResult) (Instruct
 	}
 	if instruction.State.Terminal() {
 		return instruction, nil
+	}
+	if (result.Status == provider.TransferConfirmed || result.Status == provider.TransferFailed) &&
+		!result.Evidence.IsCompleteFor(instruction.ClientRef) {
+		return s.transition(id, []State{Submitted, ProviderAccepted, Processing, Unknown}, ManualReview, "finality_evidence_incomplete", "provider", "provider finality evidence is incomplete")
 	}
 	if result.Status == provider.TransferConfirmed {
 		if result.AmountMinor != instruction.AmountMinor || result.Currency != instruction.Currency || (result.Beneficiary != "" && result.Beneficiary != instruction.Beneficiary) {
@@ -289,18 +313,23 @@ func (s *Store) transition(id string, allowed []State, to State, event, source, 
 	return *instruction, nil
 }
 
-func (s *Store) recordEvidence(id string, evidence provider.Evidence) {
+func (s *Store) recordEvidence(id string, evidence provider.Evidence) error {
 	if evidence.ID == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if instruction, ok := s.instructions[id]; ok {
-		instruction.Evidence = append(instruction.Evidence, evidence)
+	instruction, ok := s.instructions[id]
+	if !ok {
+		return errors.New("settlement instruction not found")
 	}
 	if s.persistence != nil {
-		_ = s.persistence.SaveEvidence(id, evidence)
+		if err := s.persistence.SaveEvidence(id, evidence); err != nil {
+			return fmt.Errorf("persist settlement evidence: %w", err)
+		}
 	}
+	instruction.Evidence = append(instruction.Evidence, evidence)
+	return nil
 }
 
 func ambiguous(err error) bool {

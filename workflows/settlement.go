@@ -98,6 +98,13 @@ func (w *SettlementWorkflow) HandleWebhook(id string, event provider.WebhookEven
 	if err != nil {
 		return instruction, w.saveFailure(id, err)
 	}
+	if instruction.State.Terminal() || instruction.State == settlementcore.ManualReview {
+		return instruction, w.saveStage(instruction)
+	}
+	instruction, err = w.Store.Poll(id, w.Rail)
+	if err != nil {
+		return instruction, w.saveFailure(id, err)
+	}
 	return instruction, w.saveStage(instruction)
 }
 

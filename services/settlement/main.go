@@ -20,6 +20,7 @@ import (
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/provider"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
+	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	"github.com/osai/osai/services/settlement/settlementcore"
 	"github.com/osai/osai/services/settlement/settlementstore"
@@ -97,6 +98,31 @@ func main() {
 		log.Fatal("customer beneficiary service unavailable")
 	}
 	defer customerConn.Close()
+	notificationToken := strings.TrimSpace(os.Getenv("OSAI_NOTIFICATION_TOKEN"))
+	if notificationToken == "" {
+		log.Fatal("OSAI_NOTIFICATION_TOKEN is required for durable settlement events")
+	}
+	notificationAddr := strings.TrimSpace(os.Getenv("OSAI_NOTIFICATION_GRPC_ADDR"))
+	if notificationAddr == "" {
+		notificationAddr = "localhost:50057"
+	}
+	notificationConn, err := grpc.Dial(notificationAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor()))
+	if err != nil {
+		log.Fatalf("dial notification service: %v", err)
+	}
+	defer notificationConn.Close()
+	notificationClient := notificationv1.NewNotificationServiceClient(notificationConn)
+	go func() {
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := repository.RelayDomainEvents(ctx, notificationClient, notificationToken); err != nil {
+				log.Printf("settlement domain-event relay: %v", err)
+			}
+			cancel()
+		}
+	}()
 	selector := settlementRouteSelector{Routes: map[string]settlementRoute{}}
 	if flutterwaveEnabled {
 		attempts := flutterwave.PostgresAttempts{DB: database}

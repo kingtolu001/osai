@@ -51,6 +51,15 @@ func main() {
 	pair := firstpair.New()
 	ledger := ledgerclient.New(ledgerConnection)
 	activities := &workflows.ProviderSettlementActivities{Rail: pair.Settlement, Ledger: ledger, Funding: ledger}
+	db, err := postgres.Open("settlement")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if err = settlementstore.EnsureSchema(db); err != nil {
+		log.Fatal(err)
+	}
+	activities.Recorder = settlementstore.Postgres{DB: db}
 	flutterwaveEnabled := os.Getenv("FLW_SETTLEMENT_ENABLED") == "true"
 	if flutterwaveEnabled || os.Getenv("FLW_SECRET_KEY") != "" {
 		if os.Getenv("FLW_SECRET_KEY") == "" || (flutterwaveEnabled && os.Getenv("FLW_SECRET_HASH") == "") || (os.Getenv("FLW_ENV") != "sandbox" && os.Getenv("FLW_ENV") != "test") {
@@ -59,19 +68,10 @@ func main() {
 		if os.Getenv("FLW_ENV") == "sandbox" && !strings.HasPrefix(os.Getenv("FLW_SECRET_KEY"), "FLWSECK_TEST-") {
 			log.Fatal("Flutterwave sandbox credential unavailable")
 		}
-		db, err := postgres.Open("settlement")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer db.Close()
-		if err = settlementstore.EnsureSchema(db); err != nil {
-			log.Fatal(err)
-		}
 		attempts := flutterwave.PostgresAttempts{DB: db}
 		if err = attempts.EnsureSchema(); err != nil {
 			log.Fatal(err)
 		}
-		activities.Recorder = settlementstore.Postgres{DB: db}
 		activities.Rails = map[string]provider.SettlementRail{"flutterwave": flutterwave.New(flutterwave.Config{BaseURL: os.Getenv("FLW_BASE_URL"), SecretKey: os.Getenv("FLW_SECRET_KEY"), SecretHash: os.Getenv("FLW_SECRET_HASH"), Env: os.Getenv("FLW_ENV"), Enabled: flutterwaveEnabled, Attempts: attempts})}
 	}
 	worker, err := workflows.StartSettlementWorker(nil, temporalClient, activities)
