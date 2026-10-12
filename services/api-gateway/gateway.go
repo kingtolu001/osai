@@ -241,6 +241,7 @@ type Gateway struct {
 	customerClient        CustomerClient
 	webhookClient         WebhookConfigClient
 	webhookReplayClient   WebhookReplayClient
+	providerStatusClient  ProviderStatusClient
 	idempotency           *idempotencyStore
 	rateLimiter           *rateLimiterStore // per-institution token bucket
 	credentialEnvironment string
@@ -324,6 +325,10 @@ func (g *Gateway) SetWebhookReplayClient(client WebhookReplayClient) {
 	}
 }
 
+func (g *Gateway) SetProviderStatusClient(client ProviderStatusClient) {
+	g.providerStatusClient = client
+}
+
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	requestID := strings.TrimSpace(r.Header.Get("X-Osai-Correlation-Id"))
@@ -380,6 +385,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "webhook configuration is not entitled", requestID))
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/providers/status" &&
+		!hasEntitlement(authCtx.Entitlements, "providers:read") {
+		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "provider status is not entitled", requestID))
+		return
+	}
 	if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/webhook-deliveries/") &&
 		strings.HasSuffix(r.URL.Path, "/replay") && !hasEntitlement(authCtx.Entitlements, "webhooks:write") {
 		writeHTTPJSON(w, http.StatusForbidden, errorEnvelope("FORBIDDEN", "webhook replay is not entitled", requestID))
@@ -414,6 +424,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/quotes/health":
 		writeHTTPJSON(w, http.StatusOK, map[string]any{"status": "ok", "request_id": requestID, "latency_ms": time.Since(start).Milliseconds()})
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/providers/status":
+		g.handleProviderStatus(w, r, requestID)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/beneficiaries":
 		g.handleRegisterBeneficiary(w, r, customerID, requestID)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/webhook-endpoints":

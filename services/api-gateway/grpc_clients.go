@@ -67,7 +67,7 @@ func NewCustomerGRPCClient(conn grpc.ClientConnInterface) CustomerClient {
 	return &grpcCustomerClient{client: customerv1.NewCustomerServiceClient(conn)}
 }
 
-func NewQuoteGRPCClient(conn grpc.ClientConnInterface) QuoteClient {
+func NewQuoteGRPCClient(conn grpc.ClientConnInterface) *grpcQuoteClient {
 	return &grpcQuoteClient{client: quotev1.NewQuoteServiceClient(conn)}
 }
 
@@ -441,6 +441,24 @@ func (q *grpcQuoteClient) AcceptQuote(institutionID, quoteID, idempotencyKey, co
 	response := quoteResponseFromProto(resp)
 	response.TradeID = resp.TradeId
 	return response, nil
+}
+
+func (q *grpcQuoteClient) GetProviderStatuses(ctx context.Context) ([]ProviderRouteStatus, error) {
+	resp, err := q.client.ListProviderStatuses(ctx, &quotev1.ListProviderStatusesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ProviderRouteStatus, 0, len(resp.GetItems()))
+	for _, item := range resp.GetItems() {
+		if item == nil {
+			continue
+		}
+		items = append(items, ProviderRouteStatus{
+			RouteID: item.GetRouteId(), Status: item.GetStatus(),
+			Capabilities: append([]string(nil), item.GetCapabilities()...),
+		})
+	}
+	return items, nil
 }
 
 func quoteResponseFromProto(resp *quotev1.QuoteResponse) QuoteResponse {

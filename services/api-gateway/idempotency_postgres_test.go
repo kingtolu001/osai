@@ -124,7 +124,7 @@ func TestPostgresConcurrentIdempotencyReservationHasSingleOwner(t *testing.T) {
 		case errors.Is(result.err, errIdempotencyInProgress):
 			inProgress++
 		default:
-			t.Fatalf("unexpected reservation result: %+v", result)
+			t.Fatalf("unexpected reservation result: token=%q err=%v", result.token, result.err)
 		}
 	}
 	if owners != 1 || inProgress != callers-1 {

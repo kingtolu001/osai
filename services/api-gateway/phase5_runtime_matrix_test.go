@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -12,9 +11,7 @@ import (
 )
 
 func TestPhase5RuntimeMatrix(t *testing.T) {
-	if err := os.Setenv("OSAI_POSTGRES_DSN", "postgres://osai:osai@localhost:5432/osai?sslmode=disable"); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("OSAI_POSTGRES_DSN", "postgres://osai:osai@localhost:5432/osai?sslmode=disable")
 	store := quotecore.NewQuoteStore()
 	gateway := NewGateway(store)
 	customer := NewCustomerService()

@@ -21,7 +21,25 @@ type stubCustomerClient struct{}
 
 type customerReadEntitledClient struct{ stubCustomerClient }
 
+type providerStatusEntitledClient struct{ stubCustomerClient }
+
+type stubProviderStatusClient struct {
+	items []ProviderRouteStatus
+	err   error
+}
+
+func (s stubProviderStatusClient) GetProviderStatuses(context.Context) ([]ProviderRouteStatus, error) {
+	return s.items, s.err
+}
+
 type productionCredentialCustomerClient struct{ stubCustomerClient }
+
+func (providerStatusEntitledClient) GetInstitutionAccess(instID string) (CustomerAuthContext, error) {
+	return CustomerAuthContext{
+		InstitutionID: instID, InstitutionStatus: "ACTIVE", APIEnabled: true,
+		Entitlements: []string{"providers:read"},
+	}, nil
+}
 
 func (productionCredentialCustomerClient) AuthenticateAPIClient(publicID, secret string) (CustomerAuthContext, error) {
 	if publicID != "ck_ok" || secret != "s3cr3t" {
@@ -330,12 +348,44 @@ func TestQuoteRequestPersistsCustomerReferenceAndAddsAliases(t *testing.T) {
 	if result.StatusCode != http.StatusOK {
 		t.Fatalf("quote creation failed: %+v", result)
 	}
+
 	if quoteClient.request.CustomerReference != "partner-order-42" {
 		t.Fatalf("customer reference was not forwarded: %+v", quoteClient.request)
 	}
 	if result.Body["sell_amount_minor"] != float64(10000) || result.Body["sell_currency"] != "NGN" ||
 		result.Body["buy_amount_minor"] != float64(9500) || result.Body["buy_currency"] != "USD" {
 		t.Fatalf("quote aliases do not match existing economics: %+v", result.Body)
+	}
+}
+
+func TestProviderStatusRequiresEntitlementAndUsesSafeRouteContract(t *testing.T) {
+	denied := NewGatewayWithClients(stubCustomerClient{}, stubQuoteClient{})
+	denied.SetProviderStatusClient(stubProviderStatusClient{items: []ProviderRouteStatus{{RouteID: "internal-provider-id", Status: "AVAILABLE"}}})
+	server := httptest.NewServer(denied)
+	result := doJSONGET(t, server, "/v1/providers/status", "ApiKey ck_ok:s3cr3t")
+	server.Close()
+	if result.StatusCode != http.StatusForbidden {
+		t.Fatalf("provider status without entitlement must be forbidden: %+v", result)
+	}
+
+	gateway := NewGatewayWithClients(providerStatusEntitledClient{}, stubQuoteClient{})
+	gateway.SetProviderStatusClient(stubProviderStatusClient{items: []ProviderRouteStatus{
+		{RouteID: "simulator", Status: "AVAILABLE", Capabilities: []string{"quotes", "fx", "payout"}},
+		{RouteID: "ngn-bank-transfer", Status: "UNAVAILABLE", Capabilities: []string{"payout"}},
+	}})
+	server = httptest.NewServer(gateway)
+	defer server.Close()
+	result = doJSONGET(t, server, "/v1/providers/status", "ApiKey ck_ok:s3cr3t")
+	items, ok := result.Body["items"].([]any)
+	if result.StatusCode != http.StatusOK || !ok || len(items) != 2 {
+		t.Fatalf("provider status response malformed: %+v", result)
+	}
+	if result.Body["request_id"] == "" {
+		t.Fatalf("request id missing from provider status: %+v", result.Body)
+	}
+	first, ok := items[0].(map[string]any)
+	if !ok || first["route_id"] != "simulator" || first["status"] != "AVAILABLE" || first["provider_id"] != nil {
+		t.Fatalf("provider response exposed provider identity or wrong route shape: %+v", items[0])
 	}
 }
 

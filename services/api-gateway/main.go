@@ -55,7 +55,9 @@ func main() {
 		log.Fatalf("dial quote service: %v", err)
 	}
 	defer quoteConn.Close()
-	gateway.SetQuoteService(NewQuoteGRPCClient(quoteConn))
+	quoteClient := NewQuoteGRPCClient(quoteConn)
+	gateway.SetQuoteService(quoteClient)
+	gateway.SetProviderStatusClient(quoteClient)
 
 	tradeAddr := os.Getenv("OSAI_TRADE_GRPC_ADDR")
 	if tradeAddr == "" {
