@@ -39,6 +39,148 @@ paths:
                 $ref: '#/components/schemas/BeneficiaryRegistrationResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
+  /v1/webhook-endpoints:
+    post:
+      operationId: configureWebhookEndpoint
+      summary: Configure the institution's signed customer webhook endpoint
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureWebhookEndpointRequest'
+      responses:
+        '200':
+          description: Webhook endpoint configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigureWebhookEndpointResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: The institution is not entitled to configure webhooks
+        '409':
+          description: Idempotency conflict or request still in progress
+  /v1/webhook-deliveries/{event_id}/replay:
+    post:
+      operationId: replayCustomerWebhook
+      summary: Queue another delivery attempt for an existing customer event
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/WebhookEventID'
+      responses:
+        '202':
+          description: Replay queued with the same stable event ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReplayResponse'
+        '403':
+          description: The institution is not entitled to replay webhooks
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Event is not eligible for replay or idempotency conflict
+  /v1/credentials:
+    post:
+      operationId: createCredential
+      summary: Create an environment-scoped API credential
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCredentialRequest'
+      responses:
+        '201':
+          description: Credential created; the secret is returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialSecretResponse'
+        '403':
+          description: Credential creation is not entitled
+        '503':
+          description: Customer service unavailable
+    get:
+      operationId: listCredentials
+      summary: List institution credential metadata
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+      responses:
+        '200':
+          description: Credential metadata; secret material is never returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialListResponse'
+        '403':
+          description: Credential reads are not entitled
+  /v1/credentials/{public_id}:
+    get:
+      operationId: getCredential
+      summary: Get institution credential metadata
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/PublicCredentialID'
+      responses:
+        '200':
+          description: Credential metadata; secret material is never returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: revokeCredential
+      summary: Revoke an institution credential
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/PublicCredentialID'
+      responses:
+        '200':
+          description: Credential revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialRevocationResponse'
+        '403':
+          description: Credential changes are not entitled
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/credentials/{public_id}/rotate:
+    post:
+      operationId: rotateCredential
+      summary: Rotate an active institution credential
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/PublicCredentialID'
+      responses:
+        '200':
+          description: Credential rotated; the new secret is returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialSecretResponse'
+        '403':
+          description: Credential changes are not entitled
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/quotes:
     post:
       summary: Create a quote
@@ -98,6 +240,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AcceptQuoteResponse'
+  /v1/trades:
+    get:
+      operationId: listTrades
+      summary: List institution trades
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Currency'
+        - $ref: '#/components/parameters/TradeStatus'
+        - $ref: '#/components/parameters/CustomerReference'
+      responses:
+        '200':
+          description: Trade page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradePage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          description: Trade read service unavailable
   /v1/trades/{trade_id}:
     get:
       summary: Get trade by ID
@@ -126,6 +293,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SettlementResponse'
+  /v1/reports/settlements:
+    get:
+      operationId: listSettlementReports
+      summary: List terminal settlement outcomes for the institution
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Currency'
+        - $ref: '#/components/parameters/TradeStatus'
+      responses:
+        '200':
+          description: Terminal settlement report page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementReportPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          description: Settlement report service unavailable
   /v1/balances:
     get:
       summary: Get institution balances
@@ -194,6 +385,51 @@ components:
       schema:
         type: integer
         default: 25
+        minimum: 1
+        maximum: 100
+    From:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive lower bound on trade creation time or terminal settlement time, according to the endpoint.
+    To:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Exclusive upper bound on trade creation time or terminal settlement time, according to the endpoint.
+    Currency:
+      name: currency
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact currency filter; trade lists use sell/base currency and settlement reports use settlement currency.
+    TradeStatus:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact canonical status for the endpoint's resource.
+    CustomerReference:
+      name: customer_reference
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact institution-scoped reference supplied when requesting the quote.
+    WebhookEventID:
+      name: event_id
+      in: path
+      required: true
+      schema:
+        type: string
     QuoteID:
       name: quote_id
       in: path
@@ -212,7 +448,83 @@ components:
       required: true
       schema:
         type: string
+    PublicCredentialID:
+      name: public_id
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
+    CreateCredentialRequest:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+        environment:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+    CredentialMetadata:
+      type: object
+      required: [public_id, label, environment, status, created_at]
+      properties:
+        public_id:
+          type: string
+        label:
+          type: string
+        environment:
+          type: string
+          enum: [sandbox, production]
+        status:
+          type: string
+          enum: [ACTIVE, REVOKED, EXPIRED]
+        created_at:
+          type: string
+          format: date-time
+    CredentialResponse:
+      allOf:
+        - $ref: '#/components/schemas/CredentialMetadata'
+        - type: object
+          required: [request_id]
+          properties:
+            request_id:
+              type: string
+    CredentialSecretResponse:
+      allOf:
+        - $ref: '#/components/schemas/CredentialMetadata'
+        - type: object
+          required: [secret, request_id]
+          properties:
+            secret:
+              type: string
+              readOnly: true
+              description: Returned only during creation or rotation; store it securely.
+            rotated_at:
+              type: string
+              format: date-time
+              description: Present for rotation responses.
+            request_id:
+              type: string
+    CredentialListResponse:
+      type: object
+      required: [credentials, request_id]
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialMetadata'
+        request_id:
+          type: string
+    CredentialRevocationResponse:
+      type: object
+      required: [status, request_id]
+      properties:
+        status:
+          type: string
+          enum: [revoked]
+        request_id:
+          type: string
     RegisterBeneficiaryRequest:
       type: object
       required: [name, bank_code, account_number]
@@ -233,6 +545,42 @@ components:
           type: string
         approval_status:
           type: string
+        request_id:
+          type: string
+    ConfigureWebhookEndpointRequest:
+      type: object
+      required: [endpoint_url, signing_secret, subscribed_event_types]
+      properties:
+        endpoint_url:
+          type: string
+          format: uri
+          description: Must use HTTPS and resolve only to public addresses outside local proof mode.
+        signing_secret:
+          type: string
+          writeOnly: true
+          description: Customer-generated secret used to verify signed webhook deliveries.
+        subscribed_event_types:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    ConfigureWebhookEndpointResponse:
+      type: object
+      required: [configured, request_id]
+      properties:
+        configured:
+          type: boolean
+        request_id:
+          type: string
+    WebhookReplayResponse:
+      type: object
+      required: [event_id, status, request_id]
+      properties:
+        event_id:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED]
         request_id:
           type: string
     ErrorEnvelope:
@@ -267,7 +615,7 @@ components:
           type: string
     QuoteResponse:
       type: object
-      required: [quote_id, status, base_amount_minor, base_currency, quote_currency, amount_out_minor, rate_minor, fee_minor, expires_at]
+      required: [quote_id, status, base_amount_minor, base_currency, quote_currency, amount_out_minor, rate_minor, fee_minor, quote_mode, source_principal_minor, total_debit_minor, destination_surplus_minor, rate_direction, rate_scale, fee_schedule_id, fee_schedule_version, source_minor_exponent, destination_minor_exponent, sell_amount_minor, sell_currency, buy_amount_minor, buy_currency, expires_at]
       properties:
         quote_id:
           type: string
@@ -287,6 +635,45 @@ components:
           type: integer
         fee_minor:
           type: integer
+          description: Institution pricing fee in source-currency minor units.
+        quote_mode:
+          type: string
+          enum: [FIXED_SOURCE, FIXED_DESTINATION]
+        source_principal_minor:
+          type: integer
+          description: Source-currency principal converted by the quoted rate.
+        total_debit_minor:
+          type: integer
+          description: Exact all-in source-currency debit, including fee.
+        destination_target_minor:
+          type: integer
+          description: Contracted destination amount for FIXED_DESTINATION; zero for FIXED_SOURCE.
+        destination_surplus_minor:
+          type: integer
+          description: Conservatively rounded proceeds above the exact requested destination target; separately identified for downstream accounting.
+        rate_direction:
+          type: string
+          example: NGN_PER_USD
+        rate_scale:
+          type: integer
+          description: Rate is destination major units per source major unit multiplied by this scale.
+          example: 100000000
+        fee_schedule_id:
+          type: string
+        fee_schedule_version:
+          type: integer
+        source_minor_exponent:
+          type: integer
+        destination_minor_exponent:
+          type: integer
+        sell_amount_minor:
+          type: integer
+        sell_currency:
+          type: string
+        buy_amount_minor:
+          type: integer
+        buy_currency:
+          type: string
         expires_at:
           type: string
           format: date-time
@@ -294,10 +681,19 @@ components:
           type: string
     CreateQuoteRequest:
       type: object
-      required: [base_amount_minor, base_currency, quote_currency]
+      required: [base_currency, quote_currency]
       properties:
         base_amount_minor:
           type: integer
+          description: For FIXED_SOURCE, the exact all-in source debit including fees. Required only for FIXED_SOURCE.
+        quote_mode:
+          type: string
+          enum: [FIXED_SOURCE, FIXED_DESTINATION]
+          default: FIXED_SOURCE
+          description: Omitted values retain the legacy FIXED_SOURCE request interpretation.
+        destination_amount_minor:
+          type: integer
+          description: Exact target proceeds for FIXED_DESTINATION. Required only for FIXED_DESTINATION.
         base_currency:
           type: string
         quote_currency:
@@ -306,6 +702,9 @@ components:
           type: string
         urgency:
           type: string
+        customer_reference:
+          type: string
+          description: Institution-scoped reference returned on the resulting trade.
     AcceptQuoteRequest:
       type: object
       required: [quote_id]
@@ -347,6 +746,59 @@ components:
           type: string
         settlement_id:
           type: string
+        customer_reference:
+          type: string
+          description: Institution-scoped client reference, when supplied.
+        request_id:
+          type: string
+    TradePage:
+      type: object
+      required: [items, page, page_size, total, request_id]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeResponse'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+        request_id:
+          type: string
+    SettlementReportPage:
+      type: object
+      required: [items, page, page_size, total, request_id]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [settlement_id, trade_id, quote_id, status, amount_minor, currency, occurred_at]
+            properties:
+              settlement_id:
+                type: string
+              trade_id:
+                type: string
+              quote_id:
+                type: string
+              status:
+                type: string
+                enum: [CONFIRMED, FAILED]
+              amount_minor:
+                type: integer
+              currency:
+                type: string
+              occurred_at:
+                type: string
+                format: date-time
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
         request_id:
           type: string
     SettlementResponse:
@@ -375,18 +827,24 @@ components:
           type: string
     BalanceResponse:
       type: object
-      required: [institution_id, currency, available_minor, held_minor, total_minor]
+      required: [institution_id, balances, request_id]
       properties:
         institution_id:
           type: string
-        currency:
-          type: string
-        available_minor:
-          type: integer
-        held_minor:
-          type: integer
-        total_minor:
-          type: integer
+        balances:
+          type: array
+          items:
+            type: object
+            required: [currency, available_minor, held_minor, total_minor]
+            properties:
+              currency:
+                type: string
+              available_minor:
+                type: integer
+              held_minor:
+                type: integer
+              total_minor:
+                type: integer
         request_id:
           type: string
     TransactionItem:

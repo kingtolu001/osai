@@ -2,6 +2,16 @@
 *.MD
 *.markdown
 *.Markdown
+!docs/api/authentication.md
+!docs/api/idempotency.md
+!docs/api/errors.md
+!docs/api/webhooks.md
+!docs/api/example-integration.md
+!docs/api/sandbox.md
+!docs/api/phase5-wire-contract-proposal.md
+!docs/V1_ARCHITECTURE_TRACEABILITY.md
+!docs/V1_PILOT_READINESS.md
+!docs/handoffs/phase-5-customer-api-handoff.md
 logs/
 runtime-logs/
 *.log
