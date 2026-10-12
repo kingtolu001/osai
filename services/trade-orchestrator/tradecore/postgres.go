@@ -1,10 +1,13 @@
 package tradecore
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/osai/osai/pkg/postgres"
+	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
+	"google.golang.org/grpc/metadata"
 	"time"
 )
 
@@ -20,6 +23,9 @@ func NewPostgresStore(db *sql.DB) (*Store, error) {
 	CREATE TABLE IF NOT EXISTS trade_transitions(id bigserial PRIMARY KEY,trade_id text NOT NULL REFERENCES trades(id),from_state text NOT NULL,to_state text NOT NULL,occurred_at timestamptz NOT NULL DEFAULT now());
 	CREATE TABLE IF NOT EXISTS trade_settlement_event_inbox(event_id text PRIMARY KEY,institution_id text NOT NULL,settlement_id text NOT NULL,trade_id text NOT NULL REFERENCES trades(id),status text NOT NULL CHECK(status IN ('SETTLED','FAILED')),correlation_id text NOT NULL DEFAULT '',received_at timestamptz NOT NULL DEFAULT now());
 	ALTER TABLE trade_settlement_event_inbox ADD COLUMN IF NOT EXISTS correlation_id text NOT NULL DEFAULT '';`)
+	if err == nil {
+		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS trade_outbox(event_id text PRIMARY KEY,institution_id text NOT NULL,trade_id text NOT NULL REFERENCES trades(id),event_type text NOT NULL,body jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),delivered_at timestamptz); CREATE INDEX IF NOT EXISTS trade_outbox_pending_idx ON trade_outbox(created_at,event_id) WHERE delivered_at IS NULL;`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +67,74 @@ func (s *Store) createDB(trade *Trade) (*Trade, error) {
 	if _, err = tx.Exec(`INSERT INTO trade_transitions(trade_id,from_state,to_state) VALUES($1,'', $2)`, trade.ID, trade.Status); err != nil {
 		return nil, err
 	}
+	if err = insertTradeEvent(tx, trade, "trade.accepted", trade.CreatedAt); err != nil {
+		return nil, err
+	}
 	return trade, tx.Commit()
+}
+
+func insertTradeEvent(tx *sql.Tx, trade *Trade, eventType string, occurredAt time.Time) error {
+	eventID := "evt_trade_" + trade.ID + "_" + eventType
+	payload, err := json.Marshal(map[string]any{
+		"trade_id": trade.ID,
+		"quote_id": trade.QuoteID,
+		"status":   trade.Status,
+	})
+	if err != nil {
+		return err
+	}
+	event := notificationv1.Event{
+		EventId: eventID, InstitutionId: trade.InstitutionID, EventType: eventType,
+		CorrelationId: trade.CorrelationID, AggregateId: trade.ID,
+		OccurredAt: occurredAt.UTC().Format(time.RFC3339Nano), PayloadJson: string(payload),
+	}
+	raw, err := json.Marshal(&event)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO trade_outbox(event_id,institution_id,trade_id,event_type,body) VALUES($1,$2,$3,$4,$5) ON CONFLICT(event_id) DO NOTHING`, eventID, trade.InstitutionID, trade.ID, eventType, string(raw))
+	return err
+}
+
+func (s *Store) Relay(ctx context.Context, client notificationv1.NotificationServiceClient, token string) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT event_id,body FROM trade_outbox WHERE delivered_at IS NULL ORDER BY created_at,event_id LIMIT 50`)
+	if err != nil {
+		return err
+	}
+	type pending struct {
+		id  string
+		raw []byte
+	}
+	batch := make([]pending, 0, 50)
+	for rows.Next() {
+		var item pending
+		if err = rows.Scan(&item.id, &item.raw); err != nil {
+			rows.Close()
+			return err
+		}
+		batch = append(batch, item)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, item := range batch {
+		var event notificationv1.Event
+		if err = json.Unmarshal(item.raw, &event); err != nil {
+			return err
+		}
+		callCtx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token), 5*time.Second)
+		_, err = client.PublishEvent(callCtx, &event)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if _, err = s.db.ExecContext(ctx, `UPDATE trade_outbox SET delivered_at=now() WHERE event_id=$1`, item.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) listTradesDB(institutionID string, filter TradeListFilter) ([]Trade, int, error) {
@@ -173,6 +246,15 @@ func (s *Store) setStatusDB(tradeID string, state TradeState) error {
 	}
 	if _, err = tx.Exec(`INSERT INTO trade_transitions(trade_id,from_state,to_state) VALUES($1,$2,$3)`, tradeID, previous, string(state)); err != nil {
 		return err
+	}
+	eventType := map[TradeState]string{
+		StateFundingRequired: "trade.funding_required",
+		StateFunded:          "trade.funded",
+	}[state]
+	if eventType != "" {
+		if err = insertTradeEvent(tx, &trade, eventType, trade.UpdatedAt); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

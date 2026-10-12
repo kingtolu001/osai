@@ -3,6 +3,7 @@ package ledgercore
 import (
 	"errors"
 	"fmt"
+	"math/big"
 )
 
 // LedgerAccount is the in-memory financial account used by the Phase 1 ledger truth layer.
@@ -56,7 +57,14 @@ func (j *Journal) Validate() error {
 	}
 
 	seen := map[string]struct{}{}
+	debits, credits := new(big.Int), new(big.Int)
 	for _, e := range j.Entries {
+		if e.AccountCode == "" || e.Owner == "" {
+			return errors.New("journal entry requires an account code and owner")
+		}
+		if e.Debit < 0 || e.Credit < 0 || (e.Debit > 0 && e.Credit > 0) {
+			return fmt.Errorf("invalid debit/credit amounts on entry %s", e.AccountCode)
+		}
 		if e.ExternalRef != "" {
 			if _, ok := seen[e.ExternalRef]; ok {
 				return fmt.Errorf("duplicate external reference: %s", e.ExternalRef)
@@ -66,14 +74,12 @@ func (j *Journal) Validate() error {
 		if e.Currency != j.Currency {
 			return fmt.Errorf("currency mismatch on entry %s: %s != %s", e.AccountCode, e.Currency, j.Currency)
 		}
+		debits.Add(debits, big.NewInt(e.Debit))
+		credits.Add(credits, big.NewInt(e.Credit))
 	}
 
-	var delta int64
-	for _, e := range j.Entries {
-		delta += e.Debit - e.Credit
-	}
-	if delta != 0 {
-		return fmt.Errorf("journal %s does not balance: %d", j.ID, delta)
+	if debits.Cmp(credits) != 0 {
+		return fmt.Errorf("journal %s does not balance: debits=%s credits=%s", j.ID, debits, credits)
 	}
 	return nil
 }

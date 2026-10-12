@@ -90,6 +90,44 @@ func TestCustomerFlutterwaveRoutingDefaultsClosed(t *testing.T) {
 	}
 }
 
+func TestTradeRejectsUnsupportedFXOrFeeFunding(t *testing.T) {
+	t.Setenv("OSAI_FLW_TRADE_ROUTING_ENABLED", "true")
+	for _, test := range []struct {
+		name  string
+		quote *tradev1.CreateTradeFromAcceptedQuoteRequest
+	}{
+		{
+			name: "cross currency",
+			quote: &tradev1.CreateTradeFromAcceptedQuoteRequest{
+				InstitutionId: "inst_1", QuoteId: "quo_fx", BaseAmountMinor: 10000,
+				BaseCurrency: "NGN", QuoteCurrency: "USD",
+				Amount: &tradev1.Money{AmountMinor: 1000, Currency: "USD"},
+			},
+		},
+		{
+			name: "amount does not include source fee",
+			quote: &tradev1.CreateTradeFromAcceptedQuoteRequest{
+				InstitutionId: "inst_1", QuoteId: "quo_fee", BaseAmountMinor: 10000,
+				BaseCurrency: "NGN", QuoteCurrency: "NGN",
+				Amount: &tradev1.Money{AmountMinor: 9500, Currency: "NGN"},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := tradecore.NewStore()
+			settlement := &testSettlementClient{}
+			server := newTradeServer(store, settlement).withLedgerClient(testLedgerClient{})
+			_, err := server.CreateTradeFromAcceptedQuote(context.Background(), test.quote)
+			if status.Code(err) != codes.FailedPrecondition {
+				t.Fatalf("unsupported funding should fail closed, got %v", err)
+			}
+			if _, exists := store.GetByQuoteID(test.quote.QuoteId); exists || settlement.request != nil {
+				t.Fatalf("unsupported funding created trade or settlement: trade_exists=%v settlement=%+v", exists, settlement.request)
+			}
+		})
+	}
+}
+
 func TestTradeCreationPersistsFundingRequiredWithoutSettlement(t *testing.T) {
 	t.Setenv("OSAI_FLW_TRADE_ROUTING_ENABLED", "true")
 	settlement := &testSettlementClient{}

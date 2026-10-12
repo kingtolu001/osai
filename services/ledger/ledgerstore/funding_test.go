@@ -82,6 +82,33 @@ func TestFundingReservationsCannotOverdrawAndFinalityRequiresHold(t *testing.T) 
 	if _, _, err := service.ConfirmCommand(unfunded); err == nil {
 		t.Fatal("unfunded settlement journal accepted")
 	}
+
+	fxInst := "inst_fxguard_" + suffix
+	fxTrade := "trd_fxguard_" + suffix
+	fxDeposit := ledgerapi.PrefundCommand{InstitutionID: fxInst, Currency: "NGN", AmountMinor: 100, EvidenceReference: "bank_fxguard_" + suffix}
+	if _, _, err = service.PostLocalPrefund(context.Background(), fxDeposit); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = service.ReserveFunding(context.Background(), ledgerapi.FundingCommand{InstitutionID: fxInst, TradeID: fxTrade, Currency: "NGN", AmountMinor: 100}); err != nil {
+		t.Fatal(err)
+	}
+	crossCurrency := ledgerapi.Command{InstitutionID: fxInst, TradeID: fxTrade, SettlementID: "si_fxguard_" + suffix, ExternalReference: "ref_fxguard_" + suffix, AmountMinor: 100, Currency: "USD"}
+	if _, _, err = service.ConfirmCommand(crossCurrency); !errors.Is(err, ledgerapi.ErrFundingMismatch) {
+		t.Fatalf("cross-currency confirmation should fail closed, got %v", err)
+	}
+	if _, _, err = service.FailCommand(crossCurrency); !errors.Is(err, ledgerapi.ErrFundingMismatch) {
+		t.Fatalf("cross-currency failure release should fail closed, got %v", err)
+	}
+	reservation, err := service.GetFundingReservation(context.Background(), ledgerapi.FundingCommand{InstitutionID: fxInst, TradeID: fxTrade, Currency: "NGN", AmountMinor: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reservation.State != "ACTIVE" {
+		t.Fatalf("cross-currency finality changed source reservation to %s", reservation.State)
+	}
+	if count := proofFundingCount(t, db, `SELECT count(*) FROM ledger_journals WHERE trade_id=$1 AND kind IN ('settlement.confirmed','settlement.failed')`, fxTrade); count != 0 {
+		t.Fatalf("cross-currency finality posted %d settlement journals", count)
+	}
 }
 
 func proofFundingCount(t *testing.T, db *sql.DB, query string, args ...any) int {

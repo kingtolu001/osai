@@ -30,6 +30,7 @@ func TestPostgresListTradesFiltersAndPaginates(t *testing.T) {
 
 	institutionID := "inst_trade_list_" + uuid.NewString()
 	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM trade_outbox WHERE institution_id=$1`, institutionID)
 		_, _ = db.Exec(`DELETE FROM trade_transitions WHERE trade_id IN (SELECT id FROM trades WHERE institution_id=$1)`, institutionID)
 		_, _ = db.Exec(`DELETE FROM trades WHERE institution_id=$1`, institutionID)
 	})
@@ -47,11 +48,22 @@ func TestPostgresListTradesFiltersAndPaginates(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM trade_outbox WHERE trade_id=$1`, other.ID)
 		_, _ = db.Exec(`DELETE FROM trade_transitions WHERE trade_id=$1`, other.ID)
 		_, _ = db.Exec(`DELETE FROM trades WHERE id=$1`, other.ID)
 	})
 	if err := store.SetStatus(second.ID, StateFunded); err != nil {
 		t.Fatal(err)
+	}
+	var acceptedEvents, fundedEvents int
+	if err := db.QueryRow(`SELECT count(*) FROM trade_outbox WHERE trade_id=$1 AND event_type='trade.accepted'`, first.ID).Scan(&acceptedEvents); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM trade_outbox WHERE trade_id=$1 AND event_type='trade.funded'`, second.ID).Scan(&fundedEvents); err != nil {
+		t.Fatal(err)
+	}
+	if acceptedEvents != 1 || fundedEvents != 1 {
+		t.Fatalf("trade state outbox events missing or duplicated: accepted=%d funded=%d", acceptedEvents, fundedEvents)
 	}
 
 	filter := TradeListFilter{

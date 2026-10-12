@@ -88,6 +88,9 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 	if strings.TrimSpace(req.QuoteId) == "" {
 		return nil, status.Error(codes.InvalidArgument, "quote_id required")
 	}
+	if req.BaseAmountMinor <= 0 || strings.TrimSpace(req.BaseCurrency) == "" || strings.TrimSpace(req.QuoteCurrency) == "" {
+		return nil, status.Error(codes.InvalidArgument, "positive source amount and currencies required")
+	}
 	if req.Amount != nil && req.Amount.AmountMinor <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "amount must be positive")
 	}
@@ -101,6 +104,11 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 	}
 	if strings.TrimSpace(currency) == "" {
 		return nil, status.Error(codes.InvalidArgument, "currency required")
+	}
+	if !strings.EqualFold(req.BaseCurrency, req.QuoteCurrency) ||
+		!strings.EqualFold(currency, req.BaseCurrency) ||
+		amountMinor != req.BaseAmountMinor {
+		return nil, status.Error(codes.FailedPrecondition, "cross-currency or fee-bearing funding requires verified FX execution support")
 	}
 	if strings.EqualFold(req.SettlementProviderId, "flutterwave") && os.Getenv("OSAI_FLW_TRADE_ROUTING_ENABLED") != "true" {
 		return nil, status.Error(codes.FailedPrecondition, "flutterwave trade routing is disabled")
