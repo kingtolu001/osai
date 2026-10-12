@@ -28,11 +28,11 @@ func TestPhase5RuntimeMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	credA, secretA, err := customer.CreateCredential(instA.ID, "primary")
+	credA, secretA, err := customer.CreateCredential(instA.ID, "primary", "sandbox")
 	if err != nil {
 		t.Fatal(err)
 	}
-	credB, secretB, err := customer.CreateCredential(instB.ID, "primary")
+	credB, secretB, err := customer.CreateCredential(instB.ID, "primary", "sandbox")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +58,9 @@ func TestPhase5RuntimeMatrix(t *testing.T) {
 	}
 	if resp2.Body["quote_id"] != resp.Body["quote_id"] {
 		t.Fatalf("same key should return same logical response: %v != %v", resp2.Body["quote_id"], resp.Body["quote_id"])
+	}
+	if resp2.Body["request_id"] != resp.Body["request_id"] {
+		t.Fatalf("same key should replay the original response body: first=%v replay=%v", resp.Body, resp2.Body)
 	}
 
 	// same key changed payload 409
@@ -116,6 +119,9 @@ func TestPhase5RuntimeMatrix(t *testing.T) {
 	acceptReplay := doJSON(t, server, http.MethodPost, "/v1/quotes/"+quoteID+"/accept", validHeader, "idem-accept-1", acceptBody)
 	if acceptReplay.StatusCode != http.StatusOK {
 		t.Fatalf("accept replay should succeed, got %d: %s", acceptReplay.StatusCode, acceptReplay.Body)
+	}
+	if acceptReplay.Body["request_id"] != acceptOK.Body["request_id"] || acceptReplay.Body["trade_id"] != acceptOK.Body["trade_id"] {
+		t.Fatalf("accept replay should return the original response: first=%v replay=%v", acceptOK.Body, acceptReplay.Body)
 	}
 	conflictAccept := doJSON(t, server, http.MethodPost, "/v1/quotes/"+quoteID+"/accept", validHeader, "idem-accept-1", `{"quote_id":"`+quoteID+`","force":"different"}`)
 	if conflictAccept.StatusCode != http.StatusConflict {

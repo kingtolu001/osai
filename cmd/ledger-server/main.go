@@ -34,17 +34,20 @@ func main() {
 	if err := ledgerstore.EnsureSchema(db); err != nil {
 		log.Fatal(err)
 	}
-	service, err := ledgerapi.NewServiceWithStorage(ledgerstore.Postgres{DB: db})
+	service, err := ledgerapi.NewServiceWithStorage(ledgerstore.Postgres{DB: db, CustodyBankID: os.Getenv("OSAI_CUSTODY_BANK_ID")})
 	if err != nil {
 		log.Fatal(err)
 	}
-	addr:=os.Getenv("OSAI_LEDGER_GRPC_ADDR");if addr==""{addr=":50051"}
+	addr := os.Getenv("OSAI_LEDGER_GRPC_ADDR")
+	if addr == "" {
+		addr = ":50051"
+	}
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	server := grpc.NewServer()
-	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service, DB: db})
-	log.Printf("ledger gRPC server listening on %s",addr)
+	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service, DB: db, LocalPrefundToken: os.Getenv("OSAI_LOCAL_PREFUND_TOKEN")})
+	log.Printf("ledger gRPC server listening on %s", addr)
 	log.Fatal(server.Serve(listener))
 }

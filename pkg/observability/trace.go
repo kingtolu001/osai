@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	initOnce sync.Once
-	initErr  error
+	initOnce      sync.Once
+	initErr       error
+	tracerProvider *sdktrace.TracerProvider
 )
 
 func Init(serviceName string) error {
@@ -57,9 +58,20 @@ func Init(serviceName string) error {
 			sdktrace.WithBatcher(exporter),
 			sdktrace.WithResource(res),
 		)
+		tracerProvider = provider
 		otel.SetTracerProvider(provider)
 	})
 	return initErr
+}
+
+func Shutdown(ctx context.Context) error {
+	if tracerProvider == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return tracerProvider.Shutdown(ctx)
 }
 
 func Start(ctx context.Context, component, operation string) (context.Context, oteltrace.Span) {

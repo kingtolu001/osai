@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/osai/osai/adapters/flutterwave"
+	"github.com/osai/osai/pkg/correlation"
+	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/provider"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	reconciliation "github.com/osai/osai/services/reconciliation"
@@ -23,10 +25,17 @@ type confirmedSettlementLister interface {
 // the settlement RPC, and reads provider statements through SettlementRail.
 // Repeating the same window is safe because evidence and break IDs are stable.
 func reconcileFlutterwavePass(ctx context.Context, svc *reconciliation.Service, client confirmedSettlementLister, rail provider.SettlementRail, token string, now time.Time, expectedFeeMinor int64) error {
+	return reconcileFlutterwavePassWithLag(ctx, svc, client, rail, token, now, expectedFeeMinor, 5*time.Minute)
+}
+
+func reconcileFlutterwavePassWithLag(ctx context.Context, svc *reconciliation.Service, client confirmedSettlementLister, rail provider.SettlementRail, token string, now time.Time, expectedFeeMinor int64, lag time.Duration) error {
 	if svc == nil || client == nil || rail == nil || token == "" || expectedFeeMinor < 0 {
 		return errors.New("automatic reconciliation configuration unavailable")
 	}
-	to := now.UTC().Add(-5 * time.Minute)
+	if lag < 0 || lag > 24*time.Hour {
+		return errors.New("invalid reconciliation lag")
+	}
+	to := now.UTC().Add(-lag)
 	from := to.Add(-7 * 24 * time.Hour)
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-osai-reconciliation-token", token)
 	var cursor string
@@ -44,7 +53,10 @@ func reconcileFlutterwavePass(ctx context.Context, svc *reconciliation.Service, 
 			}
 			window := flutterwave.TransactionWindow{From: from, To: now.UTC(), PageSize: 100, Reference: item.ClientRef}
 			expected := reconciliation.ExpectedTransaction{ID: item.SettlementId, Provider: item.ProviderId, ClientRef: item.ClientRef, ProviderRef: item.ProviderRef, AmountMinor: item.AmountMinor, Currency: item.Currency, Beneficiary: item.Beneficiary, FeeMinor: expectedFeeMinor}
-			if _, err := svc.ReconcileFlutterwaveWindow(rail, window, to, []reconciliation.ExpectedTransaction{expected}); err != nil {
+			_, span := observability.Start(correlation.WithContext(ctx, item.CorrelationId), "reconciliation", "provider.reconcile")
+			_, err := svc.ReconcileFlutterwaveWindow(rail, window, to, []reconciliation.ExpectedTransaction{expected})
+			span.End()
+			if err != nil {
 				return fmt.Errorf("provider reconciliation for settlement %s: %w", item.SettlementId, err)
 			}
 		}

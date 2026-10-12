@@ -13,10 +13,28 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var errIdempotencyConflict = errors.New("idempotency key reused with different payload")
+var errIdempotencyInProgress = errors.New("idempotency request is still in progress")
+
+func newIdempotencyStore() *idempotencyStore {
+	dsn := strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
+	if dsn == "" {
+		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
+	}
+	if err := ensureCustomerAPISchema(db); err != nil {
+		_ = db.Close()
+		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
+	}
+	return &idempotencyStore{rows: map[string]*idempotencyEntry{}, db: db}
+}
 
 func newPersistentIdempotencyStore() (*idempotencyStore, error) {
 	dsn := strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
@@ -43,9 +61,11 @@ type idempotencyEntry struct {
 	Endpoint      string
 	Key           string
 	Hash          string
+	LockToken     string
 	Status        string
 	ResponseCode  int
 	ResponseBody  map[string]any
+	LockedUntil   time.Time
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
@@ -60,15 +80,13 @@ func (s *idempotencyStore) key(instID, endpoint, key string) string {
 	return instID + "|" + endpoint + "|" + key
 }
 
-func canonicalJSON(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}
-
-func canonicalHash(v any) string {
-	b, _ := json.Marshal(v)
+func canonicalHash(v any) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", fmt.Errorf("encode idempotency payload: %w", err)
+	}
 	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	return hex.EncodeToString(h[:]), nil
 }
 
 func ensureCustomerAPISchema(db *sql.DB) error {
@@ -80,75 +98,124 @@ func ensureCustomerAPISchema(db *sql.DB) error {
 			payload_hash TEXT NOT NULL,
 			response_code INTEGER NOT NULL DEFAULT 200,
 			response_body JSONB NOT NULL DEFAULT '{}',
+			status TEXT NOT NULL DEFAULT 'IN_FLIGHT',
+			locked_until TIMESTAMPTZ NOT NULL DEFAULT now() + interval '30 seconds',
+			lock_token TEXT,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			PRIMARY KEY (institution_id, endpoint, idempotency_key)
 		);
+		ALTER TABLE customer_api_idempotency ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'COMPLETED';
+		ALTER TABLE customer_api_idempotency ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+		ALTER TABLE customer_api_idempotency ADD COLUMN IF NOT EXISTS lock_token TEXT;
+		UPDATE customer_api_idempotency SET status='IN_FLIGHT', locked_until=now() - interval '1 second'
+		WHERE status='COMPLETED' AND response_body='{}'::jsonb;
 	`)
 	return err
 }
 
-func (s *idempotencyStore) CheckAndStore(instID, endpoint, key string, payload any, responseCode int, responseBody map[string]any) (bool, map[string]any, error) {
+func (s *idempotencyStore) CheckAndStore(instID, endpoint, key string, payload any, responseCode int, responseBody map[string]any) (bool, int, map[string]any, string, error) {
 	if strings.TrimSpace(key) == "" {
-		return false, nil, fmt.Errorf("missing idempotency key")
+		return false, 0, nil, "", fmt.Errorf("missing idempotency key")
 	}
-	payloadHash := canonicalHash(payload)
+	payloadHash, err := canonicalHash(payload)
+	if err != nil {
+		return false, 0, nil, "", err
+	}
+	lockToken := uuid.NewString()
 	k := s.key(instID, endpoint, key)
 	if s.db != nil {
-		result, err := s.db.Exec(`INSERT INTO customer_api_idempotency(institution_id,endpoint,idempotency_key,payload_hash,response_body) VALUES($1,$2,$3,$4,'{}') ON CONFLICT DO NOTHING`, instID, endpoint, key, payloadHash)
+		result, err := s.db.Exec(`INSERT INTO customer_api_idempotency(institution_id,endpoint,idempotency_key,payload_hash,response_code,response_body,status,locked_until,lock_token) VALUES($1,$2,$3,$4,$5,'{}','IN_FLIGHT',now()+interval '30 seconds',$6) ON CONFLICT DO NOTHING`, instID, endpoint, key, payloadHash, responseCode, lockToken)
 		if err != nil {
-			return false, nil, err
+			return false, 0, nil, "", err
 		}
 		affected, err := result.RowsAffected()
 		if err != nil {
-			return false, nil, err
+			return false, 0, nil, "", err
 		}
 		if affected == 1 {
-			return false, nil, nil
+			return false, responseCode, nil, lockToken, nil
 		}
 		var existingHash string
 		var storedBody []byte
-		err = s.db.QueryRow(`SELECT payload_hash, response_body FROM customer_api_idempotency WHERE institution_id = $1 AND endpoint = $2 AND idempotency_key = $3`, instID, endpoint, key).Scan(&existingHash, &storedBody)
+		var state string
+		var storedCode int
+		var lockedUntil sql.NullTime
+		err = s.db.QueryRow(`SELECT payload_hash,status,response_body,response_code,locked_until FROM customer_api_idempotency WHERE institution_id=$1 AND endpoint=$2 AND idempotency_key=$3`, instID, endpoint, key).Scan(&existingHash, &state, &storedBody, &storedCode, &lockedUntil)
 		switch {
 		case err == nil:
 			if existingHash != payloadHash {
-				return false, nil, errIdempotencyConflict
+				return false, 0, nil, "", errIdempotencyConflict
+			}
+			if state != "COMPLETED" {
+				result, updateErr := s.db.Exec(`UPDATE customer_api_idempotency SET status='IN_FLIGHT',locked_until=now()+interval '30 seconds',lock_token=$5,updated_at=now() WHERE institution_id=$1 AND endpoint=$2 AND idempotency_key=$3 AND payload_hash=$4 AND status<>'COMPLETED' AND (locked_until IS NULL OR locked_until<=now())`, instID, endpoint, key, payloadHash, lockToken)
+				if updateErr != nil {
+					return false, 0, nil, "", updateErr
+				}
+				affected, updateErr := result.RowsAffected()
+				if updateErr != nil {
+					return false, 0, nil, "", updateErr
+				}
+				if affected == 1 {
+					return false, responseCode, nil, lockToken, nil
+				}
+				return false, 0, nil, "", errIdempotencyInProgress
 			}
 			var body map[string]any
 			if len(storedBody) > 0 && string(storedBody) != "null" {
 				if err := json.Unmarshal(storedBody, &body); err != nil {
-					body = map[string]any{}
+					return false, 0, nil, "", fmt.Errorf("decode stored idempotency response: %w", err)
 				}
 			}
 			if body == nil {
 				body = map[string]any{}
 			}
-			return true, body, nil
+			return true, storedCode, body, "", nil
 		case err != sql.ErrNoRows:
-			return false, nil, err
+			return false, 0, nil, "", err
 		}
-		return false, nil, err
+		return false, 0, nil, "", err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if row, ok := s.rows[k]; ok {
-		if row.Hash == payloadHash {
-			return true, row.ResponseBody, nil
+		if row.Hash != payloadHash {
+			return false, 0, nil, "", errIdempotencyConflict
 		}
-		return false, nil, errIdempotencyConflict
+		if row.Status == "COMPLETED" {
+			return true, row.ResponseCode, row.ResponseBody, "", nil
+		}
+		if row.LockedUntil.After(time.Now()) {
+			return false, 0, nil, "", errIdempotencyInProgress
+		}
+		row.LockedUntil = time.Now().Add(30 * time.Second)
+		row.LockToken = lockToken
+		row.UpdatedAt = time.Now().UTC()
+		return false, responseCode, nil, lockToken, nil
 	}
-	entry := &idempotencyEntry{InstitutionID: instID, Endpoint: endpoint, Key: key, Hash: payloadHash, Status: "COMPLETED", ResponseCode: responseCode, ResponseBody: responseBody, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	now := time.Now().UTC()
+	entry := &idempotencyEntry{InstitutionID: instID, Endpoint: endpoint, Key: key, Hash: payloadHash, LockToken: lockToken, Status: "IN_FLIGHT", ResponseCode: responseCode, ResponseBody: responseBody, LockedUntil: now.Add(30 * time.Second), CreatedAt: now, UpdatedAt: now}
 	s.rows[k] = entry
-	return true, responseBody, nil
+	return false, responseCode, nil, lockToken, nil
 }
 
-func (s *idempotencyStore) SaveResponse(instID, endpoint, key string, payload any, responseBody map[string]any) error {
+func (s *idempotencyStore) SaveResponse(instID, endpoint, key string, payload any, lockToken string, responseCode int, responseBody map[string]any) error {
 	if responseBody == nil {
 		responseBody = map[string]any{}
 	}
+	if lockToken == "" || responseCode < 100 || responseCode > 599 {
+		return errors.New("idempotency reservation token and valid response code required")
+	}
+	payloadHash, err := canonicalHash(payload)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(responseBody)
+	if err != nil {
+		return fmt.Errorf("encode idempotency response: %w", err)
+	}
 	if s.db != nil {
-		payloadHash := canonicalHash(payload)
-		result, err := s.db.Exec(`UPDATE customer_api_idempotency SET response_code=200,response_body=$5,updated_at=now() WHERE institution_id=$1 AND endpoint=$2 AND idempotency_key=$3 AND payload_hash=$4`, instID, endpoint, key, payloadHash, mapToJSON(responseBody))
+		result, err := s.db.Exec(`UPDATE customer_api_idempotency SET response_code=$6,response_body=$7,status='COMPLETED',locked_until=now(),lock_token=NULL,updated_at=now() WHERE institution_id=$1 AND endpoint=$2 AND idempotency_key=$3 AND payload_hash=$4 AND status='IN_FLIGHT' AND lock_token=$5`, instID, endpoint, key, payloadHash, lockToken, responseCode, string(body))
 		if err != nil {
 			return err
 		}
@@ -165,23 +232,18 @@ func (s *idempotencyStore) SaveResponse(instID, endpoint, key string, payload an
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if row, ok := s.rows[k]; ok {
+		if row.Hash != payloadHash || row.Status != "IN_FLIGHT" || row.LockToken != lockToken {
+			return errIdempotencyConflict
+		}
 		row.ResponseBody = responseBody
+		row.ResponseCode = responseCode
+		row.Status = "COMPLETED"
+		row.LockToken = ""
+		row.LockedUntil = time.Time{}
 		row.UpdatedAt = time.Now().UTC()
 		return nil
 	}
-	s.rows[k] = &idempotencyEntry{InstitutionID: instID, Endpoint: endpoint, Key: key, Hash: canonicalHash(payload), Status: "COMPLETED", ResponseCode: 200, ResponseBody: responseBody, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	return nil
-}
-
-func mapToJSON(v map[string]any) any {
-	if v == nil {
-		return `{} `
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return `{} `
-	}
-	return string(b)
+	return errors.New("idempotency reservation not found")
 }
 
 func sortedMapKeys(m map[string]any) []string {

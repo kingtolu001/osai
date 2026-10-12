@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/osai/osai/adapters/firstpair"
 	"github.com/osai/osai/adapters/flutterwave"
+	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/postgres"
 	"github.com/osai/osai/pkg/provider"
 	"github.com/osai/osai/services/settlement/ledgerclient"
@@ -17,6 +22,14 @@ import (
 )
 
 func main() {
+	if err := observability.Init("temporal-worker"); err != nil {
+		log.Printf("otel init warning: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = observability.Shutdown(ctx)
+	}()
 	addr := os.Getenv("OSAI_TEMPORAL_ADDR")
 	if addr == "" {
 		addr = "localhost:7233"
@@ -30,13 +43,14 @@ func main() {
 	if ledgerAddr == "" {
 		ledgerAddr = "localhost:50051"
 	}
-	ledgerConnection, err := grpc.Dial(ledgerAddr, grpc.WithInsecure())
+	ledgerConnection, err := grpc.Dial(ledgerAddr, grpc.WithInsecure(), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor()))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer ledgerConnection.Close()
 	pair := firstpair.New()
-	activities := &workflows.ProviderSettlementActivities{Rail: pair.Settlement, Ledger: ledgerclient.New(ledgerConnection)}
+	ledger := ledgerclient.New(ledgerConnection)
+	activities := &workflows.ProviderSettlementActivities{Rail: pair.Settlement, Ledger: ledger, Funding: ledger}
 	flutterwaveEnabled := os.Getenv("FLW_SETTLEMENT_ENABLED") == "true"
 	if flutterwaveEnabled || os.Getenv("FLW_SECRET_KEY") != "" {
 		if os.Getenv("FLW_SECRET_KEY") == "" || (flutterwaveEnabled && os.Getenv("FLW_SECRET_HASH") == "") || (os.Getenv("FLW_ENV") != "sandbox" && os.Getenv("FLW_ENV") != "test") {
@@ -66,5 +80,7 @@ func main() {
 	}
 	defer worker.Stop()
 	log.Println("Temporal settlement worker listening on task queue", workflows.TaskQueue)
-	select {}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
 }

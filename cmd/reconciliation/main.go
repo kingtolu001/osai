@@ -5,13 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/adapters/flutterwave"
+	"github.com/osai/osai/pkg/observability"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	reconciliation "github.com/osai/osai/services/reconciliation"
 	"google.golang.org/grpc"
@@ -19,6 +23,14 @@ import (
 )
 
 func main() {
+	if err := observability.Init("reconciliation"); err != nil {
+		log.Printf("otel init warning: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = observability.Shutdown(ctx)
+	}()
 	dsn := os.Getenv("OSAI_POSTGRES_DSN")
 	if dsn == "" {
 		dsn = "postgres://osai:osai@localhost:5432/osai?sslmode=disable"
@@ -34,7 +46,10 @@ func main() {
 						log.Fatal(err)
 					}
 					log.Println("reconciliation runtime ready")
-					select {}
+					ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+					defer stop()
+					<-ctx.Done()
+					return
 				}
 			}
 			db.Close()
@@ -62,7 +77,7 @@ func runAutomaticFlutterwave(service *reconciliation.Service) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor()), grpc.WithBlock())
 	if err != nil {
 		return errors.New("settlement reconciliation boundary unavailable")
 	}
@@ -72,13 +87,27 @@ func runAutomaticFlutterwave(service *reconciliation.Service) error {
 		conn.Close()
 		return errors.New("Flutterwave reconciliation rail unavailable")
 	}
+	lag, interval := 5*time.Minute, time.Minute
+	if raw := os.Getenv("OSAI_LOCAL_RECONCILIATION_LAG"); raw != "" {
+		base, parseErr := url.Parse(os.Getenv("FLW_BASE_URL"))
+		if environment != "test" || parseErr != nil || base == nil || base.Scheme != "http" || (base.Hostname() != "127.0.0.1" && base.Hostname() != "localhost") {
+			conn.Close()
+			return errors.New("local reconciliation timing requires a loopback test provider")
+		}
+		lag, err = time.ParseDuration(raw)
+		if err != nil || lag < 0 || lag > 5*time.Minute {
+			conn.Close()
+			return errors.New("invalid local reconciliation lag")
+		}
+		interval = time.Second
+	}
 	go func() {
 		defer conn.Close()
-		ticker := time.NewTicker(time.Minute)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			passCtx, stop := context.WithTimeout(context.Background(), 5*time.Minute)
-			if err := reconcileFlutterwavePass(passCtx, service, client, rail, token, time.Now().UTC(), fee); err != nil {
+			if err := reconcileFlutterwavePassWithLag(passCtx, service, client, rail, token, time.Now().UTC(), fee, lag); err != nil {
 				log.Printf("Flutterwave reconciliation pass failed: %v", err)
 			}
 			stop()
