@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -9,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/pkg/observability"
-	"github.com/osai/osai/pkg/postgres"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -20,17 +21,29 @@ func main() {
 	if err := observability.Init("customer-kyb"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	db, err := postgres.Open("customer-kyb")
-	if err != nil {
-		log.Fatal(err)
+	dsn := strings.TrimSpace(os.Getenv("OSAI_CUSTOMER_POSTGRES_DSN"))
+	if dsn == "" {
+		dsn = strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
 	}
-	defer db.Close()
-	service, err := NewPostgresService(db)
-	if err != nil {
-		log.Fatal(err)
+	if dsn == "" {
+		log.Fatal("OSAI_CUSTOMER_POSTGRES_DSN or OSAI_POSTGRES_DSN is required")
 	}
-	if err := seedSandboxCustomer(service); err != nil {
-		log.Printf("sandbox seed warning: %v", err)
+	database, err := sql.Open("pgx", dsn)
+	if err != nil {
+		log.Fatalf("open customer-kyb database: %v", err)
+	}
+	defer database.Close()
+	if err = database.Ping(); err != nil {
+		log.Fatalf("connect customer-kyb database: %v", err)
+	}
+	service, err := NewPostgresService(database)
+	if err != nil {
+		log.Fatalf("initialize customer-kyb persistence: %v", err)
+	}
+	if os.Getenv("OSAI_SANDBOX_SEED") == "1" {
+		if err := seedSandboxCustomer(service); err != nil {
+			log.Fatalf("seed sandbox customer: %v", err)
+		}
 	}
 	operators, err := loadBeneficiaryOperators()
 	if err != nil {
@@ -68,14 +81,10 @@ func main() {
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("customer-kyb gRPC server failed: %v", err)
 	}
-	_ = service
 }
 
 func seedSandboxCustomer(service *Service) error {
 	if service == nil {
-		return nil
-	}
-	if os.Getenv("OSAI_SANDBOX_SEED") != "1" {
 		return nil
 	}
 	instID := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_INSTITUTION_ID"))
@@ -88,31 +97,38 @@ func seedSandboxCustomer(service *Service) error {
 	}
 	secret := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_CLIENT_SECRET"))
 	if secret == "" {
-		return fmt.Errorf("OSAI_SANDBOX_CLIENT_SECRET required when sandbox seed is enabled")
+		secret = "secret_local_001"
 	}
 
 	service.mu.Lock()
-	if service.institutions[instID] == nil {
-		service.institutions[instID] = &Institution{
-			ID:         instID,
-			Name:       "Institution A",
-			Status:     InstitutionStatusActive,
-			KYBStatus:  KybStatusApproved,
-			Country:    "US",
-			CreatedAt:  time.Now().UTC(),
-			UpdatedAt:  time.Now().UTC(),
-			APIEnabled: true,
+	inst, institutionExists := service.institutions[instID]
+	if !institutionExists {
+		entitlements, err := sandboxCustomerEntitlements()
+		if err != nil {
+			service.mu.Unlock()
+			return err
 		}
+		inst = &Institution{
+			ID:           instID,
+			Name:         "Sandbox Institution",
+			Status:       InstitutionStatusActive,
+			KYBStatus:    KybStatusApproved,
+			Country:      "US",
+			CreatedAt:    time.Now().UTC(),
+			UpdatedAt:    time.Now().UTC(),
+			APIEnabled:   true,
+			Entitlements: entitlements,
+		}
+		service.institutions[instID] = inst
 	}
-	service.institutions[instID].KYBStatus = KybStatusApproved
-	service.institutions[instID].Name = "Institution A"
-	service.institutions[instID].Status = InstitutionStatusActive
-	service.institutions[instID].APIEnabled = true
-	if service.publicToCred[clientID] == nil {
-		cred := &Credential{
+	cred, credentialExists := service.publicToCred[clientID]
+	if !credentialExists {
+		cred = &Credential{
 			ID:            "cred_sandbox_local",
 			PublicID:      clientID,
 			InstitutionID: instID,
+			Label:         "sandbox",
+			Environment:   "sandbox",
 			Status:        CredentialStatusActive,
 			SecretHash:    hashSecret(secret, instID),
 			CreatedAt:     time.Now().UTC(),
@@ -121,12 +137,55 @@ func seedSandboxCustomer(service *Service) error {
 		service.credentials[cred.ID] = cred
 		service.publicToCred[cred.PublicID] = cred
 	}
-	service.mu.Unlock()
-	if err := service.seedSandbox(*service.institutions[instID], *service.publicToCred[clientID]); err != nil {
+	if !institutionExists || !credentialExists {
+		if err := service.seedSandbox(*inst, *cred); err != nil {
+			service.mu.Unlock()
+			return err
+		}
+	}
+	webhookURL := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_WEBHOOK_URL"))
+	if webhookURL == "" {
+		webhookURL = "https://example.invalid/webhooks/customer/" + instID
+	}
+	webhookSecret := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_WEBHOOK_SECRET"))
+	if webhookSecret == "" {
+		webhookSecret = "wh_secret_" + instID
+	}
+	cfg := &CustomerWebhookConfig{
+		InstitutionID: instID,
+		WebhookURL:    webhookURL,
+		SecretHash:    hashSecret(webhookSecret, instID),
+		Enabled:       true,
+		Status:        "ACTIVE",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+	if err := service.saveWebhookConfiguration(*cfg); err != nil {
+		service.mu.Unlock()
 		return err
 	}
+	service.webhookCfg[instID] = cfg
+	service.mu.Unlock()
 	_ = os.Setenv("OSAI_SANDBOX_INSTITUTION_ID", instID)
 	_ = os.Setenv("OSAI_SANDBOX_CLIENT_ID", clientID)
 	_ = os.Setenv("OSAI_SANDBOX_CLIENT_SECRET", secret)
+	_ = os.Setenv("OSAI_SANDBOX_WEBHOOK_URL", webhookURL)
+	_ = os.Setenv("OSAI_SANDBOX_WEBHOOK_SECRET", webhookSecret)
 	return nil
+}
+
+func sandboxCustomerEntitlements() ([]string, error) {
+	raw := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_ENTITLEMENTS"))
+	if raw == "" {
+		return append([]string(nil), defaultInstitutionEntitlements...), nil
+	}
+	entitlements := make([]string, 0)
+	for _, entitlement := range strings.Split(raw, ",") {
+		entitlement = strings.TrimSpace(entitlement)
+		if entitlement == "" {
+			return nil, fmt.Errorf("OSAI_SANDBOX_ENTITLEMENTS contains an empty entitlement")
+		}
+		entitlements = append(entitlements, entitlement)
+	}
+	return entitlements, nil
 }

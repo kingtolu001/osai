@@ -20,6 +20,11 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	CustomerService_AuthenticateAPIClient_FullMethodName   = "/osai.customer.v1.CustomerService/AuthenticateAPIClient"
+	CustomerService_CreateCredential_FullMethodName        = "/osai.customer.v1.CustomerService/CreateCredential"
+	CustomerService_RotateCredential_FullMethodName        = "/osai.customer.v1.CustomerService/RotateCredential"
+	CustomerService_RevokeCredential_FullMethodName        = "/osai.customer.v1.CustomerService/RevokeCredential"
+	CustomerService_GetCredential_FullMethodName           = "/osai.customer.v1.CustomerService/GetCredential"
+	CustomerService_ListCredentials_FullMethodName         = "/osai.customer.v1.CustomerService/ListCredentials"
 	CustomerService_GetInstitutionAccess_FullMethodName    = "/osai.customer.v1.CustomerService/GetInstitutionAccess"
 	CustomerService_GetInstitution_FullMethodName          = "/osai.customer.v1.CustomerService/GetInstitution"
 	CustomerService_GetWebhookConfiguration_FullMethodName = "/osai.customer.v1.CustomerService/GetWebhookConfiguration"
@@ -32,6 +37,11 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CustomerServiceClient interface {
 	AuthenticateAPIClient(ctx context.Context, in *CredentialAuthRequest, opts ...grpc.CallOption) (*AuthContext, error)
+	CreateCredential(ctx context.Context, in *CreateCredentialRequest, opts ...grpc.CallOption) (*CredentialResponse, error)
+	RotateCredential(ctx context.Context, in *CredentialRequest, opts ...grpc.CallOption) (*CredentialResponse, error)
+	RevokeCredential(ctx context.Context, in *CredentialRequest, opts ...grpc.CallOption) (*Credential, error)
+	GetCredential(ctx context.Context, in *CredentialRequest, opts ...grpc.CallOption) (*Credential, error)
+	ListCredentials(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*CredentialList, error)
 	GetInstitutionAccess(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*AuthContext, error)
 	GetInstitution(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*Institution, error)
 	GetWebhookConfiguration(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*WebhookConfiguration, error)
@@ -51,6 +61,56 @@ func (c *customerServiceClient) AuthenticateAPIClient(ctx context.Context, in *C
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AuthContext)
 	err := c.cc.Invoke(ctx, CustomerService_AuthenticateAPIClient_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customerServiceClient) CreateCredential(ctx context.Context, in *CreateCredentialRequest, opts ...grpc.CallOption) (*CredentialResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialResponse)
+	err := c.cc.Invoke(ctx, CustomerService_CreateCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customerServiceClient) RotateCredential(ctx context.Context, in *CredentialRequest, opts ...grpc.CallOption) (*CredentialResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialResponse)
+	err := c.cc.Invoke(ctx, CustomerService_RotateCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customerServiceClient) RevokeCredential(ctx context.Context, in *CredentialRequest, opts ...grpc.CallOption) (*Credential, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Credential)
+	err := c.cc.Invoke(ctx, CustomerService_RevokeCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customerServiceClient) GetCredential(ctx context.Context, in *CredentialRequest, opts ...grpc.CallOption) (*Credential, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Credential)
+	err := c.cc.Invoke(ctx, CustomerService_GetCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customerServiceClient) ListCredentials(ctx context.Context, in *InstitutionRequest, opts ...grpc.CallOption) (*CredentialList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialList)
+	err := c.cc.Invoke(ctx, CustomerService_ListCredentials_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +172,11 @@ func (c *customerServiceClient) RegisterBeneficiary(ctx context.Context, in *Reg
 // for forward compatibility.
 type CustomerServiceServer interface {
 	AuthenticateAPIClient(context.Context, *CredentialAuthRequest) (*AuthContext, error)
+	CreateCredential(context.Context, *CreateCredentialRequest) (*CredentialResponse, error)
+	RotateCredential(context.Context, *CredentialRequest) (*CredentialResponse, error)
+	RevokeCredential(context.Context, *CredentialRequest) (*Credential, error)
+	GetCredential(context.Context, *CredentialRequest) (*Credential, error)
+	ListCredentials(context.Context, *InstitutionRequest) (*CredentialList, error)
 	GetInstitutionAccess(context.Context, *InstitutionRequest) (*AuthContext, error)
 	GetInstitution(context.Context, *InstitutionRequest) (*Institution, error)
 	GetWebhookConfiguration(context.Context, *InstitutionRequest) (*WebhookConfiguration, error)
@@ -129,6 +194,21 @@ type UnimplementedCustomerServiceServer struct{}
 
 func (UnimplementedCustomerServiceServer) AuthenticateAPIClient(context.Context, *CredentialAuthRequest) (*AuthContext, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthenticateAPIClient not implemented")
+}
+func (UnimplementedCustomerServiceServer) CreateCredential(context.Context, *CreateCredentialRequest) (*CredentialResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateCredential not implemented")
+}
+func (UnimplementedCustomerServiceServer) RotateCredential(context.Context, *CredentialRequest) (*CredentialResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RotateCredential not implemented")
+}
+func (UnimplementedCustomerServiceServer) RevokeCredential(context.Context, *CredentialRequest) (*Credential, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeCredential not implemented")
+}
+func (UnimplementedCustomerServiceServer) GetCredential(context.Context, *CredentialRequest) (*Credential, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCredential not implemented")
+}
+func (UnimplementedCustomerServiceServer) ListCredentials(context.Context, *InstitutionRequest) (*CredentialList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCredentials not implemented")
 }
 func (UnimplementedCustomerServiceServer) GetInstitutionAccess(context.Context, *InstitutionRequest) (*AuthContext, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInstitutionAccess not implemented")
@@ -180,6 +260,96 @@ func _CustomerService_AuthenticateAPIClient_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CustomerServiceServer).AuthenticateAPIClient(ctx, req.(*CredentialAuthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CustomerService_CreateCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateCredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).CreateCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_CreateCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).CreateCredential(ctx, req.(*CreateCredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CustomerService_RotateCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).RotateCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_RotateCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).RotateCredential(ctx, req.(*CredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CustomerService_RevokeCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).RevokeCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_RevokeCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).RevokeCredential(ctx, req.(*CredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CustomerService_GetCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).GetCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_GetCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).GetCredential(ctx, req.(*CredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CustomerService_ListCredentials_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstitutionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CustomerServiceServer).ListCredentials(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CustomerService_ListCredentials_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CustomerServiceServer).ListCredentials(ctx, req.(*InstitutionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -284,6 +454,26 @@ var CustomerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AuthenticateAPIClient",
 			Handler:    _CustomerService_AuthenticateAPIClient_Handler,
+		},
+		{
+			MethodName: "CreateCredential",
+			Handler:    _CustomerService_CreateCredential_Handler,
+		},
+		{
+			MethodName: "RotateCredential",
+			Handler:    _CustomerService_RotateCredential_Handler,
+		},
+		{
+			MethodName: "RevokeCredential",
+			Handler:    _CustomerService_RevokeCredential_Handler,
+		},
+		{
+			MethodName: "GetCredential",
+			Handler:    _CustomerService_GetCredential_Handler,
+		},
+		{
+			MethodName: "ListCredentials",
+			Handler:    _CustomerService_ListCredentials_Handler,
 		},
 		{
 			MethodName: "GetInstitutionAccess",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"time"
 
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	"google.golang.org/grpc/codes"
@@ -29,18 +30,111 @@ func (s *grpcServer) AuthenticateAPIClient(ctx context.Context, req *customerv1.
 	s.service.mu.Lock()
 	cred, ok := s.service.publicToCred[req.PublicId]
 	var institutionID string
+	var environment string
 	if ok && cred != nil {
 		institutionID = cred.InstitutionID
+		environment = cred.Environment
 	}
 	s.service.mu.Unlock()
 	if !ok || cred == nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
+	if environment == "" {
+		environment = "sandbox"
+	}
 	inst, ok := s.service.GetInstitution(institutionID)
 	if !ok {
 		return nil, status.Error(codes.NotFound, "institution not found")
 	}
-	return &customerv1.AuthContext{InstitutionId: inst.ID, InstitutionStatus: inst.Status, KybStatus: inst.KYBStatus, ApiAccessStatus: "ACTIVE", ApiEnabled: inst.APIEnabled, Entitlements: []string{"quotes:read", "quotes:write"}}, nil
+	return &customerv1.AuthContext{InstitutionId: inst.ID, InstitutionStatus: inst.Status, KybStatus: inst.KYBStatus, ApiAccessStatus: "ACTIVE", ApiEnabled: inst.APIEnabled, Entitlements: inst.Entitlements, Environment: environment}, nil
+}
+
+func (s *grpcServer) CreateCredential(ctx context.Context, req *customerv1.CreateCredentialRequest) (*customerv1.CredentialResponse, error) {
+	if s.service == nil || req == nil || strings.TrimSpace(req.InstitutionId) == "" || strings.TrimSpace(req.Label) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id and label are required")
+	}
+	environment := strings.TrimSpace(req.Environment)
+	if environment == "" {
+		environment = "sandbox"
+	}
+	if environment != "sandbox" && environment != "production" {
+		return nil, status.Error(codes.InvalidArgument, "environment is invalid")
+	}
+	credential, secret, err := s.service.CreateCredential(req.InstitutionId, req.Label, environment)
+	if err != nil {
+		if strings.Contains(err.Error(), "institution not found") {
+			return nil, status.Error(codes.NotFound, "institution not found")
+		}
+		return nil, status.Error(codes.Internal, "credential could not be created")
+	}
+	return &customerv1.CredentialResponse{Credential: credentialToProto(credential), Secret: secret}, nil
+}
+
+func (s *grpcServer) RotateCredential(ctx context.Context, req *customerv1.CredentialRequest) (*customerv1.CredentialResponse, error) {
+	if s.service == nil || req == nil || strings.TrimSpace(req.InstitutionId) == "" || strings.TrimSpace(req.PublicId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id and public_id are required")
+	}
+	credential, secret, err := s.service.RotateCredential(req.InstitutionId, req.PublicId)
+	if err != nil {
+		if err.Error() != "credential not found" {
+			return nil, status.Error(codes.Internal, "credential could not be rotated")
+		}
+		return nil, status.Error(codes.NotFound, "credential not found")
+	}
+	return &customerv1.CredentialResponse{Credential: credentialToProto(credential), Secret: secret}, nil
+}
+
+func (s *grpcServer) RevokeCredential(ctx context.Context, req *customerv1.CredentialRequest) (*customerv1.Credential, error) {
+	if s.service == nil || req == nil || strings.TrimSpace(req.InstitutionId) == "" || strings.TrimSpace(req.PublicId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id and public_id are required")
+	}
+	credential, err := s.service.RevokeInstitutionCredential(req.InstitutionId, req.PublicId)
+	if err != nil {
+		if err.Error() != "credential not found" {
+			return nil, status.Error(codes.Internal, "credential could not be revoked")
+		}
+		return nil, status.Error(codes.NotFound, "credential not found")
+	}
+	return credentialToProto(credential), nil
+}
+
+func (s *grpcServer) GetCredential(ctx context.Context, req *customerv1.CredentialRequest) (*customerv1.Credential, error) {
+	if s.service == nil || req == nil || strings.TrimSpace(req.InstitutionId) == "" || strings.TrimSpace(req.PublicId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id and public_id are required")
+	}
+	credential, err := s.service.GetCredential(req.InstitutionId, req.PublicId)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "credential not found")
+	}
+	return credentialToProto(credential), nil
+}
+
+func (s *grpcServer) ListCredentials(ctx context.Context, req *customerv1.InstitutionRequest) (*customerv1.CredentialList, error) {
+	if s.service == nil || req == nil || strings.TrimSpace(req.InstitutionId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution_id is required")
+	}
+	credentials, err := s.service.ListCredentials(req.InstitutionId)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "institution not found")
+	}
+	response := &customerv1.CredentialList{Credentials: make([]*customerv1.Credential, 0, len(credentials))}
+	for _, credential := range credentials {
+		response.Credentials = append(response.Credentials, credentialToProto(credential))
+	}
+	return response, nil
+}
+
+func credentialToProto(credential Credential) *customerv1.Credential {
+	return &customerv1.Credential{
+		CredentialId:  credential.ID,
+		PublicId:      credential.PublicID,
+		InstitutionId: credential.InstitutionID,
+		Label:         credential.Label,
+		Environment:   credential.Environment,
+		Status:        credential.Status,
+		CreatedAt:     credential.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:     credential.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
 }
 
 func (s *grpcServer) GetInstitutionAccess(ctx context.Context, req *customerv1.InstitutionRequest) (*customerv1.AuthContext, error) {
@@ -54,7 +148,7 @@ func (s *grpcServer) GetInstitutionAccess(ctx context.Context, req *customerv1.I
 	if err := s.service.ValidateInstitutionAccess(inst.ID); err != nil {
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
-	return &customerv1.AuthContext{InstitutionId: inst.ID, InstitutionStatus: inst.Status, KybStatus: inst.KYBStatus, ApiAccessStatus: "ACTIVE", ApiEnabled: inst.APIEnabled, Entitlements: []string{"quotes:read", "quotes:write"}}, nil
+	return &customerv1.AuthContext{InstitutionId: inst.ID, InstitutionStatus: inst.Status, KybStatus: inst.KYBStatus, ApiAccessStatus: "ACTIVE", ApiEnabled: inst.APIEnabled, Entitlements: inst.Entitlements}, nil
 }
 
 func (s *grpcServer) GetInstitution(ctx context.Context, req *customerv1.InstitutionRequest) (*customerv1.Institution, error) {
@@ -75,7 +169,11 @@ func (s *grpcServer) GetWebhookConfiguration(ctx context.Context, req *customerv
 	if _, ok := s.service.GetInstitution(req.InstitutionId); !ok {
 		return nil, status.Error(codes.NotFound, "institution not found")
 	}
-	return nil, status.Error(codes.Unimplemented, "webhook configuration is owned by notification service")
+	cfg, ok := s.service.GetWebhookConfiguration(req.InstitutionId)
+	if !ok {
+		return &customerv1.WebhookConfiguration{InstitutionId: req.InstitutionId, Enabled: false, Status: "INACTIVE"}, nil
+	}
+	return &customerv1.WebhookConfiguration{InstitutionId: cfg.InstitutionID, WebhookUrl: cfg.WebhookURL, Enabled: cfg.Enabled, Status: cfg.Status}, nil
 }
 
 func (s *grpcServer) GetApprovedBeneficiary(ctx context.Context, req *customerv1.BeneficiaryRequest) (*customerv1.Beneficiary, error) {

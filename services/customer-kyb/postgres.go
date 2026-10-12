@@ -7,7 +7,12 @@ import (
 
 func NewPostgresService(db *sql.DB) (*Service, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS customer_institutions(id text PRIMARY KEY, body jsonb NOT NULL);
- CREATE TABLE IF NOT EXISTS customer_credentials(id text PRIMARY KEY, public_id text NOT NULL UNIQUE, institution_id text NOT NULL REFERENCES customer_institutions(id), secret_hash text NOT NULL, body jsonb NOT NULL);
+ CREATE TABLE IF NOT EXISTS customer_credentials(id text PRIMARY KEY, public_id text NOT NULL UNIQUE, institution_id text NOT NULL REFERENCES customer_institutions(id), label text NOT NULL DEFAULT 'default', environment text NOT NULL DEFAULT 'sandbox' CHECK (environment IN ('sandbox','production')), secret_hash text NOT NULL, body jsonb NOT NULL);
+ ALTER TABLE customer_credentials ADD COLUMN IF NOT EXISTS label text NOT NULL DEFAULT 'default';
+ ALTER TABLE customer_credentials ADD COLUMN IF NOT EXISTS environment text NOT NULL DEFAULT 'sandbox';
+ ALTER TABLE customer_credentials DROP CONSTRAINT IF EXISTS customer_credentials_environment_check;
+ ALTER TABLE customer_credentials ADD CONSTRAINT customer_credentials_environment_check CHECK (environment IN ('sandbox','production'));
+ CREATE TABLE IF NOT EXISTS customer_webhook_config(institution_id text PRIMARY KEY REFERENCES customer_institutions(id), body jsonb NOT NULL);
  CREATE TABLE IF NOT EXISTS customer_beneficiaries(id text PRIMARY KEY, institution_id text NOT NULL REFERENCES customer_institutions(id), body jsonb NOT NULL);
  CREATE TABLE IF NOT EXISTS customer_beneficiary_actions(id bigserial PRIMARY KEY, beneficiary_id text NOT NULL REFERENCES customer_beneficiaries(id), institution_id text NOT NULL REFERENCES customer_institutions(id), action text NOT NULL CHECK (action IN ('PROPOSE','APPROVE','REJECT','DISABLE')), actor_id text NOT NULL, reason text NOT NULL, occurred_at timestamptz NOT NULL DEFAULT clock_timestamp());
  ALTER TABLE customer_beneficiary_actions DROP CONSTRAINT IF EXISTS customer_beneficiary_actions_action_check;
@@ -24,6 +29,7 @@ func NewPostgresService(db *sql.DB) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	var institutionsNeedingEntitlements []*Institution
 	for rows.Next() {
 		var raw []byte
 		var inst Institution
@@ -33,6 +39,10 @@ func NewPostgresService(db *sql.DB) (*Service, error) {
 		if err = json.Unmarshal(raw, &inst); err != nil {
 			break
 		}
+		if inst.Entitlements == nil {
+			inst.Entitlements = append([]string(nil), defaultInstitutionEntitlements...)
+			institutionsNeedingEntitlements = append(institutionsNeedingEntitlements, &inst)
+		}
 		s.institutions[inst.ID] = &inst
 	}
 	if err == nil {
@@ -41,6 +51,11 @@ func NewPostgresService(db *sql.DB) (*Service, error) {
 	rows.Close()
 	if err != nil {
 		return nil, err
+	}
+	for _, inst := range institutionsNeedingEntitlements {
+		if err = s.saveInstitution(*inst); err != nil {
+			return nil, err
+		}
 	}
 	rows, err = db.Query(`SELECT body FROM customer_credentials`)
 	if err != nil {
@@ -60,8 +75,36 @@ func NewPostgresService(db *sql.DB) (*Service, error) {
 		}
 		cred := stored.Credential
 		cred.SecretHash = stored.SecretHash
+		if cred.Label == "" {
+			cred.Label = "default"
+		}
+		if cred.Environment == "" {
+			cred.Environment = "sandbox"
+		}
 		s.credentials[cred.ID] = &cred
 		s.publicToCred[cred.PublicID] = &cred
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	rows, err = db.Query(`SELECT body FROM customer_webhook_config`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var raw []byte
+		var cfg CustomerWebhookConfig
+		if err = rows.Scan(&raw); err != nil {
+			break
+		}
+		if err = json.Unmarshal(raw, &cfg); err != nil {
+			break
+		}
+		s.webhookCfg[cfg.InstitutionID] = &cfg
 	}
 	if err == nil {
 		err = rows.Err()
@@ -116,7 +159,21 @@ func (s *Service) saveCredential(cred Credential) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO customer_credentials(id,public_id,institution_id,secret_hash,body) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET secret_hash=excluded.secret_hash,body=excluded.body`, cred.ID, cred.PublicID, cred.InstitutionID, cred.SecretHash, string(raw))
+	_, err = s.db.Exec(`INSERT INTO customer_credentials(id,public_id,institution_id,label,environment,secret_hash,body) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET label=excluded.label,environment=excluded.environment,secret_hash=excluded.secret_hash,body=excluded.body`, cred.ID, cred.PublicID, cred.InstitutionID, cred.Label, cred.Environment, cred.SecretHash, string(raw))
+	return err
+}
+func (s *Service) saveWebhookConfiguration(cfg CustomerWebhookConfig) error {
+	if s.db == nil {
+		return nil
+	}
+	raw, err := json.Marshal(struct {
+		CustomerWebhookConfig
+		SecretHash string `json:"secret_hash"`
+	}{CustomerWebhookConfig: cfg, SecretHash: cfg.SecretHash})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO customer_webhook_config(institution_id,body) VALUES($1,$2) ON CONFLICT(institution_id) DO UPDATE SET body=excluded.body`, cfg.InstitutionID, string(raw))
 	return err
 }
 func (s *Service) seedSandbox(inst Institution, cred Credential) error {
@@ -136,7 +193,7 @@ func (s *Service) seedSandbox(inst Institution, cred Credential) error {
 	if _, err = tx.Exec(`INSERT INTO customer_institutions(id,body) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET body=excluded.body`, inst.ID, string(instBody)); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`INSERT INTO customer_credentials(id,public_id,institution_id,secret_hash,body) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET secret_hash=excluded.secret_hash,body=excluded.body`, cred.ID, cred.PublicID, cred.InstitutionID, cred.SecretHash, string(credBody)); err != nil {
+	if _, err = tx.Exec(`INSERT INTO customer_credentials(id,public_id,institution_id,label,environment,secret_hash,body) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET label=excluded.label,environment=excluded.environment,secret_hash=excluded.secret_hash,body=excluded.body`, cred.ID, cred.PublicID, cred.InstitutionID, cred.Label, cred.Environment, cred.SecretHash, string(credBody)); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -9,6 +9,37 @@ message CredentialAuthRequest {
   string secret = 2;
 }
 
+message Credential {
+  string credential_id = 1;
+  string public_id = 2;
+  string institution_id = 3;
+  string label = 4;
+  string environment = 5;
+  string status = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message CreateCredentialRequest {
+  string institution_id = 1;
+  string label = 2;
+  string environment = 3;
+}
+
+message CredentialRequest {
+  string institution_id = 1;
+  string public_id = 2;
+}
+
+message CredentialResponse {
+  Credential credential = 1;
+  string secret = 2;
+}
+
+message CredentialList {
+  repeated Credential credentials = 1;
+}
+
 message InstitutionRequest {
   string institution_id = 1;
 }
@@ -44,6 +75,7 @@ message AuthContext {
   bool api_enabled = 5;
   repeated string entitlements = 6;
   string request_id = 7;
+  string environment = 8;
 }
 
 message Institution {
@@ -65,6 +97,11 @@ message WebhookConfiguration {
 
 service CustomerService {
   rpc AuthenticateAPIClient(CredentialAuthRequest) returns (AuthContext);
+  rpc CreateCredential(CreateCredentialRequest) returns (CredentialResponse);
+  rpc RotateCredential(CredentialRequest) returns (CredentialResponse);
+  rpc RevokeCredential(CredentialRequest) returns (Credential);
+  rpc GetCredential(CredentialRequest) returns (Credential);
+  rpc ListCredentials(InstitutionRequest) returns (CredentialList);
   rpc GetInstitutionAccess(InstitutionRequest) returns (AuthContext);
   rpc GetInstitution(InstitutionRequest) returns (Institution);
   rpc GetWebhookConfiguration(InstitutionRequest) returns (WebhookConfiguration);
