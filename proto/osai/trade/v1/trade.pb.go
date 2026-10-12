@@ -488,6 +488,10 @@ type TradeResponse struct {
 	SettlementProviderId string                 `protobuf:"bytes,11,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
 	CustomerReference    string                 `protobuf:"bytes,12,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
 	PricingSnapshot      *PricingSnapshot       `protobuf:"bytes,13,opt,name=pricing_snapshot,json=pricingSnapshot,proto3" json:"pricing_snapshot,omitempty"`
+	FxExecutionId        string                 `protobuf:"bytes,14,opt,name=fx_execution_id,json=fxExecutionId,proto3" json:"fx_execution_id,omitempty"`
+	FxExecutorId         string                 `protobuf:"bytes,15,opt,name=fx_executor_id,json=fxExecutorId,proto3" json:"fx_executor_id,omitempty"`
+	FxExecutionReference string                 `protobuf:"bytes,16,opt,name=fx_execution_reference,json=fxExecutionReference,proto3" json:"fx_execution_reference,omitempty"`
+	FxExecutionStatus    string                 `protobuf:"bytes,17,opt,name=fx_execution_status,json=fxExecutionStatus,proto3" json:"fx_execution_status,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -611,6 +615,34 @@ func (x *TradeResponse) GetPricingSnapshot() *PricingSnapshot {
 		return x.PricingSnapshot
 	}
 	return nil
+}
+
+func (x *TradeResponse) GetFxExecutionId() string {
+	if x != nil {
+		return x.FxExecutionId
+	}
+	return ""
+}
+
+func (x *TradeResponse) GetFxExecutorId() string {
+	if x != nil {
+		return x.FxExecutorId
+	}
+	return ""
+}
+
+func (x *TradeResponse) GetFxExecutionReference() string {
+	if x != nil {
+		return x.FxExecutionReference
+	}
+	return ""
+}
+
+func (x *TradeResponse) GetFxExecutionStatus() string {
+	if x != nil {
+		return x.FxExecutionStatus
+	}
+	return ""
 }
 
 type GetTradeRequest struct {
@@ -905,7 +937,7 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x16settlement_provider_id\x18\n" +
 	" \x01(\tR\x14settlementProviderId\x12-\n" +
 	"\x12customer_reference\x18\v \x01(\tR\x11customerReference\x12I\n" +
-	"\x10pricing_snapshot\x18\f \x01(\v2\x1e.osai.trade.v1.PricingSnapshotR\x0fpricingSnapshot\"\x9f\x04\n" +
+	"\x10pricing_snapshot\x18\f \x01(\v2\x1e.osai.trade.v1.PricingSnapshotR\x0fpricingSnapshot\"\xd3\x05\n" +
 	"\rTradeResponse\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x19\n" +
@@ -920,7 +952,11 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	" \x01(\tR\rbeneficiaryId\x124\n" +
 	"\x16settlement_provider_id\x18\v \x01(\tR\x14settlementProviderId\x12-\n" +
 	"\x12customer_reference\x18\f \x01(\tR\x11customerReference\x12I\n" +
-	"\x10pricing_snapshot\x18\r \x01(\v2\x1e.osai.trade.v1.PricingSnapshotR\x0fpricingSnapshot\"z\n" +
+	"\x10pricing_snapshot\x18\r \x01(\v2\x1e.osai.trade.v1.PricingSnapshotR\x0fpricingSnapshot\x12&\n" +
+	"\x0ffx_execution_id\x18\x0e \x01(\tR\rfxExecutionId\x12$\n" +
+	"\x0efx_executor_id\x18\x0f \x01(\tR\ffxExecutorId\x124\n" +
+	"\x16fx_execution_reference\x18\x10 \x01(\tR\x14fxExecutionReference\x12.\n" +
+	"\x13fx_execution_status\x18\x11 \x01(\tR\x11fxExecutionStatus\"z\n" +
 	"\x0fGetTradeRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12%\n" +

@@ -101,6 +101,10 @@ type TradeReadResponse struct {
 	CorrelationID     string
 	RequestID         string
 	PricingSnapshot   *TradePricingSnapshot
+	FXExecutionID     string
+	FXExecutorID      string
+	FXExecutionRef    string
+	FXExecutionStatus string
 }
 
 type TradePricingSnapshot struct {
@@ -1171,6 +1175,12 @@ func tradeResponsePayload(trade TradeReadResponse, requestID string) map[string]
 	payload := map[string]any{"trade_id": trade.TradeID, "quote_id": trade.QuoteID, "institution_id": trade.InstitutionID, "status": trade.Status, "base_amount_minor": trade.BaseAmountMinor, "base_currency": trade.BaseCurrency, "quote_currency": trade.QuoteCurrency, "settlement_id": trade.SettlementID, "request_id": requestID}
 	if trade.PricingSnapshot != nil {
 		payload["pricing_snapshot"] = trade.PricingSnapshot
+	}
+	if trade.FXExecutionID != "" {
+		payload["fx_execution"] = map[string]string{
+			"execution_id": trade.FXExecutionID, "executor_id": trade.FXExecutorID,
+			"request_reference": trade.FXExecutionRef, "status": trade.FXExecutionStatus,
+		}
 	}
 	if trade.CustomerReference != "" {
 		payload["customer_reference"] = trade.CustomerReference

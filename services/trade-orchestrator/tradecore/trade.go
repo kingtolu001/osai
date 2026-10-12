@@ -26,6 +26,11 @@ const (
 	StateSettling              TradeState = "SETTLING"
 	StateSettled               TradeState = "SETTLED"
 	StateFeeAccountingRequired TradeState = "FEE_ACCOUNTING_REQUIRED"
+	StateFXExecutionRequired   TradeState = "FX_EXECUTION_REQUIRED"
+	StateFXExecuting           TradeState = "FX_EXECUTING"
+	StateFXUnknown             TradeState = "FX_UNKNOWN"
+	StateFXExecuted            TradeState = "FX_EXECUTED"
+	StateFXFailed              TradeState = "FX_FAILED"
 )
 
 // Trade captures the trade lifecycle owned by the trade-orchestrator service.
@@ -47,6 +52,10 @@ type Trade struct {
 	CustomerReference    string
 	IdempotencyKey       string
 	PricingSnapshot      *pricing.Snapshot
+	FXExecutionID        string
+	FXExecutorID         string
+	FXExecutionReference string
+	FXExecutionStatus    string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }

@@ -13,20 +13,54 @@ agreement or independent USD custody evidence is present in the repository.
 Executable cross-currency funding/FX, operational controls, and production
 reliability gates remain open.
 
+## Handoff for the next implementation session
+
+Updated 2026-10-12 on `main`. Stage 1 fee/pricing propagation is committed as
+`d58a7bb`. Stage 2 is the current follow-on change set: durable Trade-owned FX
+execution records, recovery state transitions, Trade read/API status fields,
+transactional lifecycle events, and PostgreSQL tests. The focused Trade and
+Gateway suite passed with PostgreSQL enabled after removing an unimplemented
+operations-RPC scaffold. Stage 2 is not yet an executor integration or a
+production-ready FX path.
+
+Start with the Stage 2 correctness gaps before adding runtime wiring:
+
+- Fence concurrent `QueryFX` recovery calls. Query results are gathered
+  outside the database transaction; a stale `NOT_EXECUTED` response must not
+  make an execution retry-ready after a competing query has authoritative
+  evidence of execution. Persist a generation/version or equivalent query
+  claim and make contradictory evidence unresolved/manual-review state.
+- `FXQueryEvidence.Authoritative` is currently an executor-supplied boolean,
+  and `PayloadHash` is checked for SHA-256 hex shape but not recomputed by a
+  trusted route adapter. Do not treat these checks as provider verification;
+  add a normalized adapter that verifies the actual response/signature and
+  binds the evidence to the queried request before allowing finality.
+- There is no authenticated Trade operations boundary, configured runtime
+  executor, or restart recovery worker. Keep real-money FX and cross-currency
+  acceptance disabled until safe Ledger posting and route evidence also exist.
+
+The targeted command executed for this handoff was:
+`$env:OSAI_POSTGRES_DSN='postgres://osai:osai@127.0.0.1:5433/osai?sslmode=disable'; go test -p 1 -ldflags=-w -count=1 ./services/trade-orchestrator/... ./services/api-gateway`
+(passed). The focused lifecycle PostgreSQL test and scoped vet results recorded
+below were run earlier on the same Stage 2 implementation, before protobuf
+generation cleanup; rerun them after any follow-up changes. The expanded
+independent-services fee-bearing flow remains unverified because its prior
+build ran out of local disk space.
+
 ## Gate assessment
 
 | Gate | Verdict | Evidence / remaining work |
 | --- | --- | --- |
 | Ledger financial invariants | PASS for tested flows | Integer minor units, journal invariants, persisted ledger-derived customer reads, and PostgreSQL tests pass. Broader production integrity monitoring remains unproven. |
 | **5A — Quote and pricing correctness** | ENGINEERING PARTIAL; arithmetic, immutable propagation, and all-in reservation implemented; fee payout gated | Fixed-source/fixed-destination pricing, fee bounds, fixed-point rates, currency exponents, fee ceiling, conversion floor, and surplus tracking exist. The full immutable pricing snapshot now propagates from accepted quote into Trade and Ledger's all-in funding reservation. Trade and Ledger PostgreSQL tests verify persistence, restart reads, duplicate/concurrent replay, and altered-snapshot rejection. Fee-bearing trades remain gated before payout until Ledger can safely account for fee and principal. Independent-service verification of the extended fee path is still outstanding. |
-| **5B — FX execution and payout lifecycle** | FAIL / blocked | Settlement has durable provider-query evidence/finality protections; a complete durable FX execution lifecycle, FX-to-payout recovery, and route-specific FX evidence do not exist. Unsupported cross-currency trades remain fail-closed. |
+| **5B — FX execution and payout lifecycle** | ENGINEERING PARTIAL; durable execution state/recovery implemented, not runtime-integrated | Trade now has an owner-local PostgreSQL FX execution record, stable idempotent request reference, executor identity, pre-submit persistence, UNKNOWN timeout behavior, query-first recovery, normalized evidence checks, recovery queue, and transactional domain outbox. PostgreSQL tests cover concurrent creation, executor conflict, restart while UNKNOWN, no blind resubmit, verified non-execution retry, execution evidence, and immutable completion. There is no configured production FX executor or operations/runtime command path; cross-currency quote acceptance remains fail-closed, and payout is deliberately a separate later state. |
 | **5C — Ledger and accounting** | PARTIAL; production FX posting blocked | Ledger provides exact rate/proceeds validation, balanced currency journal primitives, and explicit currency-matched account mappings. Durable FX posting/recovery, production route account IDs, and verified USD custody classification are absent. Do not infer an asset or enable inventory cost basis. Details in [FX_POSITION_AND_LEDGER_POLICY_REVIEW.md](./FX_POSITION_AND_LEDGER_POLICY_REVIEW.md). |
 | **5D — API security and release gates** | PARTIAL | Covered authorization, idempotency, tenant-scoped reads, signed webhook delivery, and restart paths exist. Public credential lifecycle and all mutation failure/concurrency cases need independent-service evidence; operational and production gates remain open below. |
-| Customer API contract | PARTIAL | `GET /v1/trades` and `GET /v1/reports/settlements` use owner gRPC APIs for tenant-scoped filtering and pagination; the independent-services test exercises supported filters. `GET /v1/providers/status` requires `providers:read`. Quote responses expose `total_cost_minor` as the all-in source-currency debit (equal to `total_debit_minor`) and `total_cost_currency` as `base_currency`. Accepted Trade reads now expose the immutable pricing snapshot. Fee-bearing quote acceptance and exact funding reservation have focused, PostgreSQL, restart, and concurrent replay coverage; the expanded independent-service acceptance has not completed. Fee-bearing payout and FX accounting remain incomplete. |
+| Customer API contract | PARTIAL | `GET /v1/trades` and `GET /v1/reports/settlements` use owner gRPC APIs for tenant-scoped filtering and pagination; the independent-services test exercises supported filters. `GET /v1/providers/status` requires `providers:read`. Quote responses expose `total_cost_minor` as the all-in source-currency debit (equal to `total_debit_minor`) and `total_cost_currency` as `base_currency`. Accepted Trade reads expose immutable pricing plus separate FX execution identity/status. Fee-bearing quote acceptance and exact funding reservation have focused, PostgreSQL, restart, and concurrent replay coverage; expanded independent-service acceptance has not completed. Fee-bearing payout and FX accounting remain incomplete. |
 | Authentication and authorization | PARTIAL | Customer/KYB persists environment-scoped credentials, entitlements, and webhook configuration; the independent-services run proves a seeded credential remains usable after Customer restart. Public create/list/get/rotate/revoke routes use owner gRPC, but their complete lifecycle is not yet exercised through independent services. Gateway enforces per-institution and per-credential token buckets and route entitlements. Multi-gateway rate-limit aggregation, full service identity/private connectivity, and broader security review remain outstanding. |
 | API idempotency | PASS for covered mutations | Durable reservation, payload conflict detection, original response replay, and database-backed tests exist. Webhook replay additionally has owner-side durable idempotency and concurrent duplicate coverage. Failure/concurrency coverage across all public mutations still needs independent-services verification. |
 | Quote/trade recovery | PASS for exercised flows | Owner-local persistence, settlement finality outbox and trade inbox are exercised by the current-revision independent-services proof, including restarts, replay and UNKNOWN recovery. Trade-list and settlement-report queries are exercised independently with their supported filters and pagination. |
-| Customer webhook security/delivery | PARTIAL | Signed delivery, encrypted configuration, durable retries/dead-letter, and restart recovery are implemented and unit/PostgreSQL tested. The public replay endpoint and durable replay history are implemented and tested for duplicate/concurrent keys, conflict, institution scope and store restart. Quote-expired, trade accepted/funding-required/funded, and Settlement-owned settlement-processing/successfully-settled events have owner-local transactional outboxes and relays; FX-executed, failed/reversed, and customer-relevant reconciliation-break publication remain blocked on authoritative state/evidence and tenant identity. Delivery-history read and operations workflows remain incomplete. |
+| Customer webhook security/delivery | PARTIAL | Signed delivery, encrypted configuration, durable retries/dead-letter, and restart recovery are implemented and unit/PostgreSQL tested. The public replay endpoint and durable replay history are implemented and tested for duplicate/concurrent keys, conflict, institution scope and store restart. Quote-expired, trade accepted/funding-required/funded, Settlement-owned settlement-processing/successfully-settled, and Trade-owned FX execution lifecycle events use owner-local transactional outboxes; FX events now have durable authoritative state/evidence, but customer delivery behavior for the new event types has not yet been independently tested. Delivery-history read and operations workflows remain incomplete. |
 | SSRF and provider URL controls | PARTIAL | Customer webhook requests reject non-public production targets and redirects. The wider provider URL allowlist and a full security assessment remain unproven. |
 | Maker-checker and audit integrity | PARTIAL | Beneficiary maker-checker and append-only action records are covered. Other sensitive actions and hash-chained audit anchoring are not proven. |
 | Metrics, alerts, dashboards and runbooks | FAIL | Required metrics/alerts are not fully wired, and required incident runbooks have not been exercised end-to-end. |
@@ -63,7 +97,7 @@ above.
 | 5A public quote snapshot, expiry, idempotent replay | **Implemented; full snapshot persists through Trade and Ledger reservation** | `services/quote/quotecore/quotes.go`, `services/quote/grpc_server.go`, `services/trade-orchestrator/tradecore/`, `proto/osai/ledger/v1/ledger.proto`, `services/ledger/ledgerstore/funding.go`, `pkg/pricing/snapshot.go` | Focused pricing/Quote/Trade/Gateway tests passed; PostgreSQL-backed Ledger and Trade tests passed, including reservation economics, persisted snapshot read, restart, concurrent replay, and altered-snapshot conflict. | Independent-service end-to-end verification of the fee-bearing path still required. |
 | 5A `total_cost_minor` contract | **Implemented in quote response; latest focused test passed** | `proto/osai/quote/v1/quote.proto`, `services/quote/grpc_server.go`, `services/api-gateway/grpc_clients.go`, `services/api-gateway/gateway.go`, `api/openapi/osai-v1.yaml` | `go test -p 1 -count=1 ./services/quote ./services/api-gateway`; assert it equals `total_debit_minor` and currency equals source | Generated protobuf binding updated. It does not imply a completed fee-bearing funding flow. |
 | 5A quote-to-Trade/Ledger funding with fee | **Partial; exact all-in reservation and immutable snapshot persistence implemented; fee-bearing payout fail-closed** | `pkg/pricing/snapshot.go`, `services/quote/grpc_server.go`, `services/trade-orchestrator/grpc_server.go`, `services/ledger/ledgergrpc/server.go`, `services/ledger/ledgerstore/funding.go`, `integration/provider_sandbox_test.go` | `go test -p 1 -ldflags=-w -count=1 ./services/trade-orchestrator/...` passed with PostgreSQL enabled; `go test -p 1 -ldflags=-w -count=1 ./services/ledger/...` passed with PostgreSQL enabled. The focused Ledger reservation test persists and rereads the complete snapshot and covers concurrent replay/conflict; the Trade PostgreSQL test covers restart, concurrent replay, and altered snapshot rejection. Expanded independent-service build failed before assertions with `There is not enough space on the disk`. | Independent service confirmation remains outstanding. Fee accounting/posting and payout are intentionally gated. |
-| 5B durable FX execution separate from payout | **Not implemented end-to-end** | Settlement evidence path exists; no FX execution store/service/outbox | Add DB integration tests for duplicate/concurrent execution commands, unknown query-first recovery, restart, source/destination evidence mismatch, and payout-failure recovery | FX executor and settlement obligations not established for production route; simulator can only test non-production lifecycle. |
+| 5B durable FX execution separate from payout | **Partial; durable Trade-owned lifecycle and transactional events implemented, no production executor integration** | `services/trade-orchestrator/tradecore/fx_execution.go`, `services/trade-orchestrator/tradecore/postgres.go`, `proto/osai/trade/v1/trade.proto`, Gateway Trade read response | `OSAI_POSTGRES_DSN=... go test -p 1 -ldflags=-w -count=1 -run '^TestPostgresFXExecutionUnknownQueryRecoveryAndRestart$' -v ./services/trade-orchestrator/tradecore`; broader Trade/Gateway package suite passed with PostgreSQL enabled. | Implement/configure a route-specific executor and authenticated operational command/recovery worker. Keep cross-currency acceptance disabled until 5C Ledger posting and route evidence are verified; payout remains independent. |
 | 5C durable FX journals/recovery and configurable mappings | **Primitives only** | `services/ledger/ledgercore/fx.go`; funding storage under `services/ledger/ledgerstore/` | Add PostgreSQL-backed journal idempotency, per-currency mapping/ownership validation, evidence conflict, restart, reconciliation and recovery tests | Production USD custody/ownership and chart mapping are absent; production FX posting remains disabled. |
 | 5D API security/idempotency/webhooks/tenant isolation | **Partial; exercised paths pass** | Gateway, Customer/KYB, Notification, owner service stores | Unit + PostgreSQL mutation concurrency/conflict tests; independent `TestProviderSandboxSeparateServices` for restart/isolation | Credential lifecycle, full public mutation matrix, security review, operational controls remain unproven. |
 | 5D operational release controls: alerting, restore, load/failure drills | **Not complete** | Deployment, migrations, runbooks, observability | Record restore/rebuild, replay, load and dependency/termination failure runs; verify alerts and runbooks | No completed evidence recorded. |
@@ -150,7 +184,20 @@ above.
   PostgreSQL enabled. The Trade PostgreSQL test verifies snapshot restart,
   concurrent same-quote replay, and altered-snapshot rejection. The Ledger
   PostgreSQL test verifies all-in reservation, snapshot persistence/readback,
-  concurrent idempotent reservation, and conflicting snapshot rejection.
+  concurrent idempotent   reservation, and conflicting snapshot rejection.
+- Latest Stage 2 focused PostgreSQL test passed:
+  `OSAI_POSTGRES_DSN=... go test -p 1 -ldflags=-w -count=1 -run
+  '^TestPostgresFXExecutionUnknownQueryRecoveryAndRestart$' -v
+  ./services/trade-orchestrator/tradecore`. It verifies concurrent execution
+  creation/replay, executor identity conflict, ambiguous submit becoming
+  UNKNOWN, no blind resubmit before or after store restart, persistent recovery
+  queue visibility, rejection of mismatched query evidence, same-reference
+  retry only after authoritative non-execution, verified execution evidence,
+  immutable completion, and one transactional FX-executed event. Full
+  `go test -p 1 -ldflags=-w -count=1
+  ./services/trade-orchestrator/... ./services/api-gateway` passed with
+  PostgreSQL enabled. Scoped `go vet -p 1 ./services/trade-orchestrator/...
+  ./services/api-gateway` and formatting/whitespace checks passed.
 - The expanded `TestProviderSandboxSeparateServices` now includes a fee-bearing
   quote path, insufficient-funding retry, exact all-in reserve, and payout
   gating assertions. Its latest build attempt stopped before service startup
@@ -168,10 +215,12 @@ lifecycle, operational and production controls are still open.
    debit, destination proceeds/surplus, mode, rate, precision, and expiry.
    The quote response now defines `total_cost_minor` as the source-currency
    all-in debit; fee-bearing funding and Ledger posting remain fail-closed.
-2. Complete 5B durable FX execution separate from payout, including
-   route-specific executor evidence, owner-local outbox/deduplication,
-   query-first UNKNOWN recovery, reconciliation, and failed/returned payout
-   recovery.
+2. Complete 5B runtime integration for the durable FX state machine: configure
+   the route-specific executor, expose authenticated operations commands,
+   schedule/recover persisted SUBMITTED/UNKNOWN work after restarts, and verify
+   executor evidence with a sandbox/simulated adapter. Keep this separate from
+   payout and retain fail-closed cross-currency acceptance until 5C posting is
+   ready. Then implement reconciliation and failed/returned payout recovery.
 3. Complete 5C durable Ledger posting and recovery, reporting consistency, and
    independently balanced currency journals. Keep the affected production FX
    postings disabled until route/custody evidence establishes ownership,

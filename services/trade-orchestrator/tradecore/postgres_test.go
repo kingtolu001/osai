@@ -1,15 +1,239 @@
 package tradecore
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/services/ledger/ledgercore"
 )
+
+func TestPostgresFXExecutionUnknownQueryRecoveryAndRestart(t *testing.T) {
+	dsn := os.Getenv("OSAI_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("OSAI_POSTGRES_DSN is not configured")
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.Ping(); err != nil {
+		t.Skipf("PostgreSQL unavailable: %v", err)
+	}
+	store, err := NewPostgresStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := crossCurrencyFXSnapshot(t)
+	institutionID := "inst_fx_lifecycle_" + uuid.NewString()
+	quoteID := "quo_fx_lifecycle_" + uuid.NewString()
+	trade, err := store.CreateTradeWithPricing(institutionID, quoteID, "accept-fx", "corr-fx",
+		snapshot.SourcePrincipalMinor, snapshot.SourceCurrency, snapshot.DestinationCurrency, snapshot,
+		"ben_fx", "sim_fx_test", "fx-lifecycle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM trade_fx_executions WHERE trade_id=$1`, trade.ID)
+		_, _ = db.Exec(`DELETE FROM trade_outbox WHERE trade_id=$1`, trade.ID)
+		_, _ = db.Exec(`DELETE FROM trade_transitions WHERE trade_id=$1`, trade.ID)
+		_, _ = db.Exec(`DELETE FROM trades WHERE id=$1`, trade.ID)
+	})
+	if err = store.SetStatus(trade.ID, StateFunded); err != nil {
+		t.Fatal(err)
+	}
+
+	type createResult struct {
+		execution *FXExecution
+		err       error
+	}
+	results := make(chan createResult, 2)
+	var wait sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			execution, createErr := store.CreateFXExecution(trade.ID, "fx-key", "sim_fx_test")
+			results <- createResult{execution: execution, err: createErr}
+		}()
+	}
+	wait.Wait()
+	close(results)
+	var execution *FXExecution
+	for result := range results {
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if execution != nil && result.execution.ID != execution.ID {
+			t.Fatalf("concurrent create produced different FX execution IDs: %s / %s", execution.ID, result.execution.ID)
+		}
+		execution = result.execution
+	}
+	if execution == nil || execution.Status != FXExecutionReady {
+		t.Fatalf("FX execution was not durably prepared: %+v", execution)
+	}
+	if _, err = store.CreateFXExecution(trade.ID, "fx-key", "different-executor"); err == nil {
+		t.Fatal("executor change reused an existing FX idempotency key")
+	}
+
+	uncertain := &testFXExecutor{submitErr: errors.New("connection reset after submit"), queryErr: errors.New("query unavailable")}
+	unknown, err := store.SubmitFXExecution(context.Background(), trade.ID, uncertain)
+	if err == nil || unknown == nil || unknown.Status != FXExecutionUnknown || uncertain.submitCalls != 1 {
+		t.Fatalf("ambiguous submission did not persist UNKNOWN: execution=%+v calls=%d err=%v", unknown, uncertain.submitCalls, err)
+	}
+	if tradeView, found := store.GetTrade(trade.ID); !found ||
+		tradeView.State != StateFXUnknown || tradeView.FXExecutionID != execution.ID ||
+		tradeView.FXExecutorID != "sim_fx_test" || tradeView.FXExecutionReference != execution.RequestReference {
+		t.Fatalf("customer trade view did not expose durable FX state: %+v found=%v", tradeView, found)
+	}
+	if _, err = store.SubmitFXExecution(context.Background(), trade.ID, uncertain); err == nil || uncertain.submitCalls != 1 {
+		t.Fatalf("unknown FX execution was blindly resubmitted: calls=%d err=%v", uncertain.submitCalls, err)
+	}
+	restartedUnknown, err := NewPostgresStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownAfterRestart, found, err := restartedUnknown.GetFXExecution(trade.ID)
+	if err != nil || !found || unknownAfterRestart.Status != FXExecutionUnknown {
+		t.Fatalf("UNKNOWN FX state did not survive restart: execution=%+v found=%v err=%v", unknownAfterRestart, found, err)
+	}
+	recoveryQueue, err := restartedUnknown.ListFXExecutionsForRecovery(100)
+	queueContainsTrade := false
+	for _, queued := range recoveryQueue {
+		if queued.ID == execution.ID && queued.TradeID == trade.ID && queued.InstitutionID == institutionID {
+			queueContainsTrade = true
+		}
+	}
+	if err != nil || !queueContainsTrade {
+		t.Fatalf("persisted UNKNOWN execution missing from restart recovery queue: items=%+v err=%v", recoveryQueue, err)
+	}
+	if _, err = restartedUnknown.SubmitFXExecution(context.Background(), trade.ID, uncertain); err == nil || uncertain.submitCalls != 1 {
+		t.Fatalf("restarted UNKNOWN execution was blindly submitted: calls=%d err=%v", uncertain.submitCalls, err)
+	}
+
+	nonExecution := FXQueryResult{Status: FXQueryNotExecuted, QueryEvidence: testFXQueryEvidence(unknown, unknown.RequestReference, true)}
+	uncertain.queryResult = nonExecution
+	uncertain.queryErr = nil
+	badEvidence := nonExecution
+	badEvidence.QueryEvidence.ExecutorID = "other-executor"
+	if _, err = restartedUnknown.ApplyFXQueryResult(trade.ID, badEvidence); err == nil {
+		t.Fatal("query evidence from a different executor was accepted")
+	}
+	ready, err := restartedUnknown.RecoverFXExecution(context.Background(), trade.ID, uncertain)
+	if err != nil || ready.Status != FXExecutionReady || ready.RequestReference != execution.RequestReference {
+		t.Fatalf("query-first recovery did not safely restore the same request: execution=%+v err=%v", ready, err)
+	}
+
+	expectedEvidence := ledgercore.FXExecutionEvidence{
+		TradeID: trade.ID, InstitutionID: institutionID, QuoteID: quoteID, Executor: "sim_fx_test",
+		SourceCurrency: "NGN", SourceExponent: 2, SourcePrincipalMinor: 9_500,
+		DestinationCurrency: "USD", DestinationExponent: 2, DestinationProceedsMinor: 95,
+		AppliedRate: "0.01", RateDirection: ledgercore.DestinationPerSource,
+		ExecutionReference: "provider-fx-001", SourceEvidenceReference: "source-evidence-001",
+		DestinationEvidenceRef: "destination-evidence-001", OccurredAt: time.Now().UTC(),
+	}
+	executor := &testFXExecutor{queryResult: FXQueryResult{
+		Status: FXQueryExecuted, QueryEvidence: testFXQueryEvidence(ready, expectedEvidence.ExecutionReference, true),
+		Execution: &expectedEvidence,
+	}}
+	completed, err := restartedUnknown.SubmitFXExecution(context.Background(), trade.ID, executor)
+	if err != nil || completed.Status != FXExecutionComplete || executor.submitCalls != 1 ||
+		executor.lastSubmission.RequestReference != execution.RequestReference {
+		t.Fatalf("FX submit/query finalization failed: execution=%+v submitted=%+v err=%v",
+			completed, executor.lastSubmission, err)
+	}
+
+	restarted, err := NewPostgresStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, found, err := restarted.GetFXExecution(trade.ID)
+	if err != nil || !found || persisted.Status != FXExecutionComplete ||
+		persisted.ExecutionEvidence == nil || persisted.ExecutionEvidence.ExecutionReference != "provider-fx-001" {
+		t.Fatalf("completed FX evidence did not survive service restart: execution=%+v found=%v err=%v", persisted, found, err)
+	}
+	persistedTrade, found := restarted.GetTrade(trade.ID)
+	if !found || persistedTrade.State != StateFXExecuted || persistedTrade.FXExecutionStatus != string(FXExecutionComplete) {
+		t.Fatalf("restarted customer trade view lost FX status: %+v found=%v", persistedTrade, found)
+	}
+	if _, err = restarted.ApplyFXQueryResult(trade.ID, executor.queryResult); err == nil {
+		t.Fatal("completed FX execution accepted a second finality mutation")
+	}
+	var executedEvents int
+	if err = db.QueryRow(`SELECT count(*) FROM trade_outbox WHERE trade_id=$1 AND event_type='trade.fx_executed'`, trade.ID).Scan(&executedEvents); err != nil {
+		t.Fatal(err)
+	}
+	if executedEvents != 1 {
+		t.Fatalf("FX completion event count = %d, want one", executedEvents)
+	}
+	var unknownEvents int
+	if err = db.QueryRow(`SELECT count(*) FROM trade_outbox WHERE trade_id=$1 AND event_type='trade.fx_execution_unknown'`, trade.ID).Scan(&unknownEvents); err != nil {
+		t.Fatal(err)
+	}
+	if unknownEvents == 0 {
+		t.Fatal("UNKNOWN lifecycle transition was not durably published")
+	}
+}
+
+type testFXExecutor struct {
+	submitErr      error
+	queryErr       error
+	queryResult    FXQueryResult
+	submitCalls    int
+	lastSubmission FXExecution
+}
+
+func (executor *testFXExecutor) SubmitFX(_ context.Context, execution FXExecution) error {
+	executor.submitCalls++
+	executor.lastSubmission = execution
+	return executor.submitErr
+}
+
+func (executor *testFXExecutor) QueryFX(_ context.Context, _ FXExecution) (FXQueryResult, error) {
+	return executor.queryResult, executor.queryErr
+}
+
+func testFXQueryEvidence(execution *FXExecution, providerRef string, authoritative bool) FXQueryEvidence {
+	return FXQueryEvidence{
+		ExecutorID: execution.ExecutorID, RequestReference: execution.RequestReference,
+		ProviderRef: providerRef, QueryReference: "query-" + uuid.NewString(),
+		PayloadHash: strings.Repeat("a", 64), ObservedAt: time.Now().UTC(), Authoritative: authoritative,
+	}
+}
+
+func crossCurrencyFXSnapshot(t *testing.T) pricing.Snapshot {
+	t.Helper()
+	snapshot := pricing.Snapshot{
+		Mode: "FIXED_SOURCE", RequestedAmountMinor: 10_000, SourcePrincipalMinor: 9_500,
+		FeeMinor: 500, TotalDebitMinor: 10_000, DestinationAmountMinor: 95,
+		SourceCurrency: "NGN", DestinationCurrency: "USD", RateScaled: 1_000_000,
+		RateDirection: "USD_PER_NGN", RateScale: pricing.RateScale,
+		SourceExponent: 2, DestinationExponent: 2, FeeScheduleID: "fx_fee_test", FeeScheduleVersion: 1,
+		FixedFeeMinor: 500, MinimumFeeMinor: 500, MaximumFeeMinor: 500,
+		MinimumPrincipalMinor: 1, MaximumPrincipalMinor: 1_000_000,
+		MinimumDebitMinor: 1, MaximumDebitMinor: 2_000_000,
+		MinimumDestinationMinor: 1, MaximumDestinationMinor: 2_000_000,
+		ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano),
+	}
+	hash, err := pricing.Hash(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Hash = hash
+	if err = pricing.Validate(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
 
 func TestPostgresListTradesFiltersAndPaginates(t *testing.T) {
 	dsn := os.Getenv("OSAI_POSTGRES_DSN")

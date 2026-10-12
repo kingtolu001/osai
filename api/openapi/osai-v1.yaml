@@ -835,6 +835,19 @@ components:
               type: string
         settlement_id:
           type: string
+        fx_execution:
+          type: object
+          description: FX execution state is separate from destination payout state; UNKNOWN requires reconciliation before another submission.
+          properties:
+            execution_id:
+              type: string
+            executor_id:
+              type: string
+            request_reference:
+              type: string
+            status:
+              type: string
+              enum: [READY, SUBMITTED, UNKNOWN, EXECUTED, FAILED]
         customer_reference:
           type: string
           description: Institution-scoped client reference, when supplied.

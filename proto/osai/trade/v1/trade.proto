@@ -70,6 +70,10 @@ message TradeResponse {
   string settlement_provider_id = 11;
   string customer_reference = 12;
   PricingSnapshot pricing_snapshot = 13;
+  string fx_execution_id = 14;
+  string fx_executor_id = 15;
+  string fx_execution_reference = 16;
+  string fx_execution_status = 17;
 }
 
 message GetTradeRequest {

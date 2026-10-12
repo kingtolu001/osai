@@ -79,13 +79,28 @@ duplicate/concurrent replay, and conflicting economics.
 This is not fee recognition or FX finality. The funded fee-bearing Trade
 remains `FEE_ACCOUNTING_REQUIRED`; no payout is created until the fee has a
 safe Ledger disposition. Cross-currency Trade acceptance remains fail-closed
-because durable FX execution and corresponding Ledger posting/recovery are
-not yet implemented. `ledgercore` FX evidence validation and journal-building
-helpers remain primitives, not a durable execution/posting lifecycle. The
-expanded independent-services fee-flow test has not passed: its latest build
-stopped before service startup because the local C: volume ran out of space.
-See the authoritative engineering and test checklist in
+because corresponding Ledger posting/recovery and a configured FX executor
+are not yet implemented. Trade now persists a distinct FX execution lifecycle
+with stable idempotent request references, executor identity, pre-submit
+state, UNKNOWN handling, query-first recovery, executor-bound evidence
+validation, a restart recovery queue, and transactional lifecycle events.
+PostgreSQL tests cover those state transitions and restart behavior. The
+lifecycle has no production adapter or authenticated operations/runtime worker
+yet; `ledgercore` FX journal validation/building remains primitives, not
+durable posting. The expanded independent-services fee-flow test has not
+passed: its latest build stopped before service startup because the local C:
+volume ran out of space. See the authoritative engineering and test checklist in
 [V1_PILOT_READINESS.md](./V1_PILOT_READINESS.md).
+
+The Trade lifecycle is not yet safe for concurrent recovery workers: query
+calls occur outside the state transaction and their results are not fenced
+against newer results. A stale non-execution response must never re-enable
+submission after another query establishes execution. Also, the current store
+checks that executor query payload hashes have SHA-256 hex syntax but does not
+itself authenticate or recompute them; a trusted route adapter must validate
+the provider response and bind it to the stable request reference before its
+result can be treated as authoritative. These gaps are explicit engineering
+work, not route evidence or policy approvals.
 
 ## Engineering constraints
 

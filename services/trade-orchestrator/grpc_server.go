@@ -273,7 +273,9 @@ func tradeResponse(trade *tradecore.Trade, statusValue string) *tradev1.TradeRes
 		Status: statusValue, BaseAmountMinor: trade.BaseAmountMinor, BaseCurrency: trade.BaseCurrency,
 		QuoteCurrency: trade.QuoteCurrency, CorrelationId: trade.CorrelationID, SettlementId: trade.SettlementID,
 		BeneficiaryId: trade.BeneficiaryID, SettlementProviderId: trade.SettlementProviderID,
-		CustomerReference: trade.CustomerReference,
+		CustomerReference: trade.CustomerReference, FxExecutionId: trade.FXExecutionID,
+		FxExecutorId: trade.FXExecutorID, FxExecutionReference: trade.FXExecutionReference,
+		FxExecutionStatus: trade.FXExecutionStatus,
 	}
 	if trade.PricingSnapshot != nil {
 		response.PricingSnapshot = pricingSnapshotToProto(*trade.PricingSnapshot)

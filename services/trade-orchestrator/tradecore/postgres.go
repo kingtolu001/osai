@@ -22,7 +22,14 @@ func NewPostgresStore(db *sql.DB) (*Store, error) {
 	CREATE INDEX IF NOT EXISTS trades_institution_status_idx ON trades(institution_id,status);
 	CREATE TABLE IF NOT EXISTS trade_transitions(id bigserial PRIMARY KEY,trade_id text NOT NULL REFERENCES trades(id),from_state text NOT NULL,to_state text NOT NULL,occurred_at timestamptz NOT NULL DEFAULT now());
 	CREATE TABLE IF NOT EXISTS trade_settlement_event_inbox(event_id text PRIMARY KEY,institution_id text NOT NULL,settlement_id text NOT NULL,trade_id text NOT NULL REFERENCES trades(id),status text NOT NULL CHECK(status IN ('SETTLED','FAILED')),correlation_id text NOT NULL DEFAULT '',received_at timestamptz NOT NULL DEFAULT now());
-	ALTER TABLE trade_settlement_event_inbox ADD COLUMN IF NOT EXISTS correlation_id text NOT NULL DEFAULT '';`)
+	ALTER TABLE trade_settlement_event_inbox ADD COLUMN IF NOT EXISTS correlation_id text NOT NULL DEFAULT '';
+	CREATE TABLE IF NOT EXISTS trade_fx_executions(
+		execution_id text PRIMARY KEY,trade_id text NOT NULL UNIQUE REFERENCES trades(id),
+		institution_id text NOT NULL,executor_id text NOT NULL,request_reference text NOT NULL UNIQUE,
+		status text NOT NULL CHECK(status IN ('READY','SUBMITTED','UNKNOWN','EXECUTED','FAILED')),
+		body jsonb NOT NULL,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
+	CREATE INDEX IF NOT EXISTS trade_fx_execution_recovery_idx ON trade_fx_executions(status,updated_at)
+		WHERE status IN ('SUBMITTED','UNKNOWN');`)
 	if err == nil {
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS trade_outbox(event_id text PRIMARY KEY,institution_id text NOT NULL,trade_id text NOT NULL REFERENCES trades(id),event_type text NOT NULL,body jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),delivered_at timestamptz); CREATE INDEX IF NOT EXISTS trade_outbox_pending_idx ON trade_outbox(created_at,event_id) WHERE delivered_at IS NULL;`)
 	}

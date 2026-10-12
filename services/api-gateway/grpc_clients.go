@@ -484,7 +484,15 @@ func (t *grpcTradeClient) GetTrade(institutionID, tradeID string) (TradeReadResp
 	if err != nil {
 		return TradeReadResponse{}, err
 	}
-	return TradeReadResponse{TradeID: resp.TradeId, InstitutionID: resp.InstitutionId, QuoteID: resp.QuoteId, Status: resp.Status, BaseAmountMinor: resp.BaseAmountMinor, BaseCurrency: resp.BaseCurrency, QuoteCurrency: resp.QuoteCurrency, SettlementID: resp.SettlementId, CustomerReference: resp.CustomerReference, CorrelationID: resp.CorrelationId, PricingSnapshot: tradePricingSnapshotFromProto(resp.PricingSnapshot)}, nil
+	return TradeReadResponse{
+		TradeID: resp.TradeId, InstitutionID: resp.InstitutionId, QuoteID: resp.QuoteId,
+		Status: resp.Status, BaseAmountMinor: resp.BaseAmountMinor, BaseCurrency: resp.BaseCurrency,
+		QuoteCurrency: resp.QuoteCurrency, SettlementID: resp.SettlementId,
+		CustomerReference: resp.CustomerReference, CorrelationID: resp.CorrelationId,
+		PricingSnapshot: tradePricingSnapshotFromProto(resp.PricingSnapshot),
+		FXExecutionID:   resp.FxExecutionId, FXExecutorID: resp.FxExecutorId,
+		FXExecutionRef: resp.FxExecutionReference, FXExecutionStatus: resp.FxExecutionStatus,
+	}, nil
 }
 
 func (t *grpcTradeClient) ListTrades(institutionID string, request TradeListRequest) (TradePage, error) {
@@ -520,6 +528,8 @@ func (t *grpcTradeClient) ListTrades(institutionID string, request TradeListRequ
 			QuoteCurrency: item.QuoteCurrency, SettlementID: item.SettlementId,
 			CustomerReference: item.CustomerReference, CorrelationID: item.CorrelationId,
 			PricingSnapshot: tradePricingSnapshotFromProto(item.PricingSnapshot),
+			FXExecutionID:   item.FxExecutionId, FXExecutorID: item.FxExecutorId,
+			FXExecutionRef: item.FxExecutionReference, FXExecutionStatus: item.FxExecutionStatus,
 		})
 	}
 	return TradePage{Items: items, Page: int(resp.Page), PageSize: int(resp.PageSize), Total: int(resp.Total)}, nil
