@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	QuoteService_CreateQuote_FullMethodName = "/osai.quote.v1.QuoteService/CreateQuote"
-	QuoteService_GetQuote_FullMethodName    = "/osai.quote.v1.QuoteService/GetQuote"
-	QuoteService_AcceptQuote_FullMethodName = "/osai.quote.v1.QuoteService/AcceptQuote"
+	QuoteService_CreateQuote_FullMethodName          = "/osai.quote.v1.QuoteService/CreateQuote"
+	QuoteService_GetQuote_FullMethodName             = "/osai.quote.v1.QuoteService/GetQuote"
+	QuoteService_AcceptQuote_FullMethodName          = "/osai.quote.v1.QuoteService/AcceptQuote"
+	QuoteService_ListProviderStatuses_FullMethodName = "/osai.quote.v1.QuoteService/ListProviderStatuses"
 )
 
 // QuoteServiceClient is the client API for QuoteService service.
@@ -31,6 +32,7 @@ type QuoteServiceClient interface {
 	CreateQuote(ctx context.Context, in *CreateQuoteRequest, opts ...grpc.CallOption) (*QuoteResponse, error)
 	GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*QuoteResponse, error)
 	AcceptQuote(ctx context.Context, in *AcceptQuoteRequest, opts ...grpc.CallOption) (*QuoteResponse, error)
+	ListProviderStatuses(ctx context.Context, in *ListProviderStatusesRequest, opts ...grpc.CallOption) (*ListProviderStatusesResponse, error)
 }
 
 type quoteServiceClient struct {
@@ -71,6 +73,16 @@ func (c *quoteServiceClient) AcceptQuote(ctx context.Context, in *AcceptQuoteReq
 	return out, nil
 }
 
+func (c *quoteServiceClient) ListProviderStatuses(ctx context.Context, in *ListProviderStatusesRequest, opts ...grpc.CallOption) (*ListProviderStatusesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProviderStatusesResponse)
+	err := c.cc.Invoke(ctx, QuoteService_ListProviderStatuses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QuoteServiceServer is the server API for QuoteService service.
 // All implementations must embed UnimplementedQuoteServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type QuoteServiceServer interface {
 	CreateQuote(context.Context, *CreateQuoteRequest) (*QuoteResponse, error)
 	GetQuote(context.Context, *GetQuoteRequest) (*QuoteResponse, error)
 	AcceptQuote(context.Context, *AcceptQuoteRequest) (*QuoteResponse, error)
+	ListProviderStatuses(context.Context, *ListProviderStatusesRequest) (*ListProviderStatusesResponse, error)
 	mustEmbedUnimplementedQuoteServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedQuoteServiceServer) GetQuote(context.Context, *GetQuoteReques
 }
 func (UnimplementedQuoteServiceServer) AcceptQuote(context.Context, *AcceptQuoteRequest) (*QuoteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AcceptQuote not implemented")
+}
+func (UnimplementedQuoteServiceServer) ListProviderStatuses(context.Context, *ListProviderStatusesRequest) (*ListProviderStatusesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListProviderStatuses not implemented")
 }
 func (UnimplementedQuoteServiceServer) mustEmbedUnimplementedQuoteServiceServer() {}
 func (UnimplementedQuoteServiceServer) testEmbeddedByValue()                      {}
@@ -172,6 +188,24 @@ func _QuoteService_AcceptQuote_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QuoteService_ListProviderStatuses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProviderStatusesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuoteServiceServer).ListProviderStatuses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuoteService_ListProviderStatuses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuoteServiceServer).ListProviderStatuses(ctx, req.(*ListProviderStatusesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QuoteService_ServiceDesc is the grpc.ServiceDesc for QuoteService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var QuoteService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AcceptQuote",
 			Handler:    _QuoteService_AcceptQuote_Handler,
+		},
+		{
+			MethodName: "ListProviderStatuses",
+			Handler:    _QuoteService_ListProviderStatuses_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

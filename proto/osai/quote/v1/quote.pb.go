@@ -553,6 +553,146 @@ func (x *AcceptQuoteRequest) GetBeneficiaryId() string {
 	return ""
 }
 
+type ProviderRouteStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RouteId       string                 `protobuf:"bytes,1,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Capabilities  []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProviderRouteStatus) Reset() {
+	*x = ProviderRouteStatus{}
+	mi := &file_proto_osai_quote_v1_quote_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProviderRouteStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProviderRouteStatus) ProtoMessage() {}
+
+func (x *ProviderRouteStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_quote_v1_quote_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProviderRouteStatus.ProtoReflect.Descriptor instead.
+func (*ProviderRouteStatus) Descriptor() ([]byte, []int) {
+	return file_proto_osai_quote_v1_quote_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ProviderRouteStatus) GetRouteId() string {
+	if x != nil {
+		return x.RouteId
+	}
+	return ""
+}
+
+func (x *ProviderRouteStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ProviderRouteStatus) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+type ListProviderStatusesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProviderStatusesRequest) Reset() {
+	*x = ListProviderStatusesRequest{}
+	mi := &file_proto_osai_quote_v1_quote_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProviderStatusesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProviderStatusesRequest) ProtoMessage() {}
+
+func (x *ListProviderStatusesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_quote_v1_quote_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProviderStatusesRequest.ProtoReflect.Descriptor instead.
+func (*ListProviderStatusesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_quote_v1_quote_proto_rawDescGZIP(), []int{6}
+}
+
+type ListProviderStatusesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ProviderRouteStatus `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProviderStatusesResponse) Reset() {
+	*x = ListProviderStatusesResponse{}
+	mi := &file_proto_osai_quote_v1_quote_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProviderStatusesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProviderStatusesResponse) ProtoMessage() {}
+
+func (x *ListProviderStatusesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_quote_v1_quote_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProviderStatusesResponse.ProtoReflect.Descriptor instead.
+func (*ListProviderStatusesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_quote_v1_quote_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListProviderStatusesResponse) GetItems() []*ProviderRouteStatus {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 var File_proto_osai_quote_v1_quote_proto protoreflect.FileDescriptor
 
 const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
@@ -613,11 +753,19 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12'\n" +
 	"\x0fidempotency_key\x18\x03 \x01(\tR\x0eidempotencyKey\x12%\n" +
 	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\x12%\n" +
-	"\x0ebeneficiary_id\x18\x05 \x01(\tR\rbeneficiaryId2\xf8\x01\n" +
+	"\x0ebeneficiary_id\x18\x05 \x01(\tR\rbeneficiaryId\"l\n" +
+	"\x13ProviderRouteStatus\x12\x19\n" +
+	"\broute_id\x18\x01 \x01(\tR\arouteId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\"\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\x1d\n" +
+	"\x1bListProviderStatusesRequest\"X\n" +
+	"\x1cListProviderStatusesResponse\x128\n" +
+	"\x05items\x18\x01 \x03(\v2\".osai.quote.v1.ProviderRouteStatusR\x05items2\xe9\x02\n" +
 	"\fQuoteService\x12N\n" +
 	"\vCreateQuote\x12!.osai.quote.v1.CreateQuoteRequest\x1a\x1c.osai.quote.v1.QuoteResponse\x12H\n" +
 	"\bGetQuote\x12\x1e.osai.quote.v1.GetQuoteRequest\x1a\x1c.osai.quote.v1.QuoteResponse\x12N\n" +
-	"\vAcceptQuote\x12!.osai.quote.v1.AcceptQuoteRequest\x1a\x1c.osai.quote.v1.QuoteResponseB2Z0github.com/osai/osai/proto/osai/quote/v1;quotev1b\x06proto3"
+	"\vAcceptQuote\x12!.osai.quote.v1.AcceptQuoteRequest\x1a\x1c.osai.quote.v1.QuoteResponse\x12o\n" +
+	"\x14ListProviderStatuses\x12*.osai.quote.v1.ListProviderStatusesRequest\x1a+.osai.quote.v1.ListProviderStatusesResponseB2Z0github.com/osai/osai/proto/osai/quote/v1;quotev1b\x06proto3"
 
 var (
 	file_proto_osai_quote_v1_quote_proto_rawDescOnce sync.Once
@@ -631,26 +779,32 @@ func file_proto_osai_quote_v1_quote_proto_rawDescGZIP() []byte {
 	return file_proto_osai_quote_v1_quote_proto_rawDescData
 }
 
-var file_proto_osai_quote_v1_quote_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_proto_osai_quote_v1_quote_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_proto_osai_quote_v1_quote_proto_goTypes = []any{
-	(*Money)(nil),              // 0: osai.quote.v1.Money
-	(*CreateQuoteRequest)(nil), // 1: osai.quote.v1.CreateQuoteRequest
-	(*QuoteResponse)(nil),      // 2: osai.quote.v1.QuoteResponse
-	(*GetQuoteRequest)(nil),    // 3: osai.quote.v1.GetQuoteRequest
-	(*AcceptQuoteRequest)(nil), // 4: osai.quote.v1.AcceptQuoteRequest
+	(*Money)(nil),                        // 0: osai.quote.v1.Money
+	(*CreateQuoteRequest)(nil),           // 1: osai.quote.v1.CreateQuoteRequest
+	(*QuoteResponse)(nil),                // 2: osai.quote.v1.QuoteResponse
+	(*GetQuoteRequest)(nil),              // 3: osai.quote.v1.GetQuoteRequest
+	(*AcceptQuoteRequest)(nil),           // 4: osai.quote.v1.AcceptQuoteRequest
+	(*ProviderRouteStatus)(nil),          // 5: osai.quote.v1.ProviderRouteStatus
+	(*ListProviderStatusesRequest)(nil),  // 6: osai.quote.v1.ListProviderStatusesRequest
+	(*ListProviderStatusesResponse)(nil), // 7: osai.quote.v1.ListProviderStatusesResponse
 }
 var file_proto_osai_quote_v1_quote_proto_depIdxs = []int32{
-	1, // 0: osai.quote.v1.QuoteService.CreateQuote:input_type -> osai.quote.v1.CreateQuoteRequest
-	3, // 1: osai.quote.v1.QuoteService.GetQuote:input_type -> osai.quote.v1.GetQuoteRequest
-	4, // 2: osai.quote.v1.QuoteService.AcceptQuote:input_type -> osai.quote.v1.AcceptQuoteRequest
-	2, // 3: osai.quote.v1.QuoteService.CreateQuote:output_type -> osai.quote.v1.QuoteResponse
-	2, // 4: osai.quote.v1.QuoteService.GetQuote:output_type -> osai.quote.v1.QuoteResponse
-	2, // 5: osai.quote.v1.QuoteService.AcceptQuote:output_type -> osai.quote.v1.QuoteResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	5, // 0: osai.quote.v1.ListProviderStatusesResponse.items:type_name -> osai.quote.v1.ProviderRouteStatus
+	1, // 1: osai.quote.v1.QuoteService.CreateQuote:input_type -> osai.quote.v1.CreateQuoteRequest
+	3, // 2: osai.quote.v1.QuoteService.GetQuote:input_type -> osai.quote.v1.GetQuoteRequest
+	4, // 3: osai.quote.v1.QuoteService.AcceptQuote:input_type -> osai.quote.v1.AcceptQuoteRequest
+	6, // 4: osai.quote.v1.QuoteService.ListProviderStatuses:input_type -> osai.quote.v1.ListProviderStatusesRequest
+	2, // 5: osai.quote.v1.QuoteService.CreateQuote:output_type -> osai.quote.v1.QuoteResponse
+	2, // 6: osai.quote.v1.QuoteService.GetQuote:output_type -> osai.quote.v1.QuoteResponse
+	2, // 7: osai.quote.v1.QuoteService.AcceptQuote:output_type -> osai.quote.v1.QuoteResponse
+	7, // 8: osai.quote.v1.QuoteService.ListProviderStatuses:output_type -> osai.quote.v1.ListProviderStatusesResponse
+	5, // [5:9] is the sub-list for method output_type
+	1, // [1:5] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_proto_osai_quote_v1_quote_proto_init() }
@@ -664,7 +818,7 @@ func file_proto_osai_quote_v1_quote_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_quote_v1_quote_proto_rawDesc), len(file_proto_osai_quote_v1_quote_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

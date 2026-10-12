@@ -63,8 +63,21 @@ message AcceptQuoteRequest {
   string beneficiary_id = 5;
 }
 
+message ProviderRouteStatus {
+  string route_id = 1;
+  string status = 2;
+  repeated string capabilities = 3;
+}
+
+message ListProviderStatusesRequest {}
+
+message ListProviderStatusesResponse {
+  repeated ProviderRouteStatus items = 1;
+}
+
 service QuoteService {
   rpc CreateQuote(CreateQuoteRequest) returns (QuoteResponse);
   rpc GetQuote(GetQuoteRequest) returns (QuoteResponse);
   rpc AcceptQuote(AcceptQuoteRequest) returns (QuoteResponse);
+  rpc ListProviderStatuses(ListProviderStatusesRequest) returns (ListProviderStatusesResponse);
 }

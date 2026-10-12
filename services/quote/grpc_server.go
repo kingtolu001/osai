@@ -47,6 +47,7 @@ func (s *grpcServer) CreateQuote(ctx context.Context, req *quotev1.CreateQuoteRe
 	}
 	request := quotecore.QuoteRequest{
 		CustomerID:             req.InstitutionId,
+		CorrelationID:          req.CorrelationId,
 		QuoteMode:              mode,
 		BaseAmountMinor:        req.BaseAmountMinor,
 		DestinationAmountMinor: req.DestinationAmountMinor,
@@ -174,6 +175,45 @@ func (s *grpcServer) GetQuote(ctx context.Context, req *quotev1.GetQuoteRequest)
 		return nil, status.Error(codes.PermissionDenied, "forbidden")
 	}
 	return toQuoteResponse(quote), nil
+}
+
+func (s *grpcServer) ListProviderStatuses(ctx context.Context, _ *quotev1.ListProviderStatusesRequest) (*quotev1.ListProviderStatusesResponse, error) {
+	if s == nil || s.liquidity == nil {
+		return nil, status.Error(codes.Unavailable, "route status unavailable")
+	}
+	health := s.liquidity.Health()
+	simulatorAvailable := os.Getenv("OSAI_SIMULATOR_ROUTING_ENABLED") != "false" &&
+		os.Getenv("OSAI_SIMULATOR_KILL_SWITCH") != "true" &&
+		health.Up && health.Capabilities["quotes"] && health.Capabilities["fx"] && health.Capabilities["payout"]
+	items := []*quotev1.ProviderRouteStatus{
+		{RouteId: "simulator", Status: routeStatus(simulatorAvailable), Capabilities: []string{"quotes", "fx", "payout"}},
+	}
+	flutterwaveAvailable := os.Getenv("OSAI_FLW_TRADE_ROUTING_ENABLED") == "true" &&
+		os.Getenv("FLW_SETTLEMENT_ENABLED") == "true" && os.Getenv("FLW_KILL_SWITCH") != "true"
+	if flutterwaveAvailable {
+		rail := flutterwave.New(flutterwave.Config{
+			BaseURL: os.Getenv("FLW_BASE_URL"), SecretKey: os.Getenv("FLW_SECRET_KEY"),
+			SecretHash: os.Getenv("FLW_SECRET_HASH"), Env: os.Getenv("FLW_ENV"),
+			Enabled: true, Timeout: 3 * time.Second,
+		})
+		probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		probeErr := rail.ProbeTransferHealth(probeCtx)
+		cancel()
+		railHealth := rail.Health()
+		flutterwaveAvailable = probeErr == nil && railHealth.Capabilities["webhook"] && railHealth.Capabilities["get_transfer"]
+	}
+	items = append(items, &quotev1.ProviderRouteStatus{
+		RouteId: "ngn-bank-transfer", Status: routeStatus(flutterwaveAvailable),
+		Capabilities: []string{"payout"},
+	})
+	return &quotev1.ListProviderStatusesResponse{Items: items}, nil
+}
+
+func routeStatus(available bool) string {
+	if available {
+		return "AVAILABLE"
+	}
+	return "UNAVAILABLE"
 }
 
 func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRequest) (*quotev1.QuoteResponse, error) {

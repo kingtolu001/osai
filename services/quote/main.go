@@ -61,9 +61,13 @@ func main() {
 	}
 	defer notificationConn.Close()
 	notificationClient := notificationv1.NewNotificationServiceClient(notificationConn)
+	liquidity := firstpair.New().Liquidity
 	go func() {
 		for range time.NewTicker(250 * time.Millisecond).C {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := store.ExpireDue(ctx, time.Now().UTC()); err != nil {
+				log.Printf("quote expiry worker: %v", err)
+			}
 			if err := store.Relay(ctx, notificationClient, token); err != nil {
 				log.Printf("quote outbox relay: %v", err)
 			}
@@ -92,7 +96,7 @@ func main() {
 	}
 	defer tradeConn.Close()
 	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
-	quoteService := &grpcServer{store: store, pricing: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn), liquidity: firstpair.New().Liquidity}
+	quoteService := &grpcServer{store: store, pricing: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn), liquidity: liquidity}
 	quotev1.RegisterQuoteServiceServer(server, quoteService)
 	pricingOperators, err := loadPricingOperators()
 	if err != nil {

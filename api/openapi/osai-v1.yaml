@@ -16,6 +16,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /v1/providers/status:
+    get:
+      operationId: getProviderStatus
+      summary: Get entitled customer-facing route availability and capabilities
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/RequestID'
+      responses:
+        '200':
+          description: Normalized customer-facing route status; provider identities are not exposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderStatusResponse'
+        '403':
+          description: The institution is not entitled to read provider status
+        '503':
+          description: Route status service unavailable
   /v1/beneficiaries:
     post:
       operationId: registerBeneficiary
@@ -455,6 +473,29 @@ components:
       schema:
         type: string
   schemas:
+    ProviderStatusResponse:
+      type: object
+      required: [items, request_id]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [route_id, status, capabilities]
+            properties:
+              route_id:
+                type: string
+                description: Stable customer-facing route identifier, not a provider identity.
+              status:
+                type: string
+                enum: [AVAILABLE, UNAVAILABLE]
+              capabilities:
+                type: array
+                items:
+                  type: string
+                  enum: [quotes, fx, payout]
+        request_id:
+          type: string
     CreateCredentialRequest:
       type: object
       required: [label]

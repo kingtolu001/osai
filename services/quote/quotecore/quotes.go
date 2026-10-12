@@ -20,6 +20,7 @@ var ErrQuoteIdempotencyConflict = errors.New("quote idempotency key reused with 
 // QuoteRequest is the normalized inbound request for a quote.
 type QuoteRequest struct {
 	CustomerID             string
+	CorrelationID          string
 	QuoteMode              QuoteMode
 	BaseAmountMinor        int64
 	DestinationAmountMinor int64

@@ -1,6 +1,7 @@
 package quotecore
 
 import (
+	"context"
 	"database/sql"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -25,7 +26,12 @@ func TestPostgresQuoteReplayAndOutboxSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := uuid.NewString()
-	req := QuoteRequest{CustomerID: "inst_test_" + key, BaseAmountMinor: 10000, BaseCurrency: "NGN", QuoteCurrency: "USD", DestinationRail: "sim_lp_1", IdempotencyKey: key}
+	institutionID := "inst_test_" + key
+	req := QuoteRequest{CustomerID: institutionID, CorrelationID: "corr_" + key, BaseAmountMinor: 10000, BaseCurrency: "NGN", QuoteCurrency: "USD", DestinationRail: "sim_lp_1", IdempotencyKey: key}
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM quote_outbox WHERE institution_id=$1`, institutionID)
+		_, _ = db.Exec(`DELETE FROM quotes WHERE institution_id=$1`, institutionID)
+	})
 	var quotes [8]*ExecutableQuote
 	var errs [8]error
 	var group sync.WaitGroup
@@ -70,5 +76,27 @@ func TestPostgresQuoteReplayAndOutboxSurviveRestart(t *testing.T) {
 	}
 	if quoteCount != 1 || eventCount != 1 {
 		t.Fatalf("expected one quote and event, got %d and %d", quoteCount, eventCount)
+	}
+	expiringReq := req
+	expiringReq.IdempotencyKey = "expire-" + key
+	expiring, err := store.Create(expiringReq, "sim_lp_1", 1200, 500, 100, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE quotes SET body=jsonb_set(body,'{ExpiresAt}',to_jsonb($2::text)) WHERE id=$1`, expiring.ID, time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	if err = restarted.ExpireDue(context.Background(), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err = restarted.ExpireDue(context.Background(), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	var expiredEvents int
+	if err = db.QueryRow(`SELECT count(*) FROM quote_outbox WHERE event_id=$1`, "evt_quote_expired_"+expiring.ID).Scan(&expiredEvents); err != nil {
+		t.Fatal(err)
+	}
+	if expiredEvents != 1 {
+		t.Fatalf("expected one durable quote.expired event, got %d", expiredEvents)
 	}
 }

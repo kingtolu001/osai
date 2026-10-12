@@ -121,6 +121,73 @@ func (s *QuoteStore) AcceptWithCorrelation(id, key, tradeID, correlation string,
 	return s.Accept(id, key, tradeID, now)
 }
 
+func (s *QuoteStore) ExpireDue(ctx context.Context, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id,body FROM quotes WHERE body->>'Status'=$1 AND (body->>'ExpiresAt')::timestamptz <= $2 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED`, string(QuoteStatusQuoted), now.UTC())
+	if err != nil {
+		return err
+	}
+	type dueQuote struct {
+		id    string
+		quote ExecutableQuote
+	}
+	due := make([]dueQuote, 0)
+	for rows.Next() {
+		var item dueQuote
+		var raw []byte
+		if err = rows.Scan(&item.id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		if err = json.Unmarshal(raw, &item.quote); err != nil {
+			rows.Close()
+			return err
+		}
+		due = append(due, item)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for i := range due {
+		item := &due[i]
+		item.quote.Status = QuoteStatusExpired
+		raw, marshalErr := json.Marshal(&item.quote)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE quotes SET body=$2 WHERE id=$1`, item.id, string(raw)); err != nil {
+			return err
+		}
+		payload, marshalErr := json.Marshal(map[string]string{
+			"quote_id":   item.id,
+			"status":     string(QuoteStatusExpired),
+			"expires_at": item.quote.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		})
+		if marshalErr != nil {
+			return marshalErr
+		}
+		event := notificationv1.Event{
+			EventId: "evt_quote_expired_" + item.id, InstitutionId: item.quote.Request.CustomerID,
+			EventType: "quote.expired", CorrelationId: item.quote.Request.CorrelationID,
+			AggregateId: item.id, OccurredAt: now.UTC().Format(time.RFC3339Nano), PayloadJson: string(payload),
+		}
+		raw, marshalErr = json.Marshal(&event)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO quote_outbox(event_id,institution_id,body) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, event.EventId, event.InstitutionId, string(raw)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // Relay retries until Notification has durably acknowledged the same event ID.
 func (s *QuoteStore) Relay(ctx context.Context, client notificationv1.NotificationServiceClient, token string) error {
 	rows, err := s.db.QueryContext(ctx, `SELECT event_id,body FROM quote_outbox WHERE delivered_at IS NULL ORDER BY event_id LIMIT 50`)

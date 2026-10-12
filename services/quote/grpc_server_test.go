@@ -98,6 +98,34 @@ func TestCreateQuoteUsesApprovedSimulatorRoute(t *testing.T) {
 	}
 }
 
+func TestProviderStatusReturnsNormalizedCustomerRoutes(t *testing.T) {
+	t.Setenv("OSAI_SIMULATOR_ROUTING_ENABLED", "true")
+	t.Setenv("OSAI_SIMULATOR_KILL_SWITCH", "false")
+	t.Setenv("OSAI_FLW_TRADE_ROUTING_ENABLED", "false")
+	t.Setenv("FLW_SETTLEMENT_ENABLED", "false")
+	t.Setenv("FLW_KILL_SWITCH", "false")
+	server := &grpcServer{liquidity: firstpair.New().Liquidity}
+	response, err := server.ListProviderStatuses(context.Background(), &quotev1.ListProviderStatusesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Items) != 2 ||
+		response.Items[0].RouteId != "simulator" || response.Items[0].Status != "AVAILABLE" ||
+		response.Items[1].RouteId != "ngn-bank-transfer" || response.Items[1].Status != "UNAVAILABLE" {
+		t.Fatalf("unexpected customer route status: %+v", response.Items)
+	}
+	for _, item := range response.Items {
+		if item.RouteId == "sim_lp_1" || item.RouteId == "flutterwave" {
+			t.Fatalf("provider identity exposed instead of route ID: %+v", item)
+		}
+	}
+	t.Setenv("OSAI_SIMULATOR_KILL_SWITCH", "true")
+	response, err = server.ListProviderStatuses(context.Background(), &quotev1.ListProviderStatusesRequest{})
+	if err != nil || response.Items[0].Status != "UNAVAILABLE" {
+		t.Fatalf("simulator kill switch did not affect route status: %+v %v", response, err)
+	}
+}
+
 func TestCreateQuoteFailsClosedWithoutInstitutionPricing(t *testing.T) {
 	server := &grpcServer{store: quotecore.NewQuoteStore(), liquidity: firstpair.New().Liquidity}
 	request := &quotev1.CreateQuoteRequest{InstitutionId: "inst_test", BaseAmountMinor: 10000, BaseCurrency: "USD", QuoteCurrency: "NGN", DestinationRail: "sim_lp_1", IdempotencyKey: "quote-no-policy"}
