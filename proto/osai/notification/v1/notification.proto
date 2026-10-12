@@ -11,4 +11,21 @@ message Event {
  string payload_json = 7;
 }
 message Receipt { string event_id = 1; }
-service NotificationService { rpc PublishEvent(Event) returns (Receipt); }
+message ConfigureWebhookRequest {
+ string institution_id = 1;
+ string endpoint_url = 2;
+ string signing_secret = 3;
+ repeated string subscribed_event_types = 4;
+}
+message ConfigureWebhookResponse { bool configured = 1; }
+message ReplayWebhookRequest {
+ string institution_id = 1;
+ string event_id = 2;
+ string idempotency_key = 3;
+}
+message ReplayWebhookResponse { bool queued = 1; }
+service NotificationService {
+ rpc PublishEvent(Event) returns (Receipt);
+ rpc ConfigureWebhook(ConfigureWebhookRequest) returns (ConfigureWebhookResponse);
+ rpc ReplayWebhook(ReplayWebhookRequest) returns (ReplayWebhookResponse);
+}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"log"
 	"net"
 	"net/http"
@@ -20,92 +19,50 @@ import (
 	"github.com/osai/osai/services/notification-webhook/webhookcore"
 	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
-
-type notificationServer struct {
-	notificationv1.UnimplementedNotificationServiceServer
-	store *webhookcore.Postgres
-	token string
-}
-
-func (s *notificationServer) PublishEvent(ctx context.Context, event *notificationv1.Event) (*notificationv1.Receipt, error) {
-	values := metadata.ValueFromIncomingContext(ctx, "authorization")
-	if len(values) != 1 || s.token == "" || subtle.ConstantTimeCompare([]byte(values[0]), []byte("Bearer "+s.token)) != 1 {
-		return nil, status.Error(codes.Unauthenticated, "service credential required")
-	}
-	if err := s.store.Publish(ctx, event); err != nil {
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
-	}
-	return &notificationv1.Receipt{EventId: event.EventId}, nil
-}
 
 func main() {
 	if err := observability.Init("notification-webhook"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	db, err := postgres.Open("notification-webhook")
+	database, err := postgres.Open("notification-webhook")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("connect notification-webhook database: %v", err)
 	}
-	defer db.Close()
-	secret := os.Getenv("OSAI_WEBHOOK_SECRET")
-	token := os.Getenv("OSAI_NOTIFICATION_TOKEN")
-	if secret == "" || token == "" {
-		log.Fatal("OSAI_WEBHOOK_SECRET and OSAI_NOTIFICATION_TOKEN required")
+	defer database.Close()
+	inbox := webhookcore.PostgresProviderInbox{DB: database}
+	if err := inbox.EnsureSchema(); err != nil {
+		log.Fatalf("initialize provider webhook inbox: %v", err)
 	}
-	store := &webhookcore.Postgres{DB: db, Client: &http.Client{Timeout: 5 * time.Second}, Secret: secret, MaxAttempts: 3}
-	if raw := os.Getenv("OSAI_WEBHOOK_RETRY_MS"); raw != "" {
-		ms, err := strconv.Atoi(raw)
-		if err != nil || ms < 100 {
-			log.Fatal("invalid OSAI_WEBHOOK_RETRY_MS")
+	store := &webhookcore.Postgres{
+		DB: database, Client: &http.Client{Timeout: 10 * time.Second},
+		ConfigEncryptionKey: []byte(strings.TrimSpace(os.Getenv("OSAI_WEBHOOK_CONFIG_ENCRYPTION_KEY"))),
+		MaxAttempts:         5,
+	}
+	if len(store.ConfigEncryptionKey) < 32 {
+		log.Fatal("OSAI_WEBHOOK_CONFIG_ENCRYPTION_KEY must contain at least 32 bytes")
+	}
+	if err := store.EnsureSchema(); err != nil {
+		log.Fatalf("initialize customer webhook persistence: %v", err)
+	}
+	publishToken := strings.TrimSpace(os.Getenv("OSAI_NOTIFICATION_TOKEN"))
+	configureToken := strings.TrimSpace(os.Getenv("OSAI_WEBHOOK_ADMIN_TOKEN"))
+	if publishToken == "" || configureToken == "" {
+		log.Fatal("OSAI_NOTIFICATION_TOKEN and OSAI_WEBHOOK_ADMIN_TOKEN are required")
+	}
+	if raw := strings.TrimSpace(os.Getenv("OSAI_WEBHOOK_MAX_ATTEMPTS")); raw != "" {
+		max, err := strconv.Atoi(raw)
+		if err != nil || max < 1 || max > 20 {
+			log.Fatal("OSAI_WEBHOOK_MAX_ATTEMPTS must be between 1 and 20")
 		}
-		store.RetryDelay = time.Duration(ms) * time.Millisecond
+		store.MaxAttempts = max
 	}
-	if err = store.EnsureSchema(); err != nil {
-		log.Fatal(err)
-	}
-	if url := os.Getenv("OSAI_WEBHOOK_URL"); url != "" {
-		if err = store.Configure("inst_sandbox_local", url, "env:OSAI_WEBHOOK_SECRET", []string{"quote.accepted"}); err != nil {
-			log.Fatal(err)
+	if raw := strings.TrimSpace(os.Getenv("OSAI_WEBHOOK_RETRY_DELAY")); raw != "" {
+		delay, err := time.ParseDuration(raw)
+		if err != nil || delay <= 0 {
+			log.Fatal("OSAI_WEBHOOK_RETRY_DELAY must be a positive duration")
 		}
-	}
-	grpcAddr := os.Getenv("OSAI_NOTIFICATION_GRPC_ADDR")
-	if grpcAddr == "" {
-		grpcAddr = ":50057"
-	}
-	listener, err := net.Listen("tcp", grpcAddr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(observability.UnaryServerInterceptor()))
-	notificationv1.RegisterNotificationServiceServer(grpcServer, &notificationServer{store: store, token: token})
-	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
-			log.Printf("notification grpc: %v", err)
-		}
-	}()
-	go func() {
-		for range time.NewTicker(250 * time.Millisecond).C {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			for i := 0; i < 20; i++ {
-				done, err := store.DeliverDue(ctx)
-				if err != nil {
-					log.Printf("notification delivery: %v", err)
-					break
-				}
-				if !done {
-					break
-				}
-			}
-			cancel()
-		}
-	}()
-	port := os.Getenv("OSAI_WEBHOOK_PORT")
-	if port == "" {
-		port = ":8083"
+		store.RetryDelay = delay
 	}
 	temporalAddr := strings.TrimSpace(os.Getenv("OSAI_TEMPORAL_ADDR"))
 	if temporalAddr == "" {
@@ -118,26 +75,62 @@ func main() {
 	defer temporalClient.Close()
 	pair := firstpair.New()
 	handler := webhookcore.NewHandler(providerRails(pair.Settlement), webhookcore.TemporalSignaler{Client: temporalClient})
-	inbox := webhookcore.PostgresProviderInbox{DB: db}
-	if err := inbox.EnsureSchema(); err != nil {
+	handler.SetProviderInbox(inbox)
+	httpPort := os.Getenv("OSAI_WEBHOOK_PORT")
+	if httpPort == "" {
+		httpPort = ":8083"
+	}
+	httpServer := &http.Server{Addr: httpPort, Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		log.Printf("provider webhook ingress listening on %s", httpServer.Addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("provider webhook ingress failed: %v", err)
+		}
+	}()
+	go runCustomerWebhookDelivery(context.Background(), store)
+	grpcAddr := os.Getenv("OSAI_NOTIFICATION_GRPC_ADDR")
+	if grpcAddr == "" {
+		grpcAddr = ":50057"
+	}
+	listener, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		log.Fatalf("notification gRPC listen failed: %v", err)
+	}
+	server := grpc.NewServer()
+	notificationv1.RegisterNotificationServiceServer(server, &notificationGRPCServer{store: store, publishToken: publishToken, configureToken: configureToken})
+	log.Printf("notification gRPC listening on %s", grpcAddr)
+	if err := server.Serve(listener); err != nil {
 		log.Fatal(err)
 	}
-	handler.SetProviderInbox(inbox)
-	server := &http.Server{Addr: port, Handler: handler}
-	log.Printf("provider webhook ingress listening on %s", server.Addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+}
+
+func runCustomerWebhookDelivery(ctx context.Context, store *webhookcore.Postgres) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		for {
+			callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			delivered, err := store.DeliverDue(callCtx)
+			cancel()
+			if err != nil {
+				log.Printf("customer webhook delivery: %v", err)
+				break
+			}
+			if !delivered {
+				break
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
 func providerRails(simulator provider.SettlementRail) map[string]provider.SettlementRail {
 	return map[string]provider.SettlementRail{
-		"sim_lp_1": simulator,
-		"flutterwave": flutterwave.New(flutterwave.Config{
-			BaseURL:    os.Getenv("FLW_BASE_URL"),
-			SecretKey:  os.Getenv("FLW_SECRET_KEY"),
-			SecretHash: os.Getenv("FLW_SECRET_HASH"),
-			Env:        os.Getenv("FLW_ENV"),
-		}),
+		"sim_lp_1":    simulator,
+		"flutterwave": flutterwave.New(flutterwave.Config{SecretHash: os.Getenv("FLW_SECRET_HASH")}),
 	}
 }

@@ -2,6 +2,7 @@ package webhookcore
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -47,12 +48,12 @@ type DeliveryAttempt struct {
 	ErrorMetadata string    `json:"error_metadata,omitempty"`
 }
 
-func SignCustomerPayload(secret, timestamp string, body []byte) (string, error) {
-	if secret == "" || timestamp == "" {
-		return "", errors.New("secret and timestamp are required")
+func SignCustomerPayload(secret, eventID, timestamp string, body []byte) (string, error) {
+	if secret == "" || eventID == "" || timestamp == "" {
+		return "", errors.New("secret, event ID, and timestamp are required")
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, err := mac.Write([]byte(timestamp + "."))
+	_, err := mac.Write([]byte(eventID + "." + timestamp + "."))
 	if err != nil {
 		return "", err
 	}
@@ -63,8 +64,19 @@ func SignCustomerPayload(secret, timestamp string, body []byte) (string, error) 
 	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
-func VerifyCustomerPayload(secret, timestamp string, body []byte, signature string) (bool, error) {
-	expected, err := SignCustomerPayload(secret, timestamp, body)
+func VerifyCustomerPayload(secret, eventID, timestamp string, body []byte, signature string) (bool, error) {
+	parsedTimestamp, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		parsedTimestamp, err = time.Parse(time.RFC3339Nano, timestamp)
+		if err != nil {
+			return false, errors.New("invalid webhook timestamp")
+		}
+	}
+	delta := time.Since(parsedTimestamp)
+	if delta < -5*time.Minute || delta > 5*time.Minute {
+		return false, errors.New("webhook timestamp outside allowed tolerance")
+	}
+	expected, err := SignCustomerPayload(secret, eventID, timestamp, body)
 	if err != nil {
 		return false, err
 	}
@@ -72,11 +84,11 @@ func VerifyCustomerPayload(secret, timestamp string, body []byte, signature stri
 }
 
 func DeliverCustomerEvent(client *http.Client, cfg CustomerWebhookConfig, event OutboundEvent) (*DeliveryAttempt, error) {
-	if client == nil {
-		client = http.DefaultClient
-	}
 	if cfg.InstitutionID == "" || cfg.EndpointURL == "" || cfg.Secret == "" {
 		return nil, errors.New("webhook configuration is incomplete")
+	}
+	if err := validateCustomerWebhookURL(context.Background(), cfg.EndpointURL); err != nil {
+		return nil, err
 	}
 	payload, err := json.Marshal(map[string]any{
 		"event_id":       event.EventID,
@@ -93,7 +105,7 @@ func DeliverCustomerEvent(client *http.Client, cfg CustomerWebhookConfig, event 
 		return nil, errors.New("event payload is empty")
 	}
 	timestamp := time.Now().UTC().Format(time.RFC3339)
-	signature, err := SignCustomerPayload(cfg.Secret, timestamp, payload)
+	signature, err := SignCustomerPayload(cfg.Secret, event.EventID, timestamp, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +120,11 @@ func DeliverCustomerEvent(client *http.Client, cfg CustomerWebhookConfig, event 
 	req.Header.Set("X-Osai-Event-Version", event.EventVersion)
 	req.Header.Set("X-Osai-Correlation-Id", event.CorrelationID)
 	req.Header.Set("X-Osai-Signature", signature)
-	resp, err := client.Do(req)
+	timeout := 10 * time.Second
+	if client != nil && client.Timeout > 0 {
+		timeout = client.Timeout
+	}
+	resp, err := newCustomerWebhookHTTPClient(timeout).Do(req)
 	if err != nil {
 		attempt := DeliveryAttempt{EventID: event.EventID, InstitutionID: cfg.InstitutionID, AttemptNumber: 1, HTTPStatus: 0, Outcome: "network_error", NextRetryAt: time.Now().UTC().Add(time.Minute), ErrorMetadata: err.Error()}
 		return &attempt, err
