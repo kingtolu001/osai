@@ -123,15 +123,26 @@ func (s *Simulator) GetQuote(req quotecore.QuoteRequest) (quotecore.ProviderQuot
 	if s.profile.DelayMs > 0 {
 		time.Sleep(time.Duration(s.profile.DelayMs) * time.Millisecond)
 	}
+	rate, sourceExponent, destinationExponent, err := simulatedRate(req.BaseCurrency, req.QuoteCurrency)
+	if err != nil {
+		return quotecore.ProviderQuote{}, err
+	}
+	amountOut, err := quotecore.ConvertMinorUnits(req.BaseAmountMinor, rate, sourceExponent, destinationExponent)
+	if err != nil || amountOut <= 0 {
+		if err != nil {
+			return quotecore.ProviderQuote{}, err
+		}
+		return quotecore.ProviderQuote{}, errors.New("simulated quote amount rounds to zero")
+	}
 	providerQuote := quotecore.ProviderQuote{
 		ID:                      "provq_" + fmt.Sprintf("%d", time.Now().UnixNano()),
 		ProviderID:              "sim_lp_1",
 		BaseCurrency:            req.BaseCurrency,
 		QuoteCurrency:           req.QuoteCurrency,
 		BaseAmountMinor:         req.BaseAmountMinor,
-		RateMinor:               1000,
-		FeeMinor:                500,
-		AmountOutMinor:          req.BaseAmountMinor,
+		RateMinor:               rate,
+		FeeMinor:                0,
+		AmountOutMinor:          amountOut,
 		SettlementCompatibility: "NGN_USD",
 		ExpiresAt:               time.Now().Add(90 * time.Second),
 		Evidence:                map[string]string{"method": "getQuote", "currency": req.QuoteCurrency},
@@ -146,6 +157,21 @@ func (s *Simulator) GetQuote(req quotecore.QuoteRequest) (quotecore.ProviderQuot
 	defer s.mu.Unlock()
 	s.quotes[providerQuote.ID] = providerQuote
 	return providerQuote, nil
+}
+
+func simulatedRate(sourceCurrency, destinationCurrency string) (int64, uint8, uint8, error) {
+	sourceCurrency = strings.ToUpper(strings.TrimSpace(sourceCurrency))
+	destinationCurrency = strings.ToUpper(strings.TrimSpace(destinationCurrency))
+	switch {
+	case sourceCurrency == destinationCurrency && (sourceCurrency == "NGN" || sourceCurrency == "USD"):
+		return quotecore.RateScale, 2, 2, nil
+	case sourceCurrency == "USD" && destinationCurrency == "NGN":
+		return 150_000_000_000, 2, 2, nil
+	case sourceCurrency == "NGN" && destinationCurrency == "USD":
+		return 66_667, 2, 2, nil
+	default:
+		return 0, 0, 0, errors.New("simulator does not support currency pair")
+	}
 }
 
 func (s *Simulator) AcceptQuote(providerQuoteID string) (map[string]string, error) {

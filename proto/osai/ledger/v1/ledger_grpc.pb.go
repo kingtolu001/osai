@@ -25,6 +25,9 @@ const (
 	LedgerService_PostReconciliationAdjustment_FullMethodName = "/osai.ledger.v1.LedgerService/PostReconciliationAdjustment"
 	LedgerService_GetCustomerBalances_FullMethodName          = "/osai.ledger.v1.LedgerService/GetCustomerBalances"
 	LedgerService_ListCustomerTransactions_FullMethodName     = "/osai.ledger.v1.LedgerService/ListCustomerTransactions"
+	LedgerService_PostLocalPrefund_FullMethodName             = "/osai.ledger.v1.LedgerService/PostLocalPrefund"
+	LedgerService_ReserveFunding_FullMethodName               = "/osai.ledger.v1.LedgerService/ReserveFunding"
+	LedgerService_GetFundingReservation_FullMethodName        = "/osai.ledger.v1.LedgerService/GetFundingReservation"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -37,6 +40,9 @@ type LedgerServiceClient interface {
 	PostReconciliationAdjustment(ctx context.Context, in *ReconciliationAdjustmentCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
 	GetCustomerBalances(ctx context.Context, in *CustomerReadRequest, opts ...grpc.CallOption) (*CustomerBalanceResponse, error)
 	ListCustomerTransactions(ctx context.Context, in *CustomerReadRequest, opts ...grpc.CallOption) (*CustomerTransactionResponse, error)
+	PostLocalPrefund(ctx context.Context, in *LocalPrefundCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
+	ReserveFunding(ctx context.Context, in *FundingReservationCommand, opts ...grpc.CallOption) (*FundingReservationResponse, error)
+	GetFundingReservation(ctx context.Context, in *FundingReservationCommand, opts ...grpc.CallOption) (*FundingReservationResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -107,6 +113,36 @@ func (c *ledgerServiceClient) ListCustomerTransactions(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *ledgerServiceClient) PostLocalPrefund(ctx context.Context, in *LocalPrefundCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SettlementCommandResponse)
+	err := c.cc.Invoke(ctx, LedgerService_PostLocalPrefund_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) ReserveFunding(ctx context.Context, in *FundingReservationCommand, opts ...grpc.CallOption) (*FundingReservationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FundingReservationResponse)
+	err := c.cc.Invoke(ctx, LedgerService_ReserveFunding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) GetFundingReservation(ctx context.Context, in *FundingReservationCommand, opts ...grpc.CallOption) (*FundingReservationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FundingReservationResponse)
+	err := c.cc.Invoke(ctx, LedgerService_GetFundingReservation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerServiceServer is the server API for LedgerService service.
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
@@ -117,6 +153,9 @@ type LedgerServiceServer interface {
 	PostReconciliationAdjustment(context.Context, *ReconciliationAdjustmentCommand) (*SettlementCommandResponse, error)
 	GetCustomerBalances(context.Context, *CustomerReadRequest) (*CustomerBalanceResponse, error)
 	ListCustomerTransactions(context.Context, *CustomerReadRequest) (*CustomerTransactionResponse, error)
+	PostLocalPrefund(context.Context, *LocalPrefundCommand) (*SettlementCommandResponse, error)
+	ReserveFunding(context.Context, *FundingReservationCommand) (*FundingReservationResponse, error)
+	GetFundingReservation(context.Context, *FundingReservationCommand) (*FundingReservationResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -144,6 +183,15 @@ func (UnimplementedLedgerServiceServer) GetCustomerBalances(context.Context, *Cu
 }
 func (UnimplementedLedgerServiceServer) ListCustomerTransactions(context.Context, *CustomerReadRequest) (*CustomerTransactionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCustomerTransactions not implemented")
+}
+func (UnimplementedLedgerServiceServer) PostLocalPrefund(context.Context, *LocalPrefundCommand) (*SettlementCommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PostLocalPrefund not implemented")
+}
+func (UnimplementedLedgerServiceServer) ReserveFunding(context.Context, *FundingReservationCommand) (*FundingReservationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReserveFunding not implemented")
+}
+func (UnimplementedLedgerServiceServer) GetFundingReservation(context.Context, *FundingReservationCommand) (*FundingReservationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetFundingReservation not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
 func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
@@ -274,6 +322,60 @@ func _LedgerService_ListCustomerTransactions_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_PostLocalPrefund_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LocalPrefundCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).PostLocalPrefund(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_PostLocalPrefund_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).PostLocalPrefund(ctx, req.(*LocalPrefundCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_ReserveFunding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FundingReservationCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).ReserveFunding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_ReserveFunding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).ReserveFunding(ctx, req.(*FundingReservationCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_GetFundingReservation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FundingReservationCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).GetFundingReservation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_GetFundingReservation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).GetFundingReservation(ctx, req.(*FundingReservationCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -304,6 +406,18 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCustomerTransactions",
 			Handler:    _LedgerService_ListCustomerTransactions_Handler,
+		},
+		{
+			MethodName: "PostLocalPrefund",
+			Handler:    _LedgerService_PostLocalPrefund_Handler,
+		},
+		{
+			MethodName: "ReserveFunding",
+			Handler:    _LedgerService_ReserveFunding_Handler,
+		},
+		{
+			MethodName: "GetFundingReservation",
+			Handler:    _LedgerService_GetFundingReservation_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -85,6 +85,7 @@ type SettlementCommand struct {
 	Beneficiary             string                 `protobuf:"bytes,8,opt,name=beneficiary,proto3" json:"beneficiary,omitempty"`
 	Amount                  *Money                 `protobuf:"bytes,9,opt,name=amount,proto3" json:"amount,omitempty"`
 	Purpose                 string                 `protobuf:"bytes,10,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	InstitutionId           string                 `protobuf:"bytes,11,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -185,6 +186,13 @@ func (x *SettlementCommand) GetAmount() *Money {
 func (x *SettlementCommand) GetPurpose() string {
 	if x != nil {
 		return x.Purpose
+	}
+	return ""
+}
+
+func (x *SettlementCommand) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
 	}
 	return ""
 }
@@ -701,6 +709,204 @@ func (x *CustomerTransactionResponse) GetTotal() int32 {
 	return 0
 }
 
+// Local proof funding is accepted only by a Ledger server explicitly configured
+// with a local fixture token. Production bank evidence requires its own ingress.
+type LocalPrefundCommand struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId     string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Amount            *Money                 `protobuf:"bytes,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	EvidenceReference string                 `protobuf:"bytes,3,opt,name=evidence_reference,json=evidenceReference,proto3" json:"evidence_reference,omitempty"`
+	CorrelationId     string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *LocalPrefundCommand) Reset() {
+	*x = LocalPrefundCommand{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LocalPrefundCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalPrefundCommand) ProtoMessage() {}
+
+func (x *LocalPrefundCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalPrefundCommand.ProtoReflect.Descriptor instead.
+func (*LocalPrefundCommand) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *LocalPrefundCommand) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *LocalPrefundCommand) GetAmount() *Money {
+	if x != nil {
+		return x.Amount
+	}
+	return nil
+}
+
+func (x *LocalPrefundCommand) GetEvidenceReference() string {
+	if x != nil {
+		return x.EvidenceReference
+	}
+	return ""
+}
+
+func (x *LocalPrefundCommand) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+type FundingReservationCommand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	Amount        *Money                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	CorrelationId string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FundingReservationCommand) Reset() {
+	*x = FundingReservationCommand{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FundingReservationCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FundingReservationCommand) ProtoMessage() {}
+
+func (x *FundingReservationCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FundingReservationCommand.ProtoReflect.Descriptor instead.
+func (*FundingReservationCommand) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *FundingReservationCommand) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *FundingReservationCommand) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
+}
+
+func (x *FundingReservationCommand) GetAmount() *Money {
+	if x != nil {
+		return x.Amount
+	}
+	return nil
+}
+
+func (x *FundingReservationCommand) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+type FundingReservationResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	JournalId      string                 `protobuf:"bytes,1,opt,name=journal_id,json=journalId,proto3" json:"journal_id,omitempty"`
+	State          string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	AlreadyApplied bool                   `protobuf:"varint,3,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *FundingReservationResponse) Reset() {
+	*x = FundingReservationResponse{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FundingReservationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FundingReservationResponse) ProtoMessage() {}
+
+func (x *FundingReservationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FundingReservationResponse.ProtoReflect.Descriptor instead.
+func (*FundingReservationResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *FundingReservationResponse) GetJournalId() string {
+	if x != nil {
+		return x.JournalId
+	}
+	return ""
+}
+
+func (x *FundingReservationResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *FundingReservationResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
 var File_proto_osai_ledger_v1_ledger_proto protoreflect.FileDescriptor
 
 const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
@@ -708,7 +914,7 @@ const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"!proto/osai/ledger/v1/ledger.proto\x12\x0eosai.ledger.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xa8\x03\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xcf\x03\n" +
 	"\x11SettlementCommand\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12%\n" +
 	"\x0ecorrelation_id\x18\x02 \x01(\tR\rcorrelationId\x12:\n" +
@@ -720,7 +926,8 @@ const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"\vbeneficiary\x18\b \x01(\tR\vbeneficiary\x12-\n" +
 	"\x06amount\x18\t \x01(\v2\x15.osai.ledger.v1.MoneyR\x06amount\x12\x18\n" +
 	"\apurpose\x18\n" +
-	" \x01(\tR\apurpose\";\n" +
+	" \x01(\tR\apurpose\x12%\n" +
+	"\x0einstitution_id\x18\v \x01(\tR\rinstitutionId\";\n" +
 	"\vLedgerError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"\x96\x01\n" +
@@ -761,14 +968,32 @@ const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"occurredAt\"n\n" +
 	"\x1bCustomerTransactionResponse\x129\n" +
 	"\x05items\x18\x01 \x03(\v2#.osai.ledger.v1.CustomerTransactionR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\x84\x05\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xc1\x01\n" +
+	"\x13LocalPrefundCommand\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12-\n" +
+	"\x06amount\x18\x02 \x01(\v2\x15.osai.ledger.v1.MoneyR\x06amount\x12-\n" +
+	"\x12evidence_reference\x18\x03 \x01(\tR\x11evidenceReference\x12%\n" +
+	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\"\xb3\x01\n" +
+	"\x19FundingReservationCommand\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
+	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12-\n" +
+	"\x06amount\x18\x03 \x01(\v2\x15.osai.ledger.v1.MoneyR\x06amount\x12%\n" +
+	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\"z\n" +
+	"\x1aFundingReservationResponse\x12\x1d\n" +
+	"\n" +
+	"journal_id\x18\x01 \x01(\tR\tjournalId\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12'\n" +
+	"\x0falready_applied\x18\x03 \x01(\bR\x0ealreadyApplied2\xc1\a\n" +
 	"\rLedgerService\x12a\n" +
 	"\x11ConfirmSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12^\n" +
 	"\x0eFailSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12a\n" +
 	"\x11ReverseSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12z\n" +
 	"\x1cPostReconciliationAdjustment\x12/.osai.ledger.v1.ReconciliationAdjustmentCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12c\n" +
 	"\x13GetCustomerBalances\x12#.osai.ledger.v1.CustomerReadRequest\x1a'.osai.ledger.v1.CustomerBalanceResponse\x12l\n" +
-	"\x18ListCustomerTransactions\x12#.osai.ledger.v1.CustomerReadRequest\x1a+.osai.ledger.v1.CustomerTransactionResponseB4Z2github.com/osai/osai/proto/osai/ledger/v1;ledgerv1b\x06proto3"
+	"\x18ListCustomerTransactions\x12#.osai.ledger.v1.CustomerReadRequest\x1a+.osai.ledger.v1.CustomerTransactionResponse\x12b\n" +
+	"\x10PostLocalPrefund\x12#.osai.ledger.v1.LocalPrefundCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12g\n" +
+	"\x0eReserveFunding\x12).osai.ledger.v1.FundingReservationCommand\x1a*.osai.ledger.v1.FundingReservationResponse\x12n\n" +
+	"\x15GetFundingReservation\x12).osai.ledger.v1.FundingReservationCommand\x1a*.osai.ledger.v1.FundingReservationResponseB4Z2github.com/osai/osai/proto/osai/ledger/v1;ledgerv1b\x06proto3"
 
 var (
 	file_proto_osai_ledger_v1_ledger_proto_rawDescOnce sync.Once
@@ -782,7 +1007,7 @@ func file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP() []byte {
 	return file_proto_osai_ledger_v1_ledger_proto_rawDescData
 }
 
-var file_proto_osai_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_proto_osai_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_proto_osai_ledger_v1_ledger_proto_goTypes = []any{
 	(*Money)(nil),                           // 0: osai.ledger.v1.Money
 	(*SettlementCommand)(nil),               // 1: osai.ledger.v1.SettlementCommand
@@ -794,29 +1019,40 @@ var file_proto_osai_ledger_v1_ledger_proto_goTypes = []any{
 	(*CustomerBalanceResponse)(nil),         // 7: osai.ledger.v1.CustomerBalanceResponse
 	(*CustomerTransaction)(nil),             // 8: osai.ledger.v1.CustomerTransaction
 	(*CustomerTransactionResponse)(nil),     // 9: osai.ledger.v1.CustomerTransactionResponse
+	(*LocalPrefundCommand)(nil),             // 10: osai.ledger.v1.LocalPrefundCommand
+	(*FundingReservationCommand)(nil),       // 11: osai.ledger.v1.FundingReservationCommand
+	(*FundingReservationResponse)(nil),      // 12: osai.ledger.v1.FundingReservationResponse
 }
 var file_proto_osai_ledger_v1_ledger_proto_depIdxs = []int32{
 	0,  // 0: osai.ledger.v1.SettlementCommand.amount:type_name -> osai.ledger.v1.Money
 	2,  // 1: osai.ledger.v1.SettlementCommandResponse.error:type_name -> osai.ledger.v1.LedgerError
 	6,  // 2: osai.ledger.v1.CustomerBalanceResponse.balances:type_name -> osai.ledger.v1.CustomerBalance
 	8,  // 3: osai.ledger.v1.CustomerTransactionResponse.items:type_name -> osai.ledger.v1.CustomerTransaction
-	1,  // 4: osai.ledger.v1.LedgerService.ConfirmSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	1,  // 5: osai.ledger.v1.LedgerService.FailSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	1,  // 6: osai.ledger.v1.LedgerService.ReverseSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	4,  // 7: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:input_type -> osai.ledger.v1.ReconciliationAdjustmentCommand
-	5,  // 8: osai.ledger.v1.LedgerService.GetCustomerBalances:input_type -> osai.ledger.v1.CustomerReadRequest
-	5,  // 9: osai.ledger.v1.LedgerService.ListCustomerTransactions:input_type -> osai.ledger.v1.CustomerReadRequest
-	3,  // 10: osai.ledger.v1.LedgerService.ConfirmSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3,  // 11: osai.ledger.v1.LedgerService.FailSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3,  // 12: osai.ledger.v1.LedgerService.ReverseSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3,  // 13: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:output_type -> osai.ledger.v1.SettlementCommandResponse
-	7,  // 14: osai.ledger.v1.LedgerService.GetCustomerBalances:output_type -> osai.ledger.v1.CustomerBalanceResponse
-	9,  // 15: osai.ledger.v1.LedgerService.ListCustomerTransactions:output_type -> osai.ledger.v1.CustomerTransactionResponse
-	10, // [10:16] is the sub-list for method output_type
-	4,  // [4:10] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	0,  // 4: osai.ledger.v1.LocalPrefundCommand.amount:type_name -> osai.ledger.v1.Money
+	0,  // 5: osai.ledger.v1.FundingReservationCommand.amount:type_name -> osai.ledger.v1.Money
+	1,  // 6: osai.ledger.v1.LedgerService.ConfirmSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	1,  // 7: osai.ledger.v1.LedgerService.FailSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	1,  // 8: osai.ledger.v1.LedgerService.ReverseSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	4,  // 9: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:input_type -> osai.ledger.v1.ReconciliationAdjustmentCommand
+	5,  // 10: osai.ledger.v1.LedgerService.GetCustomerBalances:input_type -> osai.ledger.v1.CustomerReadRequest
+	5,  // 11: osai.ledger.v1.LedgerService.ListCustomerTransactions:input_type -> osai.ledger.v1.CustomerReadRequest
+	10, // 12: osai.ledger.v1.LedgerService.PostLocalPrefund:input_type -> osai.ledger.v1.LocalPrefundCommand
+	11, // 13: osai.ledger.v1.LedgerService.ReserveFunding:input_type -> osai.ledger.v1.FundingReservationCommand
+	11, // 14: osai.ledger.v1.LedgerService.GetFundingReservation:input_type -> osai.ledger.v1.FundingReservationCommand
+	3,  // 15: osai.ledger.v1.LedgerService.ConfirmSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 16: osai.ledger.v1.LedgerService.FailSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 17: osai.ledger.v1.LedgerService.ReverseSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 18: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:output_type -> osai.ledger.v1.SettlementCommandResponse
+	7,  // 19: osai.ledger.v1.LedgerService.GetCustomerBalances:output_type -> osai.ledger.v1.CustomerBalanceResponse
+	9,  // 20: osai.ledger.v1.LedgerService.ListCustomerTransactions:output_type -> osai.ledger.v1.CustomerTransactionResponse
+	3,  // 21: osai.ledger.v1.LedgerService.PostLocalPrefund:output_type -> osai.ledger.v1.SettlementCommandResponse
+	12, // 22: osai.ledger.v1.LedgerService.ReserveFunding:output_type -> osai.ledger.v1.FundingReservationResponse
+	12, // 23: osai.ledger.v1.LedgerService.GetFundingReservation:output_type -> osai.ledger.v1.FundingReservationResponse
+	15, // [15:24] is the sub-list for method output_type
+	6,  // [6:15] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_proto_osai_ledger_v1_ledger_proto_init() }
@@ -830,7 +1066,7 @@ func file_proto_osai_ledger_v1_ledger_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_ledger_v1_ledger_proto_rawDesc), len(file_proto_osai_ledger_v1_ledger_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

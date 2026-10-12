@@ -27,10 +27,11 @@ type JournalEntry struct {
 
 // Journal is an immutable posting bundle used to preserve journal truth.
 type Journal struct {
-	ID       string
-	TradeID  string
-	Currency string
-	Entries  []JournalEntry
+	ID            string
+	TradeID       string
+	InstitutionID string
+	Currency      string
+	Entries       []JournalEntry
 }
 
 func NewJournal(id, tradeID, currency string) *Journal {

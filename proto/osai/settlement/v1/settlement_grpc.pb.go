@@ -19,9 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SettlementService_CreateSettlementForTrade_FullMethodName = "/osai.settlement.v1.SettlementService/CreateSettlementForTrade"
-	SettlementService_GetSettlement_FullMethodName            = "/osai.settlement.v1.SettlementService/GetSettlement"
-	SettlementService_ListConfirmedSettlements_FullMethodName = "/osai.settlement.v1.SettlementService/ListConfirmedSettlements"
+	SettlementService_CreateSettlementForTrade_FullMethodName            = "/osai.settlement.v1.SettlementService/CreateSettlementForTrade"
+	SettlementService_GetSettlement_FullMethodName                       = "/osai.settlement.v1.SettlementService/GetSettlement"
+	SettlementService_ListCustomerSettlementReport_FullMethodName        = "/osai.settlement.v1.SettlementService/ListCustomerSettlementReport"
+	SettlementService_ListConfirmedSettlements_FullMethodName            = "/osai.settlement.v1.SettlementService/ListConfirmedSettlements"
+	SettlementService_ListPendingSettlementFinalityEvents_FullMethodName = "/osai.settlement.v1.SettlementService/ListPendingSettlementFinalityEvents"
+	SettlementService_AcknowledgeSettlementFinalityEvent_FullMethodName  = "/osai.settlement.v1.SettlementService/AcknowledgeSettlementFinalityEvent"
 )
 
 // SettlementServiceClient is the client API for SettlementService service.
@@ -30,7 +33,10 @@ const (
 type SettlementServiceClient interface {
 	CreateSettlementForTrade(ctx context.Context, in *CreateSettlementForTradeRequest, opts ...grpc.CallOption) (*SettlementResponse, error)
 	GetSettlement(ctx context.Context, in *GetSettlementRequest, opts ...grpc.CallOption) (*SettlementResponse, error)
+	ListCustomerSettlementReport(ctx context.Context, in *ListCustomerSettlementReportRequest, opts ...grpc.CallOption) (*ListCustomerSettlementReportResponse, error)
 	ListConfirmedSettlements(ctx context.Context, in *ListConfirmedSettlementsRequest, opts ...grpc.CallOption) (*ListConfirmedSettlementsResponse, error)
+	ListPendingSettlementFinalityEvents(ctx context.Context, in *ListPendingSettlementFinalityEventsRequest, opts ...grpc.CallOption) (*ListPendingSettlementFinalityEventsResponse, error)
+	AcknowledgeSettlementFinalityEvent(ctx context.Context, in *AcknowledgeSettlementFinalityEventRequest, opts ...grpc.CallOption) (*AcknowledgeSettlementFinalityEventResponse, error)
 }
 
 type settlementServiceClient struct {
@@ -61,10 +67,40 @@ func (c *settlementServiceClient) GetSettlement(ctx context.Context, in *GetSett
 	return out, nil
 }
 
+func (c *settlementServiceClient) ListCustomerSettlementReport(ctx context.Context, in *ListCustomerSettlementReportRequest, opts ...grpc.CallOption) (*ListCustomerSettlementReportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCustomerSettlementReportResponse)
+	err := c.cc.Invoke(ctx, SettlementService_ListCustomerSettlementReport_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *settlementServiceClient) ListConfirmedSettlements(ctx context.Context, in *ListConfirmedSettlementsRequest, opts ...grpc.CallOption) (*ListConfirmedSettlementsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListConfirmedSettlementsResponse)
 	err := c.cc.Invoke(ctx, SettlementService_ListConfirmedSettlements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settlementServiceClient) ListPendingSettlementFinalityEvents(ctx context.Context, in *ListPendingSettlementFinalityEventsRequest, opts ...grpc.CallOption) (*ListPendingSettlementFinalityEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPendingSettlementFinalityEventsResponse)
+	err := c.cc.Invoke(ctx, SettlementService_ListPendingSettlementFinalityEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settlementServiceClient) AcknowledgeSettlementFinalityEvent(ctx context.Context, in *AcknowledgeSettlementFinalityEventRequest, opts ...grpc.CallOption) (*AcknowledgeSettlementFinalityEventResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AcknowledgeSettlementFinalityEventResponse)
+	err := c.cc.Invoke(ctx, SettlementService_AcknowledgeSettlementFinalityEvent_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +113,10 @@ func (c *settlementServiceClient) ListConfirmedSettlements(ctx context.Context, 
 type SettlementServiceServer interface {
 	CreateSettlementForTrade(context.Context, *CreateSettlementForTradeRequest) (*SettlementResponse, error)
 	GetSettlement(context.Context, *GetSettlementRequest) (*SettlementResponse, error)
+	ListCustomerSettlementReport(context.Context, *ListCustomerSettlementReportRequest) (*ListCustomerSettlementReportResponse, error)
 	ListConfirmedSettlements(context.Context, *ListConfirmedSettlementsRequest) (*ListConfirmedSettlementsResponse, error)
+	ListPendingSettlementFinalityEvents(context.Context, *ListPendingSettlementFinalityEventsRequest) (*ListPendingSettlementFinalityEventsResponse, error)
+	AcknowledgeSettlementFinalityEvent(context.Context, *AcknowledgeSettlementFinalityEventRequest) (*AcknowledgeSettlementFinalityEventResponse, error)
 	mustEmbedUnimplementedSettlementServiceServer()
 }
 
@@ -94,8 +133,17 @@ func (UnimplementedSettlementServiceServer) CreateSettlementForTrade(context.Con
 func (UnimplementedSettlementServiceServer) GetSettlement(context.Context, *GetSettlementRequest) (*SettlementResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSettlement not implemented")
 }
+func (UnimplementedSettlementServiceServer) ListCustomerSettlementReport(context.Context, *ListCustomerSettlementReportRequest) (*ListCustomerSettlementReportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCustomerSettlementReport not implemented")
+}
 func (UnimplementedSettlementServiceServer) ListConfirmedSettlements(context.Context, *ListConfirmedSettlementsRequest) (*ListConfirmedSettlementsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListConfirmedSettlements not implemented")
+}
+func (UnimplementedSettlementServiceServer) ListPendingSettlementFinalityEvents(context.Context, *ListPendingSettlementFinalityEventsRequest) (*ListPendingSettlementFinalityEventsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPendingSettlementFinalityEvents not implemented")
+}
+func (UnimplementedSettlementServiceServer) AcknowledgeSettlementFinalityEvent(context.Context, *AcknowledgeSettlementFinalityEventRequest) (*AcknowledgeSettlementFinalityEventResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AcknowledgeSettlementFinalityEvent not implemented")
 }
 func (UnimplementedSettlementServiceServer) mustEmbedUnimplementedSettlementServiceServer() {}
 func (UnimplementedSettlementServiceServer) testEmbeddedByValue()                           {}
@@ -154,6 +202,24 @@ func _SettlementService_GetSettlement_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SettlementService_ListCustomerSettlementReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCustomerSettlementReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettlementServiceServer).ListCustomerSettlementReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettlementService_ListCustomerSettlementReport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettlementServiceServer).ListCustomerSettlementReport(ctx, req.(*ListCustomerSettlementReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SettlementService_ListConfirmedSettlements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListConfirmedSettlementsRequest)
 	if err := dec(in); err != nil {
@@ -168,6 +234,42 @@ func _SettlementService_ListConfirmedSettlements_Handler(srv interface{}, ctx co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SettlementServiceServer).ListConfirmedSettlements(ctx, req.(*ListConfirmedSettlementsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettlementService_ListPendingSettlementFinalityEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPendingSettlementFinalityEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettlementServiceServer).ListPendingSettlementFinalityEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettlementService_ListPendingSettlementFinalityEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettlementServiceServer).ListPendingSettlementFinalityEvents(ctx, req.(*ListPendingSettlementFinalityEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettlementService_AcknowledgeSettlementFinalityEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcknowledgeSettlementFinalityEventRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettlementServiceServer).AcknowledgeSettlementFinalityEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettlementService_AcknowledgeSettlementFinalityEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettlementServiceServer).AcknowledgeSettlementFinalityEvent(ctx, req.(*AcknowledgeSettlementFinalityEventRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -188,8 +290,20 @@ var SettlementService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SettlementService_GetSettlement_Handler,
 		},
 		{
+			MethodName: "ListCustomerSettlementReport",
+			Handler:    _SettlementService_ListCustomerSettlementReport_Handler,
+		},
+		{
 			MethodName: "ListConfirmedSettlements",
 			Handler:    _SettlementService_ListConfirmedSettlements_Handler,
+		},
+		{
+			MethodName: "ListPendingSettlementFinalityEvents",
+			Handler:    _SettlementService_ListPendingSettlementFinalityEvents_Handler,
+		},
+		{
+			MethodName: "AcknowledgeSettlementFinalityEvent",
+			Handler:    _SettlementService_AcknowledgeSettlementFinalityEvent_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

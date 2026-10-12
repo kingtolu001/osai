@@ -85,6 +85,7 @@ type CreateTradeFromAcceptedQuoteRequest struct {
 	Amount               *Money                 `protobuf:"bytes,8,opt,name=amount,proto3" json:"amount,omitempty"`
 	BeneficiaryId        string                 `protobuf:"bytes,9,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
 	SettlementProviderId string                 `protobuf:"bytes,10,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
+	CustomerReference    string                 `protobuf:"bytes,11,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -189,6 +190,13 @@ func (x *CreateTradeFromAcceptedQuoteRequest) GetSettlementProviderId() string {
 	return ""
 }
 
+func (x *CreateTradeFromAcceptedQuoteRequest) GetCustomerReference() string {
+	if x != nil {
+		return x.CustomerReference
+	}
+	return ""
+}
+
 type TradeResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	TradeId              string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
@@ -202,6 +210,7 @@ type TradeResponse struct {
 	SettlementId         string                 `protobuf:"bytes,9,opt,name=settlement_id,json=settlementId,proto3" json:"settlement_id,omitempty"`
 	BeneficiaryId        string                 `protobuf:"bytes,10,opt,name=beneficiary_id,json=beneficiaryId,proto3" json:"beneficiary_id,omitempty"`
 	SettlementProviderId string                 `protobuf:"bytes,11,opt,name=settlement_provider_id,json=settlementProviderId,proto3" json:"settlement_provider_id,omitempty"`
+	CustomerReference    string                 `protobuf:"bytes,12,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -313,6 +322,13 @@ func (x *TradeResponse) GetSettlementProviderId() string {
 	return ""
 }
 
+func (x *TradeResponse) GetCustomerReference() string {
+	if x != nil {
+		return x.CustomerReference
+	}
+	return ""
+}
+
 type GetTradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
@@ -373,6 +389,182 @@ func (x *GetTradeRequest) GetCorrelationId() string {
 	return ""
 }
 
+type ListTradesRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId     string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Page              int32                  `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize          int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	From              string                 `protobuf:"bytes,4,opt,name=from,proto3" json:"from,omitempty"`
+	To                string                 `protobuf:"bytes,5,opt,name=to,proto3" json:"to,omitempty"`
+	Currency          string                 `protobuf:"bytes,6,opt,name=currency,proto3" json:"currency,omitempty"`
+	Status            string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
+	CustomerReference string                 `protobuf:"bytes,8,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
+	CorrelationId     string                 `protobuf:"bytes,9,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ListTradesRequest) Reset() {
+	*x = ListTradesRequest{}
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTradesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTradesRequest) ProtoMessage() {}
+
+func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTradesRequest.ProtoReflect.Descriptor instead.
+func (*ListTradesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListTradesRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *ListTradesRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListTradesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListTradesRequest) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *ListTradesRequest) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+func (x *ListTradesRequest) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *ListTradesRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListTradesRequest) GetCustomerReference() string {
+	if x != nil {
+		return x.CustomerReference
+	}
+	return ""
+}
+
+func (x *ListTradesRequest) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+type ListTradesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*TradeResponse       `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Page          int32                  `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Total         int32                  `protobuf:"varint,4,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTradesResponse) Reset() {
+	*x = ListTradesResponse{}
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTradesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTradesResponse) ProtoMessage() {}
+
+func (x *ListTradesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_trade_v1_trade_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTradesResponse.ProtoReflect.Descriptor instead.
+func (*ListTradesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_trade_v1_trade_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListTradesResponse) GetItems() []*TradeResponse {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *ListTradesResponse) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListTradesResponse) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListTradesResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
 var File_proto_osai_trade_v1_trade_proto protoreflect.FileDescriptor
 
 const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
@@ -380,7 +572,7 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x1fproto/osai/trade/v1/trade.proto\x12\rosai.trade.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xba\x03\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xe9\x03\n" +
 	"#CreateTradeFromAcceptedQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12'\n" +
@@ -392,7 +584,8 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\x06amount\x18\b \x01(\v2\x14.osai.trade.v1.MoneyR\x06amount\x12%\n" +
 	"\x0ebeneficiary_id\x18\t \x01(\tR\rbeneficiaryId\x124\n" +
 	"\x16settlement_provider_id\x18\n" +
-	" \x01(\tR\x14settlementProviderId\"\xa5\x03\n" +
+	" \x01(\tR\x14settlementProviderId\x12-\n" +
+	"\x12customer_reference\x18\v \x01(\tR\x11customerReference\"\xd4\x03\n" +
 	"\rTradeResponse\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x19\n" +
@@ -405,14 +598,32 @@ const file_proto_osai_trade_v1_trade_proto_rawDesc = "" +
 	"\rsettlement_id\x18\t \x01(\tR\fsettlementId\x12%\n" +
 	"\x0ebeneficiary_id\x18\n" +
 	" \x01(\tR\rbeneficiaryId\x124\n" +
-	"\x16settlement_provider_id\x18\v \x01(\tR\x14settlementProviderId\"z\n" +
+	"\x16settlement_provider_id\x18\v \x01(\tR\x14settlementProviderId\x12-\n" +
+	"\x12customer_reference\x18\f \x01(\tR\x11customerReference\"z\n" +
 	"\x0fGetTradeRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12%\n" +
-	"\x0ecorrelation_id\x18\x03 \x01(\tR\rcorrelationId2\xca\x01\n" +
+	"\x0ecorrelation_id\x18\x03 \x01(\tR\rcorrelationId\"\x99\x02\n" +
+	"\x11ListTradesRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x12\n" +
+	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x12\n" +
+	"\x04from\x18\x04 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x05 \x01(\tR\x02to\x12\x1a\n" +
+	"\bcurrency\x18\x06 \x01(\tR\bcurrency\x12\x16\n" +
+	"\x06status\x18\a \x01(\tR\x06status\x12-\n" +
+	"\x12customer_reference\x18\b \x01(\tR\x11customerReference\x12%\n" +
+	"\x0ecorrelation_id\x18\t \x01(\tR\rcorrelationId\"\x8f\x01\n" +
+	"\x12ListTradesResponse\x122\n" +
+	"\x05items\x18\x01 \x03(\v2\x1c.osai.trade.v1.TradeResponseR\x05items\x12\x12\n" +
+	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x14\n" +
+	"\x05total\x18\x04 \x01(\x05R\x05total2\x9d\x02\n" +
 	"\fTradeService\x12p\n" +
 	"\x1cCreateTradeFromAcceptedQuote\x122.osai.trade.v1.CreateTradeFromAcceptedQuoteRequest\x1a\x1c.osai.trade.v1.TradeResponse\x12H\n" +
-	"\bGetTrade\x12\x1e.osai.trade.v1.GetTradeRequest\x1a\x1c.osai.trade.v1.TradeResponseB2Z0github.com/osai/osai/proto/osai/trade/v1;tradev1b\x06proto3"
+	"\bGetTrade\x12\x1e.osai.trade.v1.GetTradeRequest\x1a\x1c.osai.trade.v1.TradeResponse\x12Q\n" +
+	"\n" +
+	"ListTrades\x12 .osai.trade.v1.ListTradesRequest\x1a!.osai.trade.v1.ListTradesResponseB2Z0github.com/osai/osai/proto/osai/trade/v1;tradev1b\x06proto3"
 
 var (
 	file_proto_osai_trade_v1_trade_proto_rawDescOnce sync.Once
@@ -426,24 +637,29 @@ func file_proto_osai_trade_v1_trade_proto_rawDescGZIP() []byte {
 	return file_proto_osai_trade_v1_trade_proto_rawDescData
 }
 
-var file_proto_osai_trade_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_proto_osai_trade_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_proto_osai_trade_v1_trade_proto_goTypes = []any{
 	(*Money)(nil), // 0: osai.trade.v1.Money
 	(*CreateTradeFromAcceptedQuoteRequest)(nil), // 1: osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
 	(*TradeResponse)(nil),                       // 2: osai.trade.v1.TradeResponse
 	(*GetTradeRequest)(nil),                     // 3: osai.trade.v1.GetTradeRequest
+	(*ListTradesRequest)(nil),                   // 4: osai.trade.v1.ListTradesRequest
+	(*ListTradesResponse)(nil),                  // 5: osai.trade.v1.ListTradesResponse
 }
 var file_proto_osai_trade_v1_trade_proto_depIdxs = []int32{
 	0, // 0: osai.trade.v1.CreateTradeFromAcceptedQuoteRequest.amount:type_name -> osai.trade.v1.Money
-	1, // 1: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:input_type -> osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
-	3, // 2: osai.trade.v1.TradeService.GetTrade:input_type -> osai.trade.v1.GetTradeRequest
-	2, // 3: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:output_type -> osai.trade.v1.TradeResponse
-	2, // 4: osai.trade.v1.TradeService.GetTrade:output_type -> osai.trade.v1.TradeResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 1: osai.trade.v1.ListTradesResponse.items:type_name -> osai.trade.v1.TradeResponse
+	1, // 2: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:input_type -> osai.trade.v1.CreateTradeFromAcceptedQuoteRequest
+	3, // 3: osai.trade.v1.TradeService.GetTrade:input_type -> osai.trade.v1.GetTradeRequest
+	4, // 4: osai.trade.v1.TradeService.ListTrades:input_type -> osai.trade.v1.ListTradesRequest
+	2, // 5: osai.trade.v1.TradeService.CreateTradeFromAcceptedQuote:output_type -> osai.trade.v1.TradeResponse
+	2, // 6: osai.trade.v1.TradeService.GetTrade:output_type -> osai.trade.v1.TradeResponse
+	5, // 7: osai.trade.v1.TradeService.ListTrades:output_type -> osai.trade.v1.ListTradesResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_proto_osai_trade_v1_trade_proto_init() }
@@ -457,7 +673,7 @@ func file_proto_osai_trade_v1_trade_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_trade_v1_trade_proto_rawDesc), len(file_proto_osai_trade_v1_trade_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

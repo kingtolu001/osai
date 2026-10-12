@@ -2,17 +2,19 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/adapters/firstpair"
 	"github.com/osai/osai/pkg/observability"
-	"github.com/osai/osai/pkg/postgres"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	quotev1 "github.com/osai/osai/proto/osai/quote/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
@@ -26,16 +28,26 @@ func main() {
 	if err := observability.Init("quote"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	db, err := postgres.Open("quote")
-	if err != nil {
-		log.Fatal(err)
+	dsn := strings.TrimSpace(os.Getenv("OSAI_QUOTE_POSTGRES_DSN"))
+	if dsn == "" {
+		dsn = strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
 	}
-	defer db.Close()
-	store, err := quotecore.NewPostgresStore(db)
-	if err != nil {
-		log.Fatal(err)
+	if dsn == "" {
+		log.Fatal("OSAI_QUOTE_POSTGRES_DSN or OSAI_POSTGRES_DSN is required")
 	}
-	token := os.Getenv("OSAI_NOTIFICATION_TOKEN")
+	database, err := sql.Open("pgx", dsn)
+	if err != nil {
+		log.Fatalf("open quote database: %v", err)
+	}
+	defer database.Close()
+	if err = database.Ping(); err != nil {
+		log.Fatalf("connect quote database: %v", err)
+	}
+	store, err := quotecore.NewPostgresStore(database)
+	if err != nil {
+		log.Fatalf("initialize quote persistence: %v", err)
+	}
+	token := strings.TrimSpace(os.Getenv("OSAI_NOTIFICATION_TOKEN"))
 	if token == "" {
 		log.Fatal("OSAI_NOTIFICATION_TOKEN required")
 	}
@@ -45,7 +57,7 @@ func main() {
 	}
 	notificationConn, err := grpc.Dial(notificationAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("dial notification service: %v", err)
 	}
 	defer notificationConn.Close()
 	notificationClient := notificationv1.NewNotificationServiceClient(notificationConn)
@@ -80,15 +92,36 @@ func main() {
 	}
 	defer tradeConn.Close()
 	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
-	quotev1.RegisterQuoteServiceServer(server, &grpcServer{store: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn), liquidity: firstpair.New().Liquidity})
+	quoteService := &grpcServer{store: store, pricing: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn), liquidity: firstpair.New().Liquidity}
+	quotev1.RegisterQuoteServiceServer(server, quoteService)
+	pricingOperators, err := loadPricingOperators()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(pricingOperators) == 0 {
+		log.Printf("quote pricing operator listener disabled: no operator identities configured")
+	} else {
+		adminAddress := strings.TrimSpace(os.Getenv("OSAI_QUOTE_PRICING_ADMIN_ADDR"))
+		if adminAddress == "" {
+			adminAddress = "127.0.0.1:8085"
+		}
+		adminCertificate := strings.TrimSpace(os.Getenv("OSAI_QUOTE_PRICING_ADMIN_TLS_CERT"))
+		adminKey := strings.TrimSpace(os.Getenv("OSAI_QUOTE_PRICING_ADMIN_TLS_KEY"))
+		go func() {
+			if err := servePricingAdmin(adminAddress, adminCertificate, adminKey, quoteService.pricingOperatorHandler(pricingOperators)); err != nil && err != http.ErrServerClosed {
+				log.Printf("quote pricing admin listener failed: %v", err)
+			}
+		}()
+	}
 	log.Printf("quote gRPC listening on %s", grpcPort)
 	go func() {
-		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "quote"})
 		})
 		log.Printf("quote health listening on %s", httpPort)
-		if err := http.ListenAndServe(httpPort, nil); err != nil {
+		if err := http.ListenAndServe(httpPort, mux); err != nil {
 			log.Printf("quote http server failed: %v", err)
 		}
 	}()

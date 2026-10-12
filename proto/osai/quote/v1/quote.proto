@@ -18,6 +18,9 @@ message CreateQuoteRequest {
   string quote_currency = 6;
   string destination_rail = 7;
   string urgency = 8;
+  string customer_reference = 9;
+  string quote_mode = 10;
+  int64 destination_amount_minor = 11;
 }
 
 message QuoteResponse {
@@ -33,6 +36,17 @@ message QuoteResponse {
   string expires_at = 10;
   string correlation_id = 11;
   string trade_id = 12;
+  string quote_mode = 13;
+  int64 source_principal_minor = 14;
+  int64 total_debit_minor = 15;
+  int64 destination_target_minor = 16;
+  int64 destination_surplus_minor = 17;
+  string rate_direction = 18;
+  int64 rate_scale = 19;
+  string fee_schedule_id = 20;
+  int64 fee_schedule_version = 21;
+  uint32 source_minor_exponent = 22;
+  uint32 destination_minor_exponent = 23;
 }
 
 message GetQuoteRequest {

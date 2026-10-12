@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/osai/osai/pkg/correlation"
+	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/provider"
 	"github.com/osai/osai/services/settlement/settlementcore"
 )
@@ -13,16 +15,31 @@ type LedgerExecutor interface {
 	FailSettlement(settlementcore.Instruction) error
 }
 
+type FundingVerifier interface {
+	VerifyFunding(context.Context, string, string, int64, string) error
+}
+
 type ProviderSettlementActivities struct {
 	Rail     provider.SettlementRail
 	Rails    map[string]provider.SettlementRail
 	Ledger   LedgerExecutor
+	Funding  FundingVerifier
 	Recorder interface {
 		RecordRuntimeState(context.Context, string, settlementcore.State, string, provider.Evidence) error
 	}
 }
 
 func (a *ProviderSettlementActivities) CreateTransfer(ctx context.Context, input TemporalSettlementInput) (provider.TransferAck, error) {
+	ctx, span := observability.Start(correlation.WithContext(ctx, input.CorrelationID), "temporal-worker", "provider.create_transfer")
+	defer span.End()
+	if input.ProviderID == "flutterwave" {
+		if a.Funding == nil {
+			return provider.TransferAck{}, errors.New("ledger funding verification unavailable")
+		}
+		if err := a.Funding.VerifyFunding(ctx, input.InstitutionID, input.TradeID, input.AmountMinor, input.Currency); err != nil {
+			return provider.TransferAck{}, err
+		}
+	}
 	rail, err := a.rail(input.ProviderID)
 	if err != nil {
 		return provider.TransferAck{}, err
@@ -46,6 +63,8 @@ func (a *ProviderSettlementActivities) CreateTransfer(ctx context.Context, input
 }
 
 func (a *ProviderSettlementActivities) GetTransfer(ctx context.Context, input TemporalSettlementInput) (provider.TransferResult, error) {
+	ctx, span := observability.Start(correlation.WithContext(ctx, input.CorrelationID), "temporal-worker", "provider.get_transfer")
+	defer span.End()
 	rail, err := a.rail(input.ProviderID)
 	if err != nil {
 		return provider.TransferResult{}, err
@@ -78,6 +97,8 @@ func (a *ProviderSettlementActivities) rail(id string) (provider.SettlementRail,
 }
 
 func (a *ProviderSettlementActivities) ConfirmLedger(ctx context.Context, input TemporalSettlementInput) error {
+	ctx, span := observability.Start(correlation.WithContext(ctx, input.CorrelationID), "temporal-worker", "ledger.confirm_activity")
+	defer span.End()
 	if err := a.Ledger.ConfirmSettlement(toInstruction(input)); err != nil {
 		return err
 	}
@@ -85,6 +106,8 @@ func (a *ProviderSettlementActivities) ConfirmLedger(ctx context.Context, input 
 }
 
 func (a *ProviderSettlementActivities) FailLedger(ctx context.Context, input TemporalSettlementInput) error {
+	ctx, span := observability.Start(correlation.WithContext(ctx, input.CorrelationID), "temporal-worker", "ledger.fail_activity")
+	defer span.End()
 	if err := a.Ledger.FailSettlement(toInstruction(input)); err != nil {
 		return err
 	}
@@ -103,5 +126,5 @@ func (a *ProviderSettlementActivities) record(ctx context.Context, input Tempora
 }
 
 func toInstruction(input TemporalSettlementInput) settlementcore.Instruction {
-	return settlementcore.Instruction{ID: input.InstructionID, ClientRef: input.ClientRef, ProviderRef: input.ProviderRef, Beneficiary: input.Beneficiary, AmountMinor: input.AmountMinor, Currency: input.Currency, Purpose: input.Purpose}
+	return settlementcore.Instruction{ID: input.InstructionID, InstitutionID: input.InstitutionID, TradeID: input.TradeID, CorrelationID: input.CorrelationID, ClientRef: input.ClientRef, ProviderRef: input.ProviderRef, Beneficiary: input.Beneficiary, AmountMinor: input.AmountMinor, Currency: input.Currency, Purpose: input.Purpose}
 }

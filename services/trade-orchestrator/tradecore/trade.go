@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,8 @@ const (
 	StateFundingRequired TradeState = "FUNDING_REQUIRED"
 	StateFunded          TradeState = "FUNDED"
 	StateFailed          TradeState = "FAILED"
+	StateSettling        TradeState = "SETTLING"
+	StateSettled         TradeState = "SETTLED"
 )
 
 // Trade captures the trade lifecycle owned by the trade-orchestrator service.
@@ -39,21 +42,42 @@ type Trade struct {
 	SettlementID         string
 	BeneficiaryID        string
 	SettlementProviderID string
+	CustomerReference    string
 	IdempotencyKey       string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
 
+type TradeListFilter struct {
+	Page              int
+	PageSize          int
+	From              time.Time
+	To                time.Time
+	Currency          string
+	Status            string
+	CustomerReference string
+}
+
 type Store struct {
-	db          *sql.DB
-	mu          sync.Mutex
-	byID        map[string]*Trade
-	byQuoteID   map[string]*Trade
-	byOperation map[string]string // quote_id + idempotency_key -> trade_id
+	db             *sql.DB
+	mu             sync.Mutex
+	byID           map[string]*Trade
+	byQuoteID      map[string]*Trade
+	byOperation    map[string]string // quote_id + idempotency_key -> trade_id
+	finalityEvents map[string]FinalityEvent
+}
+
+type FinalityEvent struct {
+	EventID       string
+	InstitutionID string
+	SettlementID  string
+	TradeID       string
+	Status        TradeState
+	CorrelationID string
 }
 
 func NewStore() *Store {
-	return &Store{byID: make(map[string]*Trade), byQuoteID: make(map[string]*Trade), byOperation: make(map[string]string)}
+	return &Store{byID: make(map[string]*Trade), byQuoteID: make(map[string]*Trade), byOperation: make(map[string]string), finalityEvents: make(map[string]FinalityEvent)}
 }
 
 func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationID string, baseAmountMinor int64, baseCurrency, quoteCurrency string, selection ...string) (*Trade, error) {
@@ -63,6 +87,10 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 	}
 	if len(selection) > 1 {
 		providerID = selection[1]
+	}
+	customerReference := ""
+	if len(selection) > 2 {
+		customerReference = selection[2]
 	}
 	if strings.TrimSpace(institutionID) == "" {
 		return nil, errors.New("institution_id required")
@@ -86,7 +114,7 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 			trade := s.byID[tradeID]
 			s.mu.Unlock()
 			if trade != nil {
-				if trade.BeneficiaryID != beneficiaryID || trade.SettlementProviderID != providerID {
+				if trade.BeneficiaryID != beneficiaryID || trade.SettlementProviderID != providerID || trade.CustomerReference != customerReference {
 					return nil, errors.New("trade beneficiary replay conflict")
 				}
 				return trade, nil
@@ -95,7 +123,7 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 		s.mu.Unlock()
 	}
 	if existing, ok := s.GetByQuoteID(quoteID); ok {
-		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor || existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency || existing.BeneficiaryID != beneficiaryID || existing.SettlementProviderID != providerID {
+		if existing.InstitutionID != institutionID || existing.BaseAmountMinor != baseAmountMinor || existing.BaseCurrency != baseCurrency || existing.QuoteCurrency != quoteCurrency || existing.BeneficiaryID != beneficiaryID || existing.SettlementProviderID != providerID || existing.CustomerReference != customerReference {
 			return nil, errors.New("trade replay conflict")
 		}
 		return existing, nil
@@ -114,6 +142,7 @@ func (s *Store) CreateTrade(institutionID, quoteID, idempotencyKey, correlationI
 		CorrelationID:        correlationID,
 		BeneficiaryID:        beneficiaryID,
 		SettlementProviderID: providerID,
+		CustomerReference:    customerReference,
 		IdempotencyKey:       idempotencyKey,
 		CreatedAt:            time.Now().UTC(),
 		UpdatedAt:            time.Now().UTC(),
@@ -148,6 +177,52 @@ func (s *Store) GetTrade(tradeID string) (*Trade, bool) {
 	return &copy, true
 }
 
+func (s *Store) ListTrades(institutionID string, filter TradeListFilter) ([]Trade, int, error) {
+	if strings.TrimSpace(institutionID) == "" {
+		return nil, 0, errors.New("institution_id required")
+	}
+	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > 100 {
+		return nil, 0, errors.New("invalid pagination")
+	}
+	if !filter.From.IsZero() && !filter.To.IsZero() && !filter.From.Before(filter.To) {
+		return nil, 0, errors.New("from must be earlier than to")
+	}
+	if s.db != nil {
+		return s.listTradesDB(institutionID, filter)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	matches := make([]Trade, 0)
+	for _, trade := range s.byID {
+		if trade.InstitutionID != institutionID ||
+			(filter.Status != "" && trade.Status != filter.Status) ||
+			(filter.Currency != "" && !strings.EqualFold(trade.BaseCurrency, filter.Currency)) ||
+			(filter.CustomerReference != "" && trade.CustomerReference != filter.CustomerReference) ||
+			(!filter.From.IsZero() && trade.CreatedAt.Before(filter.From)) ||
+			(!filter.To.IsZero() && !trade.CreatedAt.Before(filter.To)) {
+			continue
+		}
+		matches = append(matches, *trade)
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].CreatedAt.Equal(matches[j].CreatedAt) {
+			return matches[i].ID > matches[j].ID
+		}
+		return matches[i].CreatedAt.After(matches[j].CreatedAt)
+	})
+	total := len(matches)
+	start := (filter.Page - 1) * filter.PageSize
+	if start >= total {
+		return []Trade{}, total, nil
+	}
+	end := start + filter.PageSize
+	if end > total {
+		end = total
+	}
+	return matches[start:end], total, nil
+}
+
 func (s *Store) GetByQuoteID(quoteID string) (*Trade, bool) {
 	if s.db != nil {
 		return s.getDB("quote", quoteID)
@@ -180,6 +255,54 @@ func (s *Store) SetSettlementID(tradeID, settlementID string) error {
 	}
 	trade.SettlementID = settlementID
 	trade.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (s *Store) SetStatus(tradeID string, state TradeState) error {
+	if tradeID == "" || state == "" {
+		return errors.New("trade and state required")
+	}
+	if s.db != nil {
+		return s.setStatusDB(tradeID, state)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	trade := s.byID[tradeID]
+	if trade == nil {
+		return errors.New("trade not found")
+	}
+	trade.State, trade.Status, trade.UpdatedAt = state, string(state), time.Now().UTC()
+	return nil
+}
+
+func (s *Store) ApplySettlementFinality(event FinalityEvent) error {
+	if event.EventID == "" || event.InstitutionID == "" || event.SettlementID == "" || event.TradeID == "" || event.CorrelationID == "" ||
+		(event.Status != StateSettled && event.Status != StateFailed) {
+		return errors.New("invalid settlement finality event")
+	}
+	if s.db != nil {
+		return s.applySettlementFinalityDB(event)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if previous, ok := s.finalityEvents[event.EventID]; ok {
+		if previous != event {
+			return errors.New("settlement finality event collision")
+		}
+		return nil
+	}
+	trade := s.byID[event.TradeID]
+	if trade == nil {
+		return errors.New("trade not found")
+	}
+	if trade.InstitutionID != event.InstitutionID || trade.SettlementID != event.SettlementID || trade.CorrelationID != event.CorrelationID {
+		return errors.New("settlement finality identity mismatch")
+	}
+	if trade.State != StateSettling && trade.State != event.Status {
+		return errors.New("settlement finality conflicts with trade state")
+	}
+	trade.State, trade.Status, trade.UpdatedAt = event.Status, string(event.Status), time.Now().UTC()
+	s.finalityEvents[event.EventID] = event
 	return nil
 }
 

@@ -8,7 +8,10 @@ import (
 	"github.com/osai/osai/services/ledger/ledgercore"
 )
 
-type Postgres struct{ DB *sql.DB }
+type Postgres struct {
+	DB            *sql.DB
+	CustodyBankID string
+}
 
 func (p Postgres) SaveJournal(key string, journal ledgercore.Journal) error {
 	transaction, err := p.DB.Begin()
@@ -16,7 +19,7 @@ func (p Postgres) SaveJournal(key string, journal ledgercore.Journal) error {
 		return err
 	}
 	defer transaction.Rollback()
-	result, err := transaction.Exec(`INSERT INTO ledger_journals (dedup_key, journal_id, trade_id, currency) VALUES ($1,$2,$3,$4) ON CONFLICT (dedup_key) DO NOTHING`, key, journal.ID, journal.TradeID, journal.Currency)
+	result, err := transaction.Exec(`INSERT INTO ledger_journals (dedup_key, journal_id, trade_id, institution_id, currency) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (dedup_key) DO NOTHING`, key, journal.ID, journal.TradeID, journal.InstitutionID, journal.Currency)
 	if err != nil {
 		return err
 	}
@@ -36,18 +39,18 @@ func (p Postgres) SaveJournal(key string, journal ledgercore.Journal) error {
 }
 
 func (p Postgres) LoadJournals() (map[string]ledgercore.Journal, error) {
-	rows, err := p.DB.Query(`SELECT dedup_key, journal_id, trade_id, currency FROM ledger_journals`)
+	rows, err := p.DB.Query(`SELECT dedup_key, journal_id, trade_id, institution_id, currency FROM ledger_journals`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := make(map[string]ledgercore.Journal)
 	for rows.Next() {
-		var key, id, trade, currency string
-		if err := rows.Scan(&key, &id, &trade, &currency); err != nil {
+		var key, id, trade, institution, currency string
+		if err := rows.Scan(&key, &id, &trade, &institution, &currency); err != nil {
 			return nil, err
 		}
-		result[key] = ledgercore.Journal{ID: id, TradeID: trade, Currency: currency}
+		result[key] = ledgercore.Journal{ID: id, TradeID: trade, InstitutionID: institution, Currency: currency}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

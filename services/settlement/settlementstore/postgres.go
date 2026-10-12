@@ -13,6 +13,65 @@ import (
 
 type Postgres struct{ DB *sql.DB }
 
+type FinalityEvent struct {
+	EventID       string
+	InstitutionID string
+	SettlementID  string
+	TradeID       string
+	Status        string
+	CorrelationID string
+	OccurredAt    time.Time
+}
+
+type CustomerSettlementReportItem struct {
+	SettlementID string
+	TradeID      string
+	QuoteID      string
+	Status       string
+	AmountMinor  int64
+	Currency     string
+	OccurredAt   time.Time
+}
+
+func (p Postgres) ListCustomerSettlementReport(ctx context.Context, institutionID string, from, to time.Time, currency, status string, page, pageSize int) ([]CustomerSettlementReportItem, int, error) {
+	if institutionID == "" || page < 1 || pageSize < 1 || pageSize > 100 ||
+		(!from.IsZero() && !to.IsZero() && !from.Before(to)) ||
+		(status != "" && status != string(settlementcore.Confirmed) && status != string(settlementcore.Failed)) {
+		return nil, 0, errors.New("invalid customer settlement report query")
+	}
+	var fromValue, toValue any
+	if !from.IsZero() {
+		fromValue = from
+	}
+	if !to.IsZero() {
+		toValue = to
+	}
+	args := []any{institutionID, currency, status, fromValue, toValue}
+	const queryFilter = `i.institution_id=$1 AND i.trade_id IS NOT NULL AND i.trade_id<>'' AND i.state IN ('CONFIRMED','FAILED') AND ($2='' OR upper(i.currency)=upper($2)) AND ($3='' OR i.state=$3) AND ($4::timestamptz IS NULL OR t.occurred_at >= $4) AND ($5::timestamptz IS NULL OR t.occurred_at < $5)`
+	var total int
+	if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM settlement_instructions i JOIN LATERAL (SELECT occurred_at FROM settlement_transitions WHERE settlement_id=i.id AND to_state=i.state ORDER BY occurred_at DESC LIMIT 1) t ON true WHERE `+queryFilter, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	rows, err := p.DB.QueryContext(ctx, `SELECT i.id,COALESCE(i.trade_id,''),i.quote_id,i.state,i.amount_minor,i.currency,t.occurred_at FROM settlement_instructions i JOIN LATERAL (SELECT occurred_at FROM settlement_transitions WHERE settlement_id=i.id AND to_state=i.state ORDER BY occurred_at DESC LIMIT 1) t ON true WHERE `+queryFilter+` ORDER BY t.occurred_at DESC,i.id DESC LIMIT $6 OFFSET $7`, append(args, pageSize, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]CustomerSettlementReportItem, 0)
+	for rows.Next() {
+		var item CustomerSettlementReportItem
+		if err := rows.Scan(&item.SettlementID, &item.TradeID, &item.QuoteID, &item.Status, &item.AmountMinor, &item.Currency, &item.OccurredAt); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
 // ListConfirmedForReconciliation exposes an ordered, bounded snapshot through
 // the settlement service; reconciliation never reads settlement tables itself.
 func (p Postgres) ListConfirmedForReconciliation(ctx context.Context, providerID string, from, to time.Time, afterID string, limit int) ([]settlementcore.Instruction, error) {
@@ -108,9 +167,8 @@ func (p Postgres) RecordRuntimeState(ctx context.Context, id string, next settle
 		return err
 	}
 	defer tx.Rollback()
-	var current string
-	var existingRef string
-	if err = tx.QueryRowContext(ctx, `SELECT state,provider_ref FROM settlement_instructions WHERE id=$1 FOR UPDATE`, id).Scan(&current, &existingRef); err != nil {
+	var current, existingRef, institutionID, tradeID, correlationID string
+	if err = tx.QueryRowContext(ctx, `SELECT state,provider_ref,institution_id,COALESCE(trade_id,''),correlation_id FROM settlement_instructions WHERE id=$1 FOR UPDATE`, id).Scan(&current, &existingRef, &institutionID, &tradeID, &correlationID); err != nil {
 		return err
 	}
 	if current == string(settlementcore.Confirmed) || current == string(settlementcore.Failed) {
@@ -141,7 +199,51 @@ func (p Postgres) RecordRuntimeState(ctx context.Context, id string, next settle
 			return err
 		}
 	}
+	if (next == settlementcore.Confirmed || next == settlementcore.Failed) && tradeID != "" {
+		eventID := "settlement_finality:" + id + ":" + string(next)
+		if _, err = tx.ExecContext(ctx, `INSERT INTO settlement_finality_outbox(event_id,institution_id,settlement_id,trade_id,status,correlation_id,occurred_at) VALUES($1,$2,$3,$4,$5,$6,now()) ON CONFLICT(event_id) DO NOTHING`, eventID, institutionID, id, tradeID, string(next), correlationID); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
+}
+
+func (p Postgres) ListPendingFinalityEvents(ctx context.Context, limit int) ([]FinalityEvent, error) {
+	if limit < 1 || limit > 100 {
+		return nil, errors.New("invalid finality event limit")
+	}
+	rows, err := p.DB.QueryContext(ctx, `SELECT event_id,institution_id,settlement_id,trade_id,status,correlation_id,occurred_at FROM settlement_finality_outbox WHERE delivered_at IS NULL ORDER BY occurred_at,event_id LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := make([]FinalityEvent, 0)
+	for rows.Next() {
+		var event FinalityEvent
+		if err := rows.Scan(&event.EventID, &event.InstitutionID, &event.SettlementID, &event.TradeID, &event.Status, &event.CorrelationID, &event.OccurredAt); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (p Postgres) AcknowledgeFinalityEvent(ctx context.Context, eventID string) error {
+	if eventID == "" {
+		return errors.New("event_id required")
+	}
+	result, err := p.DB.ExecContext(ctx, `UPDATE settlement_finality_outbox SET delivered_at=COALESCE(delivered_at,now()) WHERE event_id=$1`, eventID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (p Postgres) GetByID(ctx context.Context, id string) (settlementcore.Instruction, error) {

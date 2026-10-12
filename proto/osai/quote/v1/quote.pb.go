@@ -74,17 +74,20 @@ func (x *Money) GetCurrency() string {
 }
 
 type CreateQuoteRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	InstitutionId   string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
-	IdempotencyKey  string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	CorrelationId   string                 `protobuf:"bytes,3,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	BaseAmountMinor int64                  `protobuf:"varint,4,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
-	BaseCurrency    string                 `protobuf:"bytes,5,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
-	QuoteCurrency   string                 `protobuf:"bytes,6,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
-	DestinationRail string                 `protobuf:"bytes,7,opt,name=destination_rail,json=destinationRail,proto3" json:"destination_rail,omitempty"`
-	Urgency         string                 `protobuf:"bytes,8,opt,name=urgency,proto3" json:"urgency,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId          string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	IdempotencyKey         string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	CorrelationId          string                 `protobuf:"bytes,3,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	BaseAmountMinor        int64                  `protobuf:"varint,4,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
+	BaseCurrency           string                 `protobuf:"bytes,5,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
+	QuoteCurrency          string                 `protobuf:"bytes,6,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
+	DestinationRail        string                 `protobuf:"bytes,7,opt,name=destination_rail,json=destinationRail,proto3" json:"destination_rail,omitempty"`
+	Urgency                string                 `protobuf:"bytes,8,opt,name=urgency,proto3" json:"urgency,omitempty"`
+	CustomerReference      string                 `protobuf:"bytes,9,opt,name=customer_reference,json=customerReference,proto3" json:"customer_reference,omitempty"`
+	QuoteMode              string                 `protobuf:"bytes,10,opt,name=quote_mode,json=quoteMode,proto3" json:"quote_mode,omitempty"`
+	DestinationAmountMinor int64                  `protobuf:"varint,11,opt,name=destination_amount_minor,json=destinationAmountMinor,proto3" json:"destination_amount_minor,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *CreateQuoteRequest) Reset() {
@@ -173,22 +176,54 @@ func (x *CreateQuoteRequest) GetUrgency() string {
 	return ""
 }
 
+func (x *CreateQuoteRequest) GetCustomerReference() string {
+	if x != nil {
+		return x.CustomerReference
+	}
+	return ""
+}
+
+func (x *CreateQuoteRequest) GetQuoteMode() string {
+	if x != nil {
+		return x.QuoteMode
+	}
+	return ""
+}
+
+func (x *CreateQuoteRequest) GetDestinationAmountMinor() int64 {
+	if x != nil {
+		return x.DestinationAmountMinor
+	}
+	return 0
+}
+
 type QuoteResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	QuoteId         string                 `protobuf:"bytes,1,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
-	Status          string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	BaseAmountMinor int64                  `protobuf:"varint,3,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
-	BaseCurrency    string                 `protobuf:"bytes,4,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
-	QuoteCurrency   string                 `protobuf:"bytes,5,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
-	DestinationRail string                 `protobuf:"bytes,6,opt,name=destination_rail,json=destinationRail,proto3" json:"destination_rail,omitempty"`
-	AmountOutMinor  int64                  `protobuf:"varint,7,opt,name=amount_out_minor,json=amountOutMinor,proto3" json:"amount_out_minor,omitempty"`
-	RateMinor       int64                  `protobuf:"varint,8,opt,name=rate_minor,json=rateMinor,proto3" json:"rate_minor,omitempty"`
-	FeeMinor        int64                  `protobuf:"varint,9,opt,name=fee_minor,json=feeMinor,proto3" json:"fee_minor,omitempty"`
-	ExpiresAt       string                 `protobuf:"bytes,10,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	CorrelationId   string                 `protobuf:"bytes,11,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	TradeId         string                 `protobuf:"bytes,12,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	QuoteId                  string                 `protobuf:"bytes,1,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
+	Status                   string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	BaseAmountMinor          int64                  `protobuf:"varint,3,opt,name=base_amount_minor,json=baseAmountMinor,proto3" json:"base_amount_minor,omitempty"`
+	BaseCurrency             string                 `protobuf:"bytes,4,opt,name=base_currency,json=baseCurrency,proto3" json:"base_currency,omitempty"`
+	QuoteCurrency            string                 `protobuf:"bytes,5,opt,name=quote_currency,json=quoteCurrency,proto3" json:"quote_currency,omitempty"`
+	DestinationRail          string                 `protobuf:"bytes,6,opt,name=destination_rail,json=destinationRail,proto3" json:"destination_rail,omitempty"`
+	AmountOutMinor           int64                  `protobuf:"varint,7,opt,name=amount_out_minor,json=amountOutMinor,proto3" json:"amount_out_minor,omitempty"`
+	RateMinor                int64                  `protobuf:"varint,8,opt,name=rate_minor,json=rateMinor,proto3" json:"rate_minor,omitempty"`
+	FeeMinor                 int64                  `protobuf:"varint,9,opt,name=fee_minor,json=feeMinor,proto3" json:"fee_minor,omitempty"`
+	ExpiresAt                string                 `protobuf:"bytes,10,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	CorrelationId            string                 `protobuf:"bytes,11,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	TradeId                  string                 `protobuf:"bytes,12,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	QuoteMode                string                 `protobuf:"bytes,13,opt,name=quote_mode,json=quoteMode,proto3" json:"quote_mode,omitempty"`
+	SourcePrincipalMinor     int64                  `protobuf:"varint,14,opt,name=source_principal_minor,json=sourcePrincipalMinor,proto3" json:"source_principal_minor,omitempty"`
+	TotalDebitMinor          int64                  `protobuf:"varint,15,opt,name=total_debit_minor,json=totalDebitMinor,proto3" json:"total_debit_minor,omitempty"`
+	DestinationTargetMinor   int64                  `protobuf:"varint,16,opt,name=destination_target_minor,json=destinationTargetMinor,proto3" json:"destination_target_minor,omitempty"`
+	DestinationSurplusMinor  int64                  `protobuf:"varint,17,opt,name=destination_surplus_minor,json=destinationSurplusMinor,proto3" json:"destination_surplus_minor,omitempty"`
+	RateDirection            string                 `protobuf:"bytes,18,opt,name=rate_direction,json=rateDirection,proto3" json:"rate_direction,omitempty"`
+	RateScale                int64                  `protobuf:"varint,19,opt,name=rate_scale,json=rateScale,proto3" json:"rate_scale,omitempty"`
+	FeeScheduleId            string                 `protobuf:"bytes,20,opt,name=fee_schedule_id,json=feeScheduleId,proto3" json:"fee_schedule_id,omitempty"`
+	FeeScheduleVersion       int64                  `protobuf:"varint,21,opt,name=fee_schedule_version,json=feeScheduleVersion,proto3" json:"fee_schedule_version,omitempty"`
+	SourceMinorExponent      uint32                 `protobuf:"varint,22,opt,name=source_minor_exponent,json=sourceMinorExponent,proto3" json:"source_minor_exponent,omitempty"`
+	DestinationMinorExponent uint32                 `protobuf:"varint,23,opt,name=destination_minor_exponent,json=destinationMinorExponent,proto3" json:"destination_minor_exponent,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *QuoteResponse) Reset() {
@@ -303,6 +338,83 @@ func (x *QuoteResponse) GetTradeId() string {
 		return x.TradeId
 	}
 	return ""
+}
+
+func (x *QuoteResponse) GetQuoteMode() string {
+	if x != nil {
+		return x.QuoteMode
+	}
+	return ""
+}
+
+func (x *QuoteResponse) GetSourcePrincipalMinor() int64 {
+	if x != nil {
+		return x.SourcePrincipalMinor
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetTotalDebitMinor() int64 {
+	if x != nil {
+		return x.TotalDebitMinor
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetDestinationTargetMinor() int64 {
+	if x != nil {
+		return x.DestinationTargetMinor
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetDestinationSurplusMinor() int64 {
+	if x != nil {
+		return x.DestinationSurplusMinor
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetRateDirection() string {
+	if x != nil {
+		return x.RateDirection
+	}
+	return ""
+}
+
+func (x *QuoteResponse) GetRateScale() int64 {
+	if x != nil {
+		return x.RateScale
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetFeeScheduleId() string {
+	if x != nil {
+		return x.FeeScheduleId
+	}
+	return ""
+}
+
+func (x *QuoteResponse) GetFeeScheduleVersion() int64 {
+	if x != nil {
+		return x.FeeScheduleVersion
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetSourceMinorExponent() uint32 {
+	if x != nil {
+		return x.SourceMinorExponent
+	}
+	return 0
+}
+
+func (x *QuoteResponse) GetDestinationMinorExponent() uint32 {
+	if x != nil {
+		return x.DestinationMinorExponent
+	}
+	return 0
 }
 
 type GetQuoteRequest struct {
@@ -448,7 +560,7 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"\x1fproto/osai/quote/v1/quote.proto\x12\rosai.quote.v1\"F\n" +
 	"\x05Money\x12!\n" +
 	"\famount_minor\x18\x01 \x01(\x03R\vamountMinor\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xc8\x02\n" +
+	"\bcurrency\x18\x02 \x01(\tR\bcurrency\"\xd0\x03\n" +
 	"\x12CreateQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12%\n" +
@@ -457,7 +569,12 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"\rbase_currency\x18\x05 \x01(\tR\fbaseCurrency\x12%\n" +
 	"\x0equote_currency\x18\x06 \x01(\tR\rquoteCurrency\x12)\n" +
 	"\x10destination_rail\x18\a \x01(\tR\x0fdestinationRail\x12\x18\n" +
-	"\aurgency\x18\b \x01(\tR\aurgency\"\xac\x03\n" +
+	"\aurgency\x18\b \x01(\tR\aurgency\x12-\n" +
+	"\x12customer_reference\x18\t \x01(\tR\x11customerReference\x12\x1d\n" +
+	"\n" +
+	"quote_mode\x18\n" +
+	" \x01(\tR\tquoteMode\x128\n" +
+	"\x18destination_amount_minor\x18\v \x01(\x03R\x16destinationAmountMinor\"\xb5\a\n" +
 	"\rQuoteResponse\x12\x19\n" +
 	"\bquote_id\x18\x01 \x01(\tR\aquoteId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12*\n" +
@@ -473,7 +590,20 @@ const file_proto_osai_quote_v1_quote_proto_rawDesc = "" +
 	"expires_at\x18\n" +
 	" \x01(\tR\texpiresAt\x12%\n" +
 	"\x0ecorrelation_id\x18\v \x01(\tR\rcorrelationId\x12\x19\n" +
-	"\btrade_id\x18\f \x01(\tR\atradeId\"z\n" +
+	"\btrade_id\x18\f \x01(\tR\atradeId\x12\x1d\n" +
+	"\n" +
+	"quote_mode\x18\r \x01(\tR\tquoteMode\x124\n" +
+	"\x16source_principal_minor\x18\x0e \x01(\x03R\x14sourcePrincipalMinor\x12*\n" +
+	"\x11total_debit_minor\x18\x0f \x01(\x03R\x0ftotalDebitMinor\x128\n" +
+	"\x18destination_target_minor\x18\x10 \x01(\x03R\x16destinationTargetMinor\x12:\n" +
+	"\x19destination_surplus_minor\x18\x11 \x01(\x03R\x17destinationSurplusMinor\x12%\n" +
+	"\x0erate_direction\x18\x12 \x01(\tR\rrateDirection\x12\x1d\n" +
+	"\n" +
+	"rate_scale\x18\x13 \x01(\x03R\trateScale\x12&\n" +
+	"\x0ffee_schedule_id\x18\x14 \x01(\tR\rfeeScheduleId\x120\n" +
+	"\x14fee_schedule_version\x18\x15 \x01(\x03R\x12feeScheduleVersion\x122\n" +
+	"\x15source_minor_exponent\x18\x16 \x01(\rR\x13sourceMinorExponent\x12<\n" +
+	"\x1adestination_minor_exponent\x18\x17 \x01(\rR\x18destinationMinorExponent\"z\n" +
 	"\x0fGetQuoteRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12%\n" +

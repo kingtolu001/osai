@@ -17,6 +17,9 @@ func NewPostgresStore(db *sql.DB) (*QuoteStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := ensurePricingSchema(db); err != nil {
+		return nil, err
+	}
 	s := NewQuoteStore()
 	s.db = db
 	return s, nil
@@ -38,7 +41,7 @@ func (s *QuoteStore) createDB(q *ExecutableQuote) (*ExecutableQuote, error) {
 			return nil, err
 		}
 		if old.RequestHash != q.RequestHash {
-			return nil, errors.New("idempotency conflict")
+			return nil, ErrQuoteIdempotencyConflict
 		}
 		return &old, tx.Commit()
 	}

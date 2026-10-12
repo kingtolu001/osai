@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	TradeService_CreateTradeFromAcceptedQuote_FullMethodName = "/osai.trade.v1.TradeService/CreateTradeFromAcceptedQuote"
 	TradeService_GetTrade_FullMethodName                     = "/osai.trade.v1.TradeService/GetTrade"
+	TradeService_ListTrades_FullMethodName                   = "/osai.trade.v1.TradeService/ListTrades"
 )
 
 // TradeServiceClient is the client API for TradeService service.
@@ -29,6 +30,7 @@ const (
 type TradeServiceClient interface {
 	CreateTradeFromAcceptedQuote(ctx context.Context, in *CreateTradeFromAcceptedQuoteRequest, opts ...grpc.CallOption) (*TradeResponse, error)
 	GetTrade(ctx context.Context, in *GetTradeRequest, opts ...grpc.CallOption) (*TradeResponse, error)
+	ListTrades(ctx context.Context, in *ListTradesRequest, opts ...grpc.CallOption) (*ListTradesResponse, error)
 }
 
 type tradeServiceClient struct {
@@ -59,12 +61,23 @@ func (c *tradeServiceClient) GetTrade(ctx context.Context, in *GetTradeRequest, 
 	return out, nil
 }
 
+func (c *tradeServiceClient) ListTrades(ctx context.Context, in *ListTradesRequest, opts ...grpc.CallOption) (*ListTradesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTradesResponse)
+	err := c.cc.Invoke(ctx, TradeService_ListTrades_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TradeServiceServer is the server API for TradeService service.
 // All implementations must embed UnimplementedTradeServiceServer
 // for forward compatibility.
 type TradeServiceServer interface {
 	CreateTradeFromAcceptedQuote(context.Context, *CreateTradeFromAcceptedQuoteRequest) (*TradeResponse, error)
 	GetTrade(context.Context, *GetTradeRequest) (*TradeResponse, error)
+	ListTrades(context.Context, *ListTradesRequest) (*ListTradesResponse, error)
 	mustEmbedUnimplementedTradeServiceServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedTradeServiceServer) CreateTradeFromAcceptedQuote(context.Cont
 }
 func (UnimplementedTradeServiceServer) GetTrade(context.Context, *GetTradeRequest) (*TradeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTrade not implemented")
+}
+func (UnimplementedTradeServiceServer) ListTrades(context.Context, *ListTradesRequest) (*ListTradesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTrades not implemented")
 }
 func (UnimplementedTradeServiceServer) mustEmbedUnimplementedTradeServiceServer() {}
 func (UnimplementedTradeServiceServer) testEmbeddedByValue()                      {}
@@ -138,6 +154,24 @@ func _TradeService_GetTrade_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TradeService_ListTrades_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTradesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TradeServiceServer).ListTrades(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TradeService_ListTrades_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TradeServiceServer).ListTrades(ctx, req.(*ListTradesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TradeService_ServiceDesc is the grpc.ServiceDesc for TradeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var TradeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTrade",
 			Handler:    _TradeService_GetTrade_Handler,
+		},
+		{
+			MethodName: "ListTrades",
+			Handler:    _TradeService_ListTrades_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

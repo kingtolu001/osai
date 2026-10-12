@@ -1,6 +1,7 @@
 package ledgerapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -20,6 +21,7 @@ type SettlementInstruction struct {
 type Command struct {
 	IdempotencyKey    string
 	CorrelationID     string
+	InstitutionID     string
 	SettlementID      string
 	TradeID           string
 	ObligationID      string
@@ -29,6 +31,43 @@ type Command struct {
 	AmountMinor       int64
 	Currency          string
 	Purpose           string
+}
+
+type PrefundCommand struct {
+	InstitutionID     string
+	Currency          string
+	AmountMinor       int64
+	EvidenceReference string
+	CorrelationID     string
+}
+
+type FundingCommand struct {
+	InstitutionID string
+	TradeID       string
+	Currency      string
+	AmountMinor   int64
+	CorrelationID string
+}
+
+type FundingReservation struct {
+	TradeID       string
+	InstitutionID string
+	Currency      string
+	AmountMinor   int64
+	State         string
+	JournalID     string
+	SettlementID  string
+	SettlementRef string
+}
+
+var ErrInsufficientFunding = errors.New("insufficient institution prefund")
+var ErrFundingMismatch = errors.New("funding reservation mismatch")
+
+type FundingStorage interface {
+	PostLocalPrefund(context.Context, PrefundCommand) (string, bool, error)
+	ReserveFunding(context.Context, FundingCommand) (FundingReservation, bool, error)
+	GetFundingReservation(context.Context, FundingCommand) (FundingReservation, error)
+	FinalizeFunding(context.Context, Command, bool) (string, bool, error)
 }
 
 type ReconciliationAdjustmentCommand struct {
@@ -51,6 +90,7 @@ type Service struct {
 	mu           sync.Mutex
 	journals     map[string]ledgercore.Journal
 	storage      Storage
+	funding      FundingStorage
 	correlations []string
 }
 
@@ -68,7 +108,30 @@ func NewServiceWithStorage(storage Storage) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{journals: journals, storage: storage, correlations: make([]string, 0)}, nil
+	service := &Service{journals: journals, storage: storage, correlations: make([]string, 0)}
+	service.funding, _ = storage.(FundingStorage)
+	return service, nil
+}
+
+func (s *Service) PostLocalPrefund(ctx context.Context, command PrefundCommand) (string, bool, error) {
+	if s.funding == nil {
+		return "", false, errors.New("durable funding storage required")
+	}
+	return s.funding.PostLocalPrefund(ctx, command)
+}
+
+func (s *Service) ReserveFunding(ctx context.Context, command FundingCommand) (FundingReservation, bool, error) {
+	if s.funding == nil {
+		return FundingReservation{}, false, errors.New("durable funding storage required")
+	}
+	return s.funding.ReserveFunding(ctx, command)
+}
+
+func (s *Service) GetFundingReservation(ctx context.Context, command FundingCommand) (FundingReservation, error) {
+	if s.funding == nil {
+		return FundingReservation{}, errors.New("durable funding storage required")
+	}
+	return s.funding.GetFundingReservation(ctx, command)
 }
 
 func (s *Service) ConfirmSettlement(instruction SettlementInstruction) error {
@@ -79,6 +142,9 @@ func (s *Service) ConfirmSettlement(instruction SettlementInstruction) error {
 }
 
 func (s *Service) ConfirmCommand(command Command) (string, bool, error) {
+	if s.funding != nil {
+		return s.funding.FinalizeFunding(context.Background(), command, true)
+	}
 	return s.postCommand(command, "settlement.confirmed", func(journal *ledgercore.Journal) {
 		journal.AddEntry("2200", "CLIENT_SETTLEMENT_PAYABLE", command.Beneficiary, command.Currency, command.AmountMinor, 0, command.ExternalReference+":debit")
 		journal.AddEntry("1300", "CLIENT_FUNDS_BANK", "custody", command.Currency, 0, command.AmountMinor, command.ExternalReference+":credit")
@@ -86,6 +152,9 @@ func (s *Service) ConfirmCommand(command Command) (string, bool, error) {
 }
 
 func (s *Service) FailCommand(command Command) (string, bool, error) {
+	if s.funding != nil {
+		return s.funding.FinalizeFunding(context.Background(), command, false)
+	}
 	return s.postCommand(command, "settlement.failed", func(journal *ledgercore.Journal) {
 		journal.AddEntry("2100", "CLIENT_PREFUND_HELD", command.Beneficiary, command.Currency, command.AmountMinor, 0, command.ExternalReference+":debit")
 		journal.AddEntry("2000", "CLIENT_PREFUND", command.Beneficiary, command.Currency, 0, command.AmountMinor, command.ExternalReference+":credit")
@@ -93,6 +162,9 @@ func (s *Service) FailCommand(command Command) (string, bool, error) {
 }
 
 func (s *Service) ReverseCommand(command Command) (string, bool, error) {
+	if s.funding != nil {
+		return "", false, errors.New("funded reversal requires an approved reversal workflow")
+	}
 	return s.postCommand(command, "settlement.reversed", func(journal *ledgercore.Journal) {
 		journal.AddEntry("2200", "CLIENT_SETTLEMENT_PAYABLE", command.Beneficiary, command.Currency, command.AmountMinor, 0, command.ExternalReference+":debit")
 		journal.AddEntry("2100", "CLIENT_PREFUND_HELD", command.Beneficiary, command.Currency, 0, command.AmountMinor, command.ExternalReference+":credit")
@@ -187,7 +259,12 @@ func (s *Service) postCommand(command Command, kind string, build func(*ledgerco
 	if command.IdempotencyKey == "" || command.ExternalReference == "" || command.AmountMinor <= 0 || command.Currency == "" {
 		return "", false, errors.New("invalid ledger command")
 	}
-	journal := ledgercore.NewJournal("jt_"+command.ExternalReference, command.SettlementID, command.Currency)
+	tradeID := command.TradeID
+	if tradeID == "" {
+		tradeID = command.SettlementID
+	}
+	journal := ledgercore.NewJournal("jt_"+command.ExternalReference, tradeID, command.Currency)
+	journal.InstitutionID = command.InstitutionID
 	build(journal)
 	if err := journal.Validate(); err != nil {
 		return "", false, fmt.Errorf("validate %s: %w", kind, err)
@@ -197,7 +274,7 @@ func (s *Service) postCommand(command Command, kind string, build func(*ledgerco
 	defer s.mu.Unlock()
 	s.correlations = append(s.correlations, command.CorrelationID)
 	if existing, ok := s.journals[key]; ok {
-		if existing.TradeID != command.SettlementID || existing.Currency != command.Currency || existing.Entries[0].Debit != command.AmountMinor {
+		if existing.TradeID != tradeID || existing.InstitutionID != command.InstitutionID || existing.Currency != command.Currency || existing.Entries[0].Debit != command.AmountMinor {
 			return "", false, ErrIdempotencyConflict
 		}
 		return existing.ID, true, nil

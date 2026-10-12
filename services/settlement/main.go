@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +15,9 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/adapters/flutterwave"
 	"github.com/osai/osai/pkg/observability"
-	"github.com/osai/osai/pkg/postgres"
 	"github.com/osai/osai/pkg/provider"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
@@ -36,18 +37,28 @@ func main() {
 	if err := observability.Init("settlement"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
-	db, err := postgres.Open("settlement")
+	dsn := strings.TrimSpace(os.Getenv("OSAI_SETTLEMENT_POSTGRES_DSN"))
+	if dsn == "" {
+		dsn = strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
+	}
+	if dsn == "" {
+		log.Fatal("OSAI_SETTLEMENT_POSTGRES_DSN or OSAI_POSTGRES_DSN is required")
+	}
+	database, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("open settlement database: %v", err)
 	}
-	defer db.Close()
-	if err := settlementstore.EnsureSchema(db); err != nil {
-		log.Fatal(err)
+	defer database.Close()
+	if err = database.Ping(); err != nil {
+		log.Fatalf("connect settlement database: %v", err)
 	}
-	repository := settlementstore.Postgres{DB: db}
+	if err = settlementstore.EnsureSchema(database); err != nil {
+		log.Fatalf("initialize settlement schema: %v", err)
+	}
+	repository := settlementstore.Postgres{DB: database}
 	store, err := settlementcore.NewStoreWithPersistence(nil, repository)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("load settlement state: %v", err)
 	}
 	var temporalClient client.Client
 	flutterwaveEnabled := os.Getenv("FLW_SETTLEMENT_ENABLED") == "true"
@@ -88,7 +99,7 @@ func main() {
 	defer customerConn.Close()
 	selector := settlementRouteSelector{Routes: map[string]settlementRoute{}}
 	if flutterwaveEnabled {
-		attempts := flutterwave.PostgresAttempts{DB: db}
+		attempts := flutterwave.PostgresAttempts{DB: database}
 		if err := attempts.EnsureSchema(); err != nil {
 			log.Fatal(err)
 		}
@@ -103,7 +114,11 @@ func main() {
 		rail := flutterwave.New(flutterwave.Config{BaseURL: os.Getenv("FLW_BASE_URL"), SecretKey: os.Getenv("FLW_SECRET_KEY"), SecretHash: os.Getenv("FLW_SECRET_HASH"), Env: os.Getenv("FLW_ENV"), Enabled: true, Attempts: attempts, Timeout: timeout})
 		selector.Routes["flutterwave"] = settlementRoute{Config: provider.RouteConfig{Enabled: true, Environment: os.Getenv("FLW_ENV"), Currencies: []string{"NGN"}, Rails: []string{"bank_transfer"}, Timeout: timeout, KillSwitch: os.Getenv("FLW_KILL_SWITCH") == "true", Transfer: true, Reconciliation: true, AccountResolution: false}, Rail: rail}
 	}
-	settlementServer := &settlementGRPCServer{store: store, repository: repository, temporal: temporalClient, reconciliationToken: os.Getenv("OSAI_RECONCILIATION_TOKEN"), beneficiaries: customerv1.NewCustomerServiceClient(customerConn), selector: selector}
+	tradeFinalityToken := strings.TrimSpace(os.Getenv("OSAI_TRADE_SETTLEMENT_TOKEN"))
+	if tradeFinalityToken == "" {
+		log.Fatal("OSAI_TRADE_SETTLEMENT_TOKEN is required")
+	}
+	settlementServer := &settlementGRPCServer{store: store, repository: repository, temporal: temporalClient, reconciliationToken: os.Getenv("OSAI_RECONCILIATION_TOKEN"), tradeFinalityToken: tradeFinalityToken, beneficiaries: customerv1.NewCustomerServiceClient(customerConn), selector: selector}
 	settlementv1.RegisterSettlementServiceServer(server, settlementServer)
 	if temporalClient != nil {
 		for _, instruction := range settlementServer.pendingFlutterwave() {
@@ -117,6 +132,44 @@ func main() {
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "settlement"})
+	})
+	http.HandleFunc("/v1/settlements", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Beneficiary string `json:"beneficiary"`
+			Currency    string `json:"currency"`
+			AmountMinor int64  `json:"amount_minor"`
+			Purpose     string `json:"purpose"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		instruction, err := store.Create(req.Beneficiary, req.Currency, req.AmountMinor, req.Purpose)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "VALIDATION_ERROR", "message": err.Error()}})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"settlement_id": instruction.ID, "state": string(instruction.State), "beneficiary": instruction.Beneficiary, "amount_minor": instruction.AmountMinor, "currency": instruction.Currency, "purpose": instruction.Purpose, "created_at": instruction.CreatedAt.UTC().Format(time.RFC3339)})
+	})
+	http.HandleFunc("/v1/settlements/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/settlements/")
+		if path == "" || strings.Contains(path, "/") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		instruction, ok := store.Get(path)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"settlement_id": instruction.ID, "state": string(instruction.State), "beneficiary": instruction.Beneficiary, "amount_minor": instruction.AmountMinor, "currency": instruction.Currency, "purpose": instruction.Purpose, "created_at": instruction.CreatedAt.UTC().Format(time.RFC3339)})
 	})
 	go func() {
 		port := os.Getenv("OSAI_SETTLEMENT_PORT")
@@ -133,18 +186,64 @@ func main() {
 	}
 }
 
+type beneficiaryVerifier interface {
+	GetApprovedBeneficiary(ctx context.Context, req *customerv1.BeneficiaryRequest, opts ...grpc.CallOption) (*customerv1.Beneficiary, error)
+}
+
 type settlementGRPCServer struct {
 	settlementv1.UnimplementedSettlementServiceServer
 	store               *settlementcore.Store
 	repository          settlementstore.Postgres
 	temporal            client.Client
 	reconciliationToken string
-	beneficiaries       interface {
-		GetApprovedBeneficiary(context.Context, *customerv1.BeneficiaryRequest, ...grpc.CallOption) (*customerv1.Beneficiary, error)
+	tradeFinalityToken  string
+	beneficiaries       beneficiaryVerifier
+	selector            settlementRouteSelector
+}
+
+func (s *settlementGRPCServer) ListPendingSettlementFinalityEvents(ctx context.Context, req *settlementv1.ListPendingSettlementFinalityEventsRequest) (*settlementv1.ListPendingSettlementFinalityEventsResponse, error) {
+	if s == nil || !s.authorizeTradeFinality(ctx, req.GetConsumerId()) {
+		return nil, status.Error(codes.PermissionDenied, "trade finality access denied")
 	}
-	selector interface {
-		Check(context.Context, string, string, string) error
+	if req.PageSize < 1 || req.PageSize > 100 {
+		return nil, status.Error(codes.InvalidArgument, "invalid page size")
 	}
+	events, err := s.repository.ListPendingFinalityEvents(ctx, int(req.PageSize))
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "settlement finality events unavailable")
+	}
+	response := &settlementv1.ListPendingSettlementFinalityEventsResponse{}
+	for _, event := range events {
+		response.Events = append(response.Events, &settlementv1.SettlementFinalityEvent{
+			EventId: event.EventID, InstitutionId: event.InstitutionID, SettlementId: event.SettlementID,
+			TradeId: event.TradeID, Status: event.Status, CorrelationId: event.CorrelationID,
+			OccurredAtUnixNano: event.OccurredAt.UnixNano(),
+		})
+	}
+	return response, nil
+}
+
+func (s *settlementGRPCServer) AcknowledgeSettlementFinalityEvent(ctx context.Context, req *settlementv1.AcknowledgeSettlementFinalityEventRequest) (*settlementv1.AcknowledgeSettlementFinalityEventResponse, error) {
+	if s == nil || !s.authorizeTradeFinality(ctx, req.GetConsumerId()) {
+		return nil, status.Error(codes.PermissionDenied, "trade finality access denied")
+	}
+	if strings.TrimSpace(req.EventId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "event_id required")
+	}
+	if err := s.repository.AcknowledgeFinalityEvent(ctx, req.EventId); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, status.Error(codes.NotFound, "settlement finality event not found")
+		}
+		return nil, status.Error(codes.Unavailable, "settlement finality acknowledgement unavailable")
+	}
+	return &settlementv1.AcknowledgeSettlementFinalityEventResponse{Acknowledged: true}, nil
+}
+
+func (s *settlementGRPCServer) authorizeTradeFinality(ctx context.Context, consumerID string) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	return s != nil && consumerID == "trade-orchestrator" && s.tradeFinalityToken != "" && ok &&
+		len(md.Get("x-osai-trade-settlement-token")) == 1 &&
+		subtle.ConstantTimeCompare([]byte(md.Get("x-osai-trade-settlement-token")[0]), []byte(s.tradeFinalityToken)) == 1
 }
 
 func (s *settlementGRPCServer) ListConfirmedSettlements(ctx context.Context, req *settlementv1.ListConfirmedSettlementsRequest) (*settlementv1.ListConfirmedSettlementsResponse, error) {
@@ -165,6 +264,48 @@ func (s *settlementGRPCServer) ListConfirmedSettlements(ctx context.Context, req
 	}
 	if len(items) == int(req.PageSize) {
 		response.NextSettlementId = items[len(items)-1].ID
+	}
+	return response, nil
+}
+
+func (s *settlementGRPCServer) ListCustomerSettlementReport(ctx context.Context, req *settlementv1.ListCustomerSettlementReportRequest) (*settlementv1.ListCustomerSettlementReportResponse, error) {
+	if s == nil || req == nil || strings.TrimSpace(req.InstitutionId) == "" || req.Page < 1 || req.PageSize < 1 || req.PageSize > 100 {
+		return nil, status.Error(codes.InvalidArgument, "valid institution and pagination required")
+	}
+	var from, to time.Time
+	var err error
+	if strings.TrimSpace(req.From) != "" {
+		from, err = time.Parse(time.RFC3339, req.From)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "from must be RFC3339")
+		}
+	}
+	if strings.TrimSpace(req.To) != "" {
+		to, err = time.Parse(time.RFC3339, req.To)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "to must be RFC3339")
+		}
+	}
+	if !from.IsZero() && !to.IsZero() && !from.Before(to) {
+		return nil, status.Error(codes.InvalidArgument, "from must be earlier than to")
+	}
+	if req.Status != "" && req.Status != "CONFIRMED" && req.Status != "FAILED" {
+		return nil, status.Error(codes.InvalidArgument, "status must be a terminal settlement status")
+	}
+	items, total, err := s.repository.ListCustomerSettlementReport(ctx, req.InstitutionId, from, to, strings.TrimSpace(req.Currency), strings.TrimSpace(req.Status), int(req.Page), int(req.PageSize))
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "settlement report unavailable")
+	}
+	response := &settlementv1.ListCustomerSettlementReportResponse{
+		Items: make([]*settlementv1.CustomerSettlementReportItem, 0, len(items)),
+		Page:  req.Page, PageSize: req.PageSize, Total: int32(total),
+	}
+	for _, item := range items {
+		response.Items = append(response.Items, &settlementv1.CustomerSettlementReportItem{
+			SettlementId: item.SettlementID, TradeId: item.TradeID, QuoteId: item.QuoteID,
+			Status: item.Status, AmountMinor: item.AmountMinor, Currency: item.Currency,
+			OccurredAt: item.OccurredAt.UTC().Format(time.RFC3339),
+		})
 	}
 	return response, nil
 }
@@ -194,17 +335,15 @@ func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req
 			return nil, status.Error(codes.InvalidArgument, "approved beneficiary and whole NGN amount required")
 		}
 	}
-	amountMinor := int64(0)
-	currency := ""
+	amountMinor, currency := int64(0), ""
 	if req.Amount != nil {
-		amountMinor = req.Amount.AmountMinor
-		currency = req.Amount.Currency
+		amountMinor, currency = req.Amount.AmountMinor, req.Amount.Currency
 	}
 	if amountMinor <= 0 {
-		amountMinor = 1
+		return nil, status.Error(codes.InvalidArgument, "positive settlement amount required")
 	}
 	if strings.TrimSpace(currency) == "" {
-		currency = "USD"
+		return nil, status.Error(codes.InvalidArgument, "settlement currency required")
 	}
 	beneficiary, bankCode, accountNumber := req.Beneficiary, "", ""
 	if providerID == "flutterwave" {
@@ -213,7 +352,7 @@ func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req
 			return nil, status.Error(codes.PermissionDenied, "beneficiary unavailable")
 		}
 		beneficiary, bankCode, accountNumber = resolved.AccountNumber, resolved.BankCode, resolved.AccountNumber
-		if s.selector == nil || s.selector.Check(ctx, providerID, currency, "bank_transfer") != nil {
+		if err := s.selector.Check(ctx, providerID, currency, "bank_transfer"); err != nil {
 			return nil, status.Error(codes.FailedPrecondition, "settlement provider unavailable")
 		}
 	}
@@ -291,14 +430,14 @@ func bankDigits(value string, min, max int) bool {
 
 func (s *settlementGRPCServer) ensureWorkflow(ctx context.Context, instruction settlementcore.Instruction) error {
 	if s.temporal == nil {
-		return errors.New("Temporal settlement unavailable")
+		return fmt.Errorf("Temporal settlement unavailable")
 	}
 	interval := time.Duration(0)
 	if os.Getenv("FLW_ENV") == "test" {
 		interval = time.Second
 	}
 	_, err := s.temporal.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: "settlement-" + instruction.ClientRef, TaskQueue: workflows.TaskQueue}, workflows.TemporalSettlementWorkflow, workflows.TemporalSettlementInput{
-		InstructionID: instruction.ID, ClientRef: instruction.ClientRef, ProviderID: instruction.ProviderID, BankCode: instruction.BankCode, AccountNumber: instruction.AccountNumber, Beneficiary: instruction.Beneficiary, AmountMinor: instruction.AmountMinor, Currency: instruction.Currency, Purpose: instruction.Purpose, PollInterval: interval,
+		InstructionID: instruction.ID, InstitutionID: instruction.InstitutionID, TradeID: instruction.TradeID, CorrelationID: instruction.CorrelationID, ClientRef: instruction.ClientRef, ProviderRef: instruction.ProviderRef, ProviderID: instruction.ProviderID, BankCode: instruction.BankCode, AccountNumber: instruction.AccountNumber, Beneficiary: instruction.Beneficiary, AmountMinor: instruction.AmountMinor, Currency: instruction.Currency, Purpose: instruction.Purpose, PollInterval: interval,
 	})
 	var started *serviceerror.WorkflowExecutionAlreadyStarted
 	if errors.As(err, &started) {

@@ -20,6 +20,7 @@ message SettlementCommand {
   string beneficiary = 8;
   Money amount = 9;
   string purpose = 10;
+  string institution_id = 11;
 }
 
 message LedgerError {
@@ -51,6 +52,26 @@ message CustomerBalanceResponse { repeated CustomerBalance balances = 1; }
 message CustomerTransaction { string journal_id = 1; string trade_id = 2; string currency = 3; int64 amount_minor = 4; string occurred_at = 5; }
 message CustomerTransactionResponse { repeated CustomerTransaction items = 1; int32 total = 2; }
 
+// Local proof funding is accepted only by a Ledger server explicitly configured
+// with a local fixture token. Production bank evidence requires its own ingress.
+message LocalPrefundCommand {
+  string institution_id = 1;
+  Money amount = 2;
+  string evidence_reference = 3;
+  string correlation_id = 4;
+}
+message FundingReservationCommand {
+  string institution_id = 1;
+  string trade_id = 2;
+  Money amount = 3;
+  string correlation_id = 4;
+}
+message FundingReservationResponse {
+  string journal_id = 1;
+  string state = 2;
+  bool already_applied = 3;
+}
+
 service LedgerService {
   rpc ConfirmSettlement(SettlementCommand) returns (SettlementCommandResponse);
   rpc FailSettlement(SettlementCommand) returns (SettlementCommandResponse);
@@ -58,4 +79,7 @@ service LedgerService {
   rpc PostReconciliationAdjustment(ReconciliationAdjustmentCommand) returns (SettlementCommandResponse);
   rpc GetCustomerBalances(CustomerReadRequest) returns (CustomerBalanceResponse);
   rpc ListCustomerTransactions(CustomerReadRequest) returns (CustomerTransactionResponse);
+  rpc PostLocalPrefund(LocalPrefundCommand) returns (SettlementCommandResponse);
+  rpc ReserveFunding(FundingReservationCommand) returns (FundingReservationResponse);
+  rpc GetFundingReservation(FundingReservationCommand) returns (FundingReservationResponse);
 }

@@ -16,6 +16,9 @@ const CallbackSignal = "settlement.callback"
 
 type TemporalSettlementInput struct {
 	InstructionID string
+	InstitutionID string
+	TradeID       string
+	CorrelationID string
 	ClientRef     string
 	ProviderRef   string
 	ProviderID    string
