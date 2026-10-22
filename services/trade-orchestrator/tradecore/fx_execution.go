@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/osai/osai/pkg/fxevidence"
 	"github.com/osai/osai/pkg/pricing"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
-	"github.com/osai/osai/services/ledger/ledgercore"
 )
 
 type FXExecutionStatus string
@@ -37,6 +37,7 @@ type FXExecution struct {
 	ExecutorID             string                          `json:"executor_id"`
 	RequestReference       string                          `json:"request_reference"`
 	Status                 FXExecutionStatus               `json:"status"`
+	RecoveryGeneration     int64                           `json:"recovery_generation"`
 	SourceCurrency         string                          `json:"source_currency"`
 	SourceExponent         uint32                          `json:"source_exponent"`
 	SourcePrincipalMinor   int64                           `json:"source_principal_minor"`
@@ -49,7 +50,7 @@ type FXExecution struct {
 	SubmissionCount        int                             `json:"submission_count"`
 	RecoveryCount          int                             `json:"recovery_count"`
 	LastRecoveryEvidence   *FXQueryEvidence                `json:"last_recovery_evidence,omitempty"`
-	ExecutionEvidence      *ledgercore.FXExecutionEvidence `json:"execution_evidence,omitempty"`
+	ExecutionEvidence      *fxevidence.FXExecutionEvidence `json:"execution_evidence,omitempty"`
 	FailureEvidence        *FXQueryEvidence                `json:"failure_evidence,omitempty"`
 	CreatedAt              time.Time                       `json:"created_at"`
 	UpdatedAt              time.Time                       `json:"updated_at"`
@@ -66,24 +67,33 @@ const (
 )
 
 type FXQueryEvidence struct {
-	ExecutorID       string    `json:"executor_id"`
-	RequestReference string    `json:"request_reference"`
-	ProviderRef      string    `json:"provider_reference"`
-	QueryReference   string    `json:"query_reference"`
-	PayloadHash      string    `json:"payload_hash"`
-	ObservedAt       time.Time `json:"observed_at"`
-	Authoritative    bool      `json:"authoritative"`
+	ExecutorID         string    `json:"executor_id"`
+	RequestReference   string    `json:"request_reference"`
+	RecoveryGeneration int64     `json:"recovery_generation"`
+	ProviderRef        string    `json:"provider_reference"`
+	QueryReference     string    `json:"query_reference"`
+	PayloadHash        string    `json:"payload_hash"`
+	ObservedAt         time.Time `json:"observed_at"`
+	RawPayload         []byte    `json:"-"`
 }
 
 type FXQueryResult struct {
 	Status        FXQueryStatus                   `json:"status"`
 	QueryEvidence FXQueryEvidence                 `json:"query_evidence"`
-	Execution     *ledgercore.FXExecutionEvidence `json:"execution,omitempty"`
+	Execution     *fxevidence.FXExecutionEvidence `json:"execution,omitempty"`
 }
 
 type FXExecutionExecutor interface {
 	SubmitFX(context.Context, FXExecution) error
 	QueryFX(context.Context, FXExecution) (FXQueryResult, error)
+}
+
+// FXQueryVerifier is a separately configured trust boundary. Implementations
+// authenticate the provider response and bind its status to the executor and
+// stable request reference; the store independently checks response bytes,
+// hash, request identity, and recovery generation before applying the result.
+type FXQueryVerifier interface {
+	VerifyFXQuery(context.Context, FXExecution, FXQueryResult) error
 }
 
 func (s *Store) CreateFXExecution(tradeID, idempotencyKey, executorID string) (*FXExecution, error) {
@@ -159,7 +169,16 @@ func (s *Store) MarkFXExecutionSubmitted(tradeID string) (*FXExecution, error) {
 }
 
 func (s *Store) MarkFXExecutionUnknown(tradeID string) (*FXExecution, error) {
+	return s.markFXExecutionUnknown(tradeID, nil)
+}
+
+// Failure callbacks must be fenced just like successful query results. An old
+// timeout must not mark a newer submission UNKNOWN after verified non-execution.
+func (s *Store) markFXExecutionUnknown(tradeID string, expected *FXExecution) (*FXExecution, error) {
 	return s.mutateFXExecution(tradeID, func(execution *FXExecution, trade *Trade) (string, error) {
+		if expected != nil && (execution.SubmissionCount != expected.SubmissionCount || execution.RecoveryGeneration != expected.RecoveryGeneration) {
+			return "", errors.New("stale FX failure; submission or recovery generation changed")
+		}
 		if execution.Status == FXExecutionUnknown {
 			return "", nil
 		}
@@ -172,8 +191,11 @@ func (s *Store) MarkFXExecutionUnknown(tradeID string) (*FXExecution, error) {
 	})
 }
 
-func (s *Store) ApplyFXQueryResult(tradeID string, result FXQueryResult) (*FXExecution, error) {
+func (s *Store) applyFXQueryResult(tradeID string, result FXQueryResult) (*FXExecution, error) {
 	return s.mutateFXExecution(tradeID, func(execution *FXExecution, trade *Trade) (string, error) {
+		if result.QueryEvidence.RecoveryGeneration != execution.RecoveryGeneration {
+			return "", errors.New("stale FX query result; a newer recovery query has been claimed")
+		}
 		if execution.Status != FXExecutionSubmitted && execution.Status != FXExecutionUnknown {
 			return "", fmt.Errorf("FX query recovery is not allowed from %s", execution.Status)
 		}
@@ -192,18 +214,12 @@ func (s *Store) ApplyFXQueryResult(tradeID string, result FXQueryResult) (*FXExe
 			execution.RecoveryCount++
 			return "trade.fx_execution_pending", nil
 		case FXQueryNotExecuted:
-			if !result.QueryEvidence.Authoritative {
-				return "", errors.New("non-execution requires authoritative query evidence")
-			}
 			execution.Status = FXExecutionReady
 			execution.LastRecoveryEvidence = cloneFXQueryEvidence(&result.QueryEvidence)
 			execution.RecoveryCount++
 			trade.State = StateFXExecutionRequired
 			return "trade.fx_execution_retry_ready", nil
 		case FXQueryExecuted:
-			if !result.QueryEvidence.Authoritative {
-				return "", errors.New("execution requires authoritative query evidence")
-			}
 			if result.Execution == nil {
 				return "", errors.New("verified execution evidence is required")
 			}
@@ -220,9 +236,6 @@ func (s *Store) ApplyFXQueryResult(tradeID string, result FXQueryResult) (*FXExe
 			trade.State = StateFXExecuted
 			return "trade.fx_executed", nil
 		case FXQueryFailed:
-			if !result.QueryEvidence.Authoritative {
-				return "", errors.New("terminal failure requires authoritative query evidence")
-			}
 			execution.Status = FXExecutionFailed
 			execution.FailureEvidence = cloneFXQueryEvidence(&result.QueryEvidence)
 			execution.RecoveryCount++
@@ -237,9 +250,9 @@ func (s *Store) ApplyFXQueryResult(tradeID string, result FXQueryResult) (*FXExe
 // SubmitFXExecution persists SUBMITTED and its stable request reference before
 // calling the executor. Every submission error becomes UNKNOWN; retries require
 // a query proving that the previous request did not execute.
-func (s *Store) SubmitFXExecution(ctx context.Context, tradeID string, executor FXExecutionExecutor) (*FXExecution, error) {
-	if executor == nil {
-		return nil, errors.New("FX executor is required")
+func (s *Store) SubmitFXExecution(ctx context.Context, tradeID string, executor FXExecutionExecutor, verifier FXQueryVerifier) (*FXExecution, error) {
+	if executor == nil || verifier == nil {
+		return nil, errors.New("FX executor and query verifier are required")
 	}
 	execution, found, err := s.GetFXExecution(tradeID)
 	if err != nil {
@@ -256,39 +269,87 @@ func (s *Store) SubmitFXExecution(ctx context.Context, tradeID string, executor 
 		return nil, err
 	}
 	if err = executor.SubmitFX(ctx, *submitted); err != nil {
-		unknown, markErr := s.MarkFXExecutionUnknown(tradeID)
+		unknown, markErr := s.markFXExecutionUnknown(tradeID, submitted)
 		if markErr != nil {
 			return nil, fmt.Errorf("submission outcome uncertain (%v); persist UNKNOWN state: %w", err, markErr)
 		}
 		return unknown, fmt.Errorf("FX submission outcome uncertain; query before retry: %w", err)
 	}
-	return s.RecoverFXExecution(ctx, tradeID, executor)
+	return s.RecoverFXExecution(ctx, tradeID, executor, verifier)
 }
 
-func (s *Store) RecoverFXExecution(ctx context.Context, tradeID string, executor FXExecutionExecutor) (*FXExecution, error) {
-	if executor == nil {
-		return nil, errors.New("FX executor is required")
+func (s *Store) RecoverFXExecution(ctx context.Context, tradeID string, executor FXExecutionExecutor, verifier FXQueryVerifier) (*FXExecution, error) {
+	if executor == nil || verifier == nil {
+		return nil, errors.New("FX executor and query verifier are required")
 	}
-	execution, found, err := s.GetFXExecution(tradeID)
+	execution, err := s.claimFXRecovery(tradeID)
 	if err != nil {
 		return nil, err
-	}
-	if !found {
-		return nil, errors.New("FX execution not found")
-	}
-	if execution.Status != FXExecutionSubmitted && execution.Status != FXExecutionUnknown {
-		return nil, fmt.Errorf("FX query is not allowed from %s", execution.Status)
 	}
 	result, err := executor.QueryFX(ctx, *execution)
 	if err != nil {
 		if execution.Status == FXExecutionSubmitted {
-			if _, markErr := s.MarkFXExecutionUnknown(tradeID); markErr != nil {
+			if _, markErr := s.markFXExecutionUnknown(tradeID, execution); markErr != nil {
 				return nil, fmt.Errorf("FX query failed (%v); persist UNKNOWN state: %w", err, markErr)
 			}
 		}
 		return nil, fmt.Errorf("FX query failed; execution remains unresolved: %w", err)
 	}
-	return s.ApplyFXQueryResult(tradeID, result)
+	if err = verifier.VerifyFXQuery(ctx, *execution, result); err != nil {
+		if execution.Status == FXExecutionSubmitted {
+			if _, markErr := s.markFXExecutionUnknown(tradeID, execution); markErr != nil {
+				return nil, fmt.Errorf("query verification failed (%v); persist UNKNOWN state: %w", err, markErr)
+			}
+		}
+		return nil, fmt.Errorf("FX query evidence verification failed; execution remains unresolved: %w", err)
+	}
+	return s.applyFXQueryResult(tradeID, result)
+}
+
+// claimFXRecovery persists a monotonically increasing generation before the
+// external query. A result may mutate lifecycle state only if its generation
+// is still current when it is applied. This fences delayed responses from
+// concurrent recovery workers.
+func (s *Store) claimFXRecovery(tradeID string) (*FXExecution, error) {
+	if s.db == nil {
+		return nil, errors.New("durable Trade persistence is required for FX execution recovery")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var tradeRaw, executionRaw []byte
+	if err = tx.QueryRow(`SELECT body FROM trades WHERE id=$1 FOR UPDATE`, tradeID).Scan(&tradeRaw); err != nil {
+		return nil, err
+	}
+	if err = tx.QueryRow(`SELECT body FROM trade_fx_executions WHERE trade_id=$1 FOR UPDATE`, tradeID).Scan(&executionRaw); err != nil {
+		return nil, err
+	}
+	var trade Trade
+	var execution FXExecution
+	if err = json.Unmarshal(tradeRaw, &trade); err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(executionRaw, &execution); err != nil {
+		return nil, err
+	}
+	if execution.Status != FXExecutionSubmitted && execution.Status != FXExecutionUnknown {
+		return nil, fmt.Errorf("FX query is not allowed from %s", execution.Status)
+	}
+	execution.RecoveryGeneration++
+	execution.UpdatedAt = time.Now().UTC()
+	updated, err := json.Marshal(&execution)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(`UPDATE trade_fx_executions SET body=$2,updated_at=$3 WHERE trade_id=$1`, tradeID, string(updated), execution.UpdatedAt); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &execution, nil
 }
 
 func (s *Store) mutateFXExecution(tradeID string, update func(*FXExecution, *Trade) (string, error)) (*FXExecution, error) {
@@ -482,17 +543,24 @@ func fxExecutionRequestHash(trade *Trade, idempotencyKey, executorID string) (st
 
 func validateFXQueryEvidence(execution *FXExecution, evidence FXQueryEvidence) error {
 	if evidence.ExecutorID != execution.ExecutorID || evidence.RequestReference != execution.RequestReference ||
-		strings.TrimSpace(evidence.QueryReference) == "" || len(evidence.PayloadHash) != 64 || evidence.ObservedAt.IsZero() {
+		evidence.RecoveryGeneration != execution.RecoveryGeneration ||
+		strings.TrimSpace(evidence.QueryReference) == "" || len(evidence.RawPayload) == 0 ||
+		len(evidence.PayloadHash) != sha256.Size*2 || evidence.ObservedAt.IsZero() {
 		return errors.New("FX query evidence identity is incomplete or mismatched")
 	}
-	if _, err := hex.DecodeString(evidence.PayloadHash); err != nil {
+	providedHash, err := hex.DecodeString(evidence.PayloadHash)
+	if err != nil {
 		return errors.New("FX query evidence payload hash must be SHA-256 hex")
+	}
+	actualHash := sha256.Sum256(evidence.RawPayload)
+	if !strings.EqualFold(hex.EncodeToString(actualHash[:]), hex.EncodeToString(providedHash)) {
+		return errors.New("FX query evidence payload hash does not match response bytes")
 	}
 	return nil
 }
 
-func validateFXExecution(execution *FXExecution, evidence ledgercore.FXExecutionEvidence) error {
-	if err := ledgercore.ValidateFXExecutionEvidence(evidence); err != nil {
+func validateFXExecution(execution *FXExecution, evidence fxevidence.FXExecutionEvidence) error {
+	if err := fxevidence.ValidateFXExecutionEvidence(evidence); err != nil {
 		return err
 	}
 	if evidence.TradeID != execution.TradeID || evidence.InstitutionID != execution.InstitutionID ||
@@ -525,11 +593,11 @@ func cloneFXQueryEvidence(evidence *FXQueryEvidence) *FXQueryEvidence {
 	return &copy
 }
 
-func cloneFXExecutionEvidence(evidence *ledgercore.FXExecutionEvidence) *ledgercore.FXExecutionEvidence {
+func cloneFXExecutionEvidence(evidence *fxevidence.FXExecutionEvidence) *fxevidence.FXExecutionEvidence {
 	if evidence == nil {
 		return nil
 	}
 	copy := *evidence
-	copy.Fees = append([]ledgercore.FXFeeEvidence(nil), evidence.Fees...)
+	copy.Fees = append([]fxevidence.FXFeeEvidence(nil), evidence.Fees...)
 	return &copy
 }

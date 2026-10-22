@@ -18,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/osai/osai/pkg/correlation"
-	"github.com/osai/osai/services/quote/quotecore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -260,7 +259,6 @@ type WebhookReplayClient interface {
 }
 
 type Gateway struct {
-	quoteStore            *quotecore.QuoteStore
 	quoteClient           QuoteClient
 	tradeClient           TradeClient
 	settlementClient      SettlementClient
@@ -272,33 +270,6 @@ type Gateway struct {
 	idempotency           *idempotencyStore
 	rateLimiter           *rateLimiterStore // per-institution token bucket
 	credentialEnvironment string
-}
-
-func NewGateway(quoteStore *quotecore.QuoteStore) *Gateway {
-	if quoteStore == nil {
-		quoteStore = quotecore.NewQuoteStore()
-	}
-	return &Gateway{
-		quoteStore:  quoteStore,
-		quoteClient: NewQuoteServiceClientAdapterFromStore(quoteStore),
-		idempotency: newIdempotencyStore(),
-		rateLimiter: newRateLimiterStore(),
-	}
-}
-
-func NewGatewayWithClients(customerClient CustomerClient, quoteClient QuoteClient) *Gateway {
-	return &Gateway{
-		customerClient: customerClient,
-		quoteClient:    quoteClient,
-		idempotency:    newIdempotencyStore(),
-		rateLimiter:    newRateLimiterStore(),
-	}
-}
-
-func (g *Gateway) SetCustomerService(cs *CustomerService) {
-	if cs != nil {
-		g.customerClient = NewCustomerServiceClientAdapter(cs)
-	}
 }
 
 func (g *Gateway) SetCustomerClient(cc CustomerClient) {
@@ -402,7 +373,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Rate limiting
 	credentialID := authenticatedCredentialID(r.Header.Get("Authorization"))
 	if g.rateLimiter != nil && !g.rateLimiter.allow("institution:"+customerID, "credential:"+credentialID) {
-		w.Header().Set("Retry-After", "60")
+		w.Header().Set("Retry-After", "1")
 		writeHTTPJSON(w, http.StatusTooManyRequests, errorEnvelope("RATE_LIMIT_EXCEEDED", "too many requests", requestID))
 		return
 	}

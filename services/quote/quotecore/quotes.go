@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/osai/osai/pkg/provider"
 	"sort"
 	"strings"
 	"sync"
@@ -18,20 +19,7 @@ import (
 var ErrQuoteIdempotencyConflict = errors.New("quote idempotency key reused with different payload")
 
 // QuoteRequest is the normalized inbound request for a quote.
-type QuoteRequest struct {
-	CustomerID             string
-	CorrelationID          string
-	QuoteMode              QuoteMode
-	BaseAmountMinor        int64
-	DestinationAmountMinor int64
-	BaseCurrency           string
-	QuoteCurrency          string
-	DestinationRail        string
-	Urgency                string
-	CustomerReference      string
-	ProviderIDs            []string
-	IdempotencyKey         string
-}
+type QuoteRequest = provider.QuoteRequest
 
 // QuoteStatus models the lifecycle of an executable quote.
 type QuoteStatus string
@@ -45,19 +33,7 @@ const (
 )
 
 // ProviderQuote is the normalized provider quote returned by a provider adapter.
-type ProviderQuote struct {
-	ID                      string
-	ProviderID              string
-	BaseCurrency            string
-	QuoteCurrency           string
-	BaseAmountMinor         int64
-	RateMinor               int64
-	FeeMinor                int64
-	AmountOutMinor          int64
-	SettlementCompatibility string
-	ExpiresAt               time.Time
-	Evidence                map[string]string
-}
+type ProviderQuote = provider.ProviderQuote
 
 // RouteCandidate records the provider-neutral decision that made a quote
 // executable. The selected route is the only eligible candidate in the

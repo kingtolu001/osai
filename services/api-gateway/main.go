@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("initialize persistent API idempotency: %v", err)
 	}
 	defer idempotency.db.Close()
-	gateway := &Gateway{idempotency: idempotency}
+	gateway := &Gateway{idempotency: idempotency, rateLimiter: newRateLimiterStore()}
 	credentialEnvironment := strings.TrimSpace(os.Getenv("OSAI_API_ENVIRONMENT"))
 	if credentialEnvironment == "" {
 		log.Fatal("OSAI_API_ENVIRONMENT is required")
@@ -126,35 +126,4 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("api-gateway server failed: %v", err)
 	}
-}
-
-func seedInstitution(cs *CustomerService) {
-	if cs == nil {
-		return
-	}
-	instID := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_INSTITUTION_ID"))
-	clientID := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_CLIENT_ID"))
-	secret := strings.TrimSpace(os.Getenv("OSAI_SANDBOX_CLIENT_SECRET"))
-	if instID == "" {
-		instID = "inst_sandbox_local"
-	}
-	if clientID == "" {
-		clientID = "ck_sandbox_local"
-	}
-	if secret == "" {
-		secret = "secret_local_001"
-	}
-
-	cs.mu.Lock()
-	if _, exists := cs.institutions[instID]; !exists {
-		cs.institutions[instID] = &CustomerInstitution{ID: instID, Name: "Sandbox Institution", Status: "ACTIVE", KYBStatus: "APPROVED", Country: "US", APIEnabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	}
-	if _, exists := cs.publicToCred[clientID]; !exists {
-		cs.publicToCred[clientID] = &CustomerCredential{ID: "cred_sandbox_local", PublicID: clientID, InstitutionID: instID, Status: "ACTIVE", SecretHash: hashCustomerSecret(secret, instID), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	}
-	cs.mu.Unlock()
-
-	_ = os.Setenv("OSAI_SANDBOX_INSTITUTION_ID", instID)
-	_ = os.Setenv("OSAI_SANDBOX_CLIENT_ID", clientID)
-	_ = os.Setenv("OSAI_SANDBOX_CLIENT_SECRET", secret)
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/osai/osai/pkg/provider"
-	quotecore "github.com/osai/osai/services/quote/quotecore"
 )
 
 // NormalizedAdapter exposes the Phase 2 simulator through the Phase 3 contract.
@@ -21,7 +20,7 @@ func NewNormalizedAdapter(profile FailureProfile) *NormalizedAdapter {
 	return &NormalizedAdapter{Simulator: NewSimulator(profile)}
 }
 
-func (a *NormalizedAdapter) GetQuote(req quotecore.QuoteRequest) (quotecore.ProviderQuote, error) {
+func (a *NormalizedAdapter) GetQuote(req provider.QuoteRequest) (provider.ProviderQuote, error) {
 	return a.Simulator.GetQuote(req)
 }
 

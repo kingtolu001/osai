@@ -2,8 +2,6 @@ package provider
 
 import (
 	"time"
-
-	quotecore "github.com/osai/osai/services/quote/quotecore"
 )
 
 type ErrorClass string
@@ -122,7 +120,7 @@ type SettlementRail interface {
 }
 
 type LiquidityProvider interface {
-	GetQuote(quotecore.QuoteRequest) (quotecore.ProviderQuote, error)
+	GetQuote(QuoteRequest) (ProviderQuote, error)
 	AcceptQuote(providerQuoteID string) (map[string]string, error)
 	Health() Health
 }

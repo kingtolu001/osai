@@ -20,22 +20,6 @@ import (
 var errIdempotencyConflict = errors.New("idempotency key reused with different payload")
 var errIdempotencyInProgress = errors.New("idempotency request is still in progress")
 
-func newIdempotencyStore() *idempotencyStore {
-	dsn := strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
-	if dsn == "" {
-		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
-	}
-	if err := ensureCustomerAPISchema(db); err != nil {
-		_ = db.Close()
-		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
-	}
-	return &idempotencyStore{rows: map[string]*idempotencyEntry{}, db: db}
-}
-
 func newPersistentIdempotencyStore() (*idempotencyStore, error) {
 	dsn := strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
 	if dsn == "" {

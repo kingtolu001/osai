@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/pkg/provider"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	quotecore "github.com/osai/osai/services/quote/quotecore"
 )
 
 // FailureProfile models deterministic provider faults that the simulator can inject.
@@ -33,7 +33,7 @@ type FailureProfile struct {
 // Simulator implements a first-class provider adapter for deterministic sandbox testing.
 type Simulator struct {
 	mu             sync.Mutex
-	quotes         map[string]quotecore.ProviderQuote
+	quotes         map[string]provider.ProviderQuote
 	transfers      map[string]TransferRecord
 	transferRefs   map[string]string
 	balances       map[string]int64
@@ -109,7 +109,7 @@ type WebhookEvent struct {
 
 func NewSimulator(profile FailureProfile) *Simulator {
 	return &Simulator{
-		quotes:         make(map[string]quotecore.ProviderQuote),
+		quotes:         make(map[string]provider.ProviderQuote),
 		transfers:      make(map[string]TransferRecord),
 		transferRefs:   make(map[string]string),
 		balances:       map[string]int64{"cust_default": 1000000},
@@ -119,22 +119,22 @@ func NewSimulator(profile FailureProfile) *Simulator {
 	}
 }
 
-func (s *Simulator) GetQuote(req quotecore.QuoteRequest) (quotecore.ProviderQuote, error) {
+func (s *Simulator) GetQuote(req provider.QuoteRequest) (provider.ProviderQuote, error) {
 	if s.profile.DelayMs > 0 {
 		time.Sleep(time.Duration(s.profile.DelayMs) * time.Millisecond)
 	}
 	rate, sourceExponent, destinationExponent, err := simulatedRate(req.BaseCurrency, req.QuoteCurrency)
 	if err != nil {
-		return quotecore.ProviderQuote{}, err
+		return provider.ProviderQuote{}, err
 	}
-	amountOut, err := quotecore.ConvertMinorUnits(req.BaseAmountMinor, rate, sourceExponent, destinationExponent)
+	amountOut, err := pricing.ConvertMinorUnits(req.BaseAmountMinor, rate, sourceExponent, destinationExponent)
 	if err != nil || amountOut <= 0 {
 		if err != nil {
-			return quotecore.ProviderQuote{}, err
+			return provider.ProviderQuote{}, err
 		}
-		return quotecore.ProviderQuote{}, errors.New("simulated quote amount rounds to zero")
+		return provider.ProviderQuote{}, errors.New("simulated quote amount rounds to zero")
 	}
-	providerQuote := quotecore.ProviderQuote{
+	providerQuote := provider.ProviderQuote{
 		ID:                      "provq_" + fmt.Sprintf("%d", time.Now().UnixNano()),
 		ProviderID:              "sim_lp_1",
 		BaseCurrency:            req.BaseCurrency,
@@ -164,7 +164,7 @@ func simulatedRate(sourceCurrency, destinationCurrency string) (int64, uint8, ui
 	destinationCurrency = strings.ToUpper(strings.TrimSpace(destinationCurrency))
 	switch {
 	case sourceCurrency == destinationCurrency && (sourceCurrency == "NGN" || sourceCurrency == "USD"):
-		return quotecore.RateScale, 2, 2, nil
+		return pricing.RateScale, 2, 2, nil
 	case sourceCurrency == "USD" && destinationCurrency == "NGN":
 		return 150_000_000_000, 2, 2, nil
 	case sourceCurrency == "NGN" && destinationCurrency == "USD":

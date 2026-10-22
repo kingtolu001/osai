@@ -3,6 +3,8 @@ package quotecore
 import (
 	"errors"
 	"fmt"
+	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/pkg/provider"
 	"math/big"
 	"strings"
 )
@@ -13,11 +15,11 @@ const (
 	maxCurrencyExponent       = 9
 )
 
-type QuoteMode string
+type QuoteMode = provider.QuoteMode
 
 const (
-	QuoteModeFixedSource      QuoteMode = "FIXED_SOURCE"
-	QuoteModeFixedDestination QuoteMode = "FIXED_DESTINATION"
+	QuoteModeFixedSource      QuoteMode = provider.QuoteModeFixedSource
+	QuoteModeFixedDestination QuoteMode = provider.QuoteModeFixedDestination
 )
 
 type FeeSchedule struct {
@@ -58,9 +60,9 @@ type PricedAmounts struct {
 var (
 	ErrPricingPolicyUnavailable = errors.New("pricing policy unavailable")
 	ErrInvalidPricingPolicy     = errors.New("invalid pricing policy")
-	ErrInvalidQuoteAmount       = errors.New("invalid quote amount")
+	ErrInvalidQuoteAmount       = pricing.ErrInvalidQuoteAmount
 	ErrUnrepresentableDebit     = errors.New("source debit has no exact principal and fee representation")
-	ErrPricingOverflow          = errors.New("quote amount exceeds supported integer range")
+	ErrPricingOverflow          = pricing.ErrPricingOverflow
 )
 
 func (p FeeSchedule) Validate() error {
@@ -242,17 +244,7 @@ func feeForPrincipal(policy FeeSchedule, principal int64) (int64, error) {
 }
 
 func ConvertMinorUnits(sourceMinor, rateScaled int64, sourceExponent, destinationExponent uint8) (int64, error) {
-	if sourceMinor < 0 || rateScaled <= 0 || sourceExponent > maxCurrencyExponent || destinationExponent > maxCurrencyExponent {
-		return 0, ErrInvalidQuoteAmount
-	}
-	numerator := new(big.Int).Mul(big.NewInt(sourceMinor), big.NewInt(rateScaled))
-	numerator.Mul(numerator, pow10(destinationExponent))
-	denominator := new(big.Int).Mul(pow10(sourceExponent), big.NewInt(RateScale))
-	result := numerator.Quo(numerator, denominator)
-	if !result.IsInt64() {
-		return 0, ErrPricingOverflow
-	}
-	return result.Int64(), nil
+	return pricing.ConvertMinorUnits(sourceMinor, rateScaled, sourceExponent, destinationExponent)
 }
 
 func addMinor(left, right int64) (int64, error) {
