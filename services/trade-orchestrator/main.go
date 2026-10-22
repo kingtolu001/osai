@@ -50,6 +50,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialize trade persistence: %v", err)
 	}
+	if err := startSandboxFXRecovery(context.Background(), store); err != nil {
+		log.Fatal(err)
+	}
 	grpcAddr := os.Getenv("OSAI_TRADE_GRPC_ADDR")
 	if grpcAddr == "" {
 		grpcAddr = ":50054"
