@@ -1,0 +1,5 @@
+langgraph>=1,<2
+langgraph-checkpoint-sqlite>=3.0.1,<4
+langchain-openai>=1,<2
+langchain-anthropic>=1,<2
+pypdf>=6,<8
