@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
 	"github.com/osai/osai/services/ledger/ledgerapi"
 	"github.com/osai/osai/services/ledger/ledgergrpc"
+	"github.com/osai/osai/services/ledger/ledgerstore"
 	"github.com/osai/osai/services/settlement/ledgerclient"
 	"github.com/osai/osai/services/settlement/settlementcore"
 	"github.com/osai/osai/services/settlement/settlementstore"
@@ -58,8 +60,27 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	defer db.Close()
 	if err = db.Ping(); err != nil {
-		t.Skip("local PostgreSQL unavailable")
+		t.Fatal("configured local PostgreSQL unavailable")
 	}
+
+	adminDB := db
+	schema := "preflight_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err := adminDB.Exec(`CREATE SCHEMA ` + schema); err != nil {
+		t.Fatal(err)
+	}
+	isolatedDSN := dsn + "&search_path=" + schema
+	db, err = sql.Open("pgx", isolatedDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { db.Close(); adminDB.Exec(`DROP SCHEMA ` + schema + ` CASCADE`) }()
+	listenerProbe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	webhookAddr := listenerProbe.Addr().String()
+	listenerProbe.Close()
+	var providerBaseURL string
 	if err = settlementstore.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +90,12 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	temporalClient, err := client.Dial(client.Options{HostPort: addr})
 	if err != nil {
-		t.Skip("local Temporal unavailable")
+		t.Fatal("configured local Temporal unavailable")
 	}
 	defer temporalClient.Close()
 	binary := filepath.Join(t.TempDir(), "notification-webhook.exe")
-	if err := exec.Command("go", "build", "-o", binary, "github.com/osai/osai/services/notification-webhook").Run(); err != nil {
-		t.Fatalf("notification service build failed: %v", err)
+	if output, err := exec.Command("go", "build", "-p", "1", "-o", binary, "github.com/osai/osai/services/notification-webhook").CombinedOutput(); err != nil {
+		t.Fatalf("notification service build failed: %v %s", err, output)
 	}
 	var webhookProcess *exec.Cmd
 	stopWebhook := func() {
@@ -86,13 +107,13 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	startWebhook := func() {
 		webhookProcess = exec.Command(binary)
-		webhookProcess.Env = append(os.Environ(), "OSAI_WEBHOOK_SECRET=local-only-outbound-test", "OSAI_NOTIFICATION_TOKEN=local-only-service-test", "FLW_SECRET_HASH=local-test-hash", "OSAI_NOTIFICATION_GRPC_ADDR=127.0.0.1:0", "OSAI_WEBHOOK_PORT=127.0.0.1:8083")
+		webhookProcess.Env = append(os.Environ(), "OSAI_WEBHOOK_SECRET=local-only-outbound-test", "OSAI_NOTIFICATION_TOKEN=local-only-service-test", "FLW_SECRET_HASH=local-test-hash", "OSAI_NOTIFICATION_GRPC_ADDR=127.0.0.1:0", "OSAI_WEBHOOK_PORT="+webhookAddr, "OSAI_POSTGRES_DSN="+isolatedDSN, "FLW_BASE_URL="+providerBaseURL, "FLW_SECRET_KEY=local-test-key", "OSAI_WEBHOOK_ADMIN_TOKEN=local-preflight-admin", "OSAI_WEBHOOK_CONFIG_ENCRYPTION_KEY=local-preflight-encryption-key-over-32-bytes")
 		if err := webhookProcess.Start(); err != nil {
 			t.Fatal(err)
 		}
 		until := time.Now().Add(10 * time.Second)
 		for time.Now().Before(until) {
-			connection, err := net.DialTimeout("tcp", "127.0.0.1:8083", 100*time.Millisecond)
+			connection, err := net.DialTimeout("tcp", webhookAddr, 100*time.Millisecond)
 			if err == nil {
 				_ = connection.Close()
 				return
@@ -139,8 +160,36 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 		fmt.Fprintf(w, `{"status":"success","data":%s}`, data)
 	}))
 	defer fake.Close()
+	providerBaseURL = fake.URL + "/v3"
 	adapter := flutterwave.New(flutterwave.Config{BaseURL: fake.URL + "/v3", SecretKey: "local-test-key", SecretHash: "local-test-hash", Env: "test", Enabled: true, Attempts: attempts})
-	ledger := ledgerapi.NewService()
+
+	if err := ledgerstore.EnsureSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := ledgerapi.NewServiceWithStorage(ledgerstore.Postgres{DB: db, CustodyBankID: "local_test_bank"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ledger.PostLocalPrefund(context.Background(), ledgerapi.PrefundCommand{InstitutionID: "inst_sandbox", Currency: "NGN", AmountMinor: 30000, EvidenceReference: "local-preflight-fixture", CorrelationID: "corr_sandbox"}); err != nil {
+		t.Fatal(err)
+	}
+	fundedTradeID := func() string {
+		t.Helper()
+		id := "trd_flw_" + uuid.NewString()
+		if _, _, err := ledger.ReserveFunding(context.Background(), ledgerapi.FundingCommand{InstitutionID: "inst_sandbox", TradeID: id, Currency: "NGN", AmountMinor: 10000}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	terminalJournalCount := func() int {
+		t.Helper()
+		var count int
+		if err := db.QueryRow(`SELECT count(*) FROM ledger_journals WHERE kind='settlement.confirmed' AND institution_id='inst_sandbox'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+
 	listener := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
 	ledgerv1.RegisterLedgerServiceServer(grpcServer, &ledgergrpc.Server{Service: ledger})
@@ -152,7 +201,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	defer connection.Close()
 	repository := settlementstore.Postgres{DB: db}
-	worker, err := workflows.StartSettlementWorker(context.Background(), temporalClient, &workflows.ProviderSettlementActivities{Rails: map[string]provider.SettlementRail{"flutterwave": adapter}, Ledger: ledgerclient.New(connection), Recorder: repository})
+	worker, err := workflows.StartSettlementWorker(context.Background(), temporalClient, &workflows.ProviderSettlementActivities{Rails: map[string]provider.SettlementRail{"flutterwave": adapter}, Ledger: ledgerclient.New(connection), Funding: ledgerclient.New(connection), Recorder: repository})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +211,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &settlementGRPCServer{store: store, repository: repository, temporal: temporalClient, beneficiaries: preflightBeneficiaries{}, selector: settlementRouteSelector{Routes: map[string]settlementRoute{"flutterwave": {Config: provider.RouteConfig{Enabled: true, Environment: "test", Currencies: []string{"NGN"}, Rails: []string{"bank_transfer"}, Transfer: true}, Rail: adapter}}}}
-	tradeID := "trd_flw_" + uuid.NewString()
+	tradeID := fundedTradeID()
 	created, err := server.CreateSettlementForTrade(context.Background(), &settlementv1.CreateSettlementForTradeRequest{InstitutionId: "inst_sandbox", TradeId: tradeID, QuoteId: "quo_sandbox", CorrelationId: "corr_sandbox", ProviderId: "flutterwave", BeneficiaryId: "ben_sandbox", Amount: &settlementv1.Money{AmountMinor: 10000, Currency: "NGN"}, Purpose: "sandbox preflight"})
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +238,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	callback := fmt.Sprintf(`{"event":"transfer.completed","data":{"id":%d,"reference":%q,"amount":100,"currency":"NGN","status":"SUCCESSFUL","created_at":"2026-09-26T00:00:00Z"}}`, providerID, reference)
 	startWebhook()
 	send := func() int {
-		request, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:8083/v1/webhooks/providers/flutterwave", bytes.NewBufferString(callback))
+		request, err := http.NewRequest(http.MethodPost, "http://"+webhookAddr+"/v1/webhooks/providers/flutterwave", bytes.NewBufferString(callback))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -205,12 +254,12 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 		t.Fatalf("matching callback returned %d", code)
 	}
 	for time.Now().Before(deadline) {
-		if len(ledger.Journals()) == 1 {
+		if terminalJournalCount() == 1 {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(ledger.Journals()) != 1 {
+	if terminalJournalCount() != 1 {
 		t.Fatal("callback did not yield one verified ledger effect")
 	}
 	stopWebhook()
@@ -218,7 +267,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	if code := send(); code != http.StatusOK {
 		t.Fatalf("duplicate after restart returned %d", code)
 	}
-	if len(ledger.Journals()) != 1 {
+	if terminalJournalCount() != 1 {
 		t.Fatal("duplicate callback caused ledger effect")
 	}
 	got, err := repository.GetByID(context.Background(), created.SettlementId)
@@ -238,18 +287,18 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	// A second transfer is allowed to settle by polling before its first
 	// callback. That later callback must be acknowledged without another effect.
-	second, err := server.CreateSettlementForTrade(context.Background(), &settlementv1.CreateSettlementForTradeRequest{InstitutionId: "inst_sandbox", TradeId: "trd_flw_" + uuid.NewString(), QuoteId: "quo_sandbox", CorrelationId: "corr_sandbox", ProviderId: "flutterwave", BeneficiaryId: "ben_sandbox", Amount: &settlementv1.Money{AmountMinor: 10000, Currency: "NGN"}, Purpose: "sandbox preflight"})
+	second, err := server.CreateSettlementForTrade(context.Background(), &settlementv1.CreateSettlementForTradeRequest{InstitutionId: "inst_sandbox", TradeId: fundedTradeID(), QuoteId: "quo_sandbox", CorrelationId: "corr_sandbox", ProviderId: "flutterwave", BeneficiaryId: "ben_sandbox", Amount: &settlementv1.Money{AmountMinor: 10000, Currency: "NGN"}, Purpose: "sandbox preflight"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondDeadline := time.Now().Add(12 * time.Second)
 	for time.Now().Before(secondDeadline) {
-		if len(ledger.Journals()) == 2 {
+		if terminalJournalCount() == 2 {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(ledger.Journals()) != 2 {
+	if terminalJournalCount() != 2 {
 		t.Fatal("polling did not produce second verified ledger effect")
 	}
 	mu.Lock()
@@ -272,7 +321,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	if code := send(); code != http.StatusOK {
 		t.Fatalf("duplicate late callback returned %d", code)
 	}
-	if len(ledger.Journals()) != 2 {
+	if terminalJournalCount() != 2 {
 		t.Fatal("late callback caused another ledger effect")
 	}
 	secondStored, err := repository.GetByID(context.Background(), second.SettlementId)
@@ -285,7 +334,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	mu.Lock()
 	beforeCreateResponse = func(id int64, reference string) {
 		body := fmt.Sprintf(`{"event":"transfer.completed","data":{"id":%d,"reference":%q,"amount":100,"currency":"NGN","status":"SUCCESSFUL","created_at":"2026-09-26T00:00:00Z"}}`, id, reference)
-		request, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:8083/v1/webhooks/providers/flutterwave", bytes.NewBufferString(body))
+		request, err := http.NewRequest(http.MethodPost, "http://"+webhookAddr+"/v1/webhooks/providers/flutterwave", bytes.NewBufferString(body))
 		if err != nil {
 			earlyResult <- 0
 			return
@@ -300,7 +349,7 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 		earlyResult <- response.StatusCode
 	}
 	mu.Unlock()
-	third, err := server.CreateSettlementForTrade(context.Background(), &settlementv1.CreateSettlementForTradeRequest{InstitutionId: "inst_sandbox", TradeId: "trd_flw_" + uuid.NewString(), QuoteId: "quo_sandbox", CorrelationId: "corr_sandbox", ProviderId: "flutterwave", BeneficiaryId: "ben_sandbox", Amount: &settlementv1.Money{AmountMinor: 10000, Currency: "NGN"}, Purpose: "sandbox preflight"})
+	third, err := server.CreateSettlementForTrade(context.Background(), &settlementv1.CreateSettlementForTradeRequest{InstitutionId: "inst_sandbox", TradeId: fundedTradeID(), QuoteId: "quo_sandbox", CorrelationId: "corr_sandbox", ProviderId: "flutterwave", BeneficiaryId: "ben_sandbox", Amount: &settlementv1.Money{AmountMinor: 10000, Currency: "NGN"}, Purpose: "sandbox preflight"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,12 +363,12 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	thirdDeadline := time.Now().Add(12 * time.Second)
 	for time.Now().Before(thirdDeadline) {
-		if len(ledger.Journals()) == 3 {
+		if terminalJournalCount() == 3 {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(ledger.Journals()) != 3 {
+	if terminalJournalCount() != 3 {
 		t.Fatal("early callback did not yield one verified third ledger effect")
 	}
 	thirdStored, err := repository.GetByID(context.Background(), third.SettlementId)

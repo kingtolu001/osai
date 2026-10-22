@@ -1,0 +1,410 @@
+{
+  "version": "osai-sandbox-accounting/v1",
+  "environment": "test-only",
+  "roles": [
+    "custody",
+    "available",
+    "held",
+    "restricted",
+    "fee_revenue",
+    "fee_refunds",
+    "provider_fee_expense",
+    "provider_fee_payable"
+  ],
+  "scenarios": [
+    {
+      "name": "successful_payout_and_fee",
+      "journals": [
+        {
+          "event": "funding",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "reserve",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "available",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "held",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "verified_payout",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "held",
+              "debit_minor": "10000",
+              "credit_minor": "0"
+            },
+            {
+              "role": "custody",
+              "debit_minor": "0",
+              "credit_minor": "10000"
+            }
+          ]
+        },
+        {
+          "event": "earned_fee",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "held",
+              "debit_minor": "200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "fee_revenue",
+              "debit_minor": "0",
+              "credit_minor": "200"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "NGN:custody": "200",
+        "NGN:fee_revenue": "-200"
+      }
+    },
+    {
+      "name": "definitive_failure_releases_full_hold",
+      "journals": [
+        {
+          "event": "funding",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "reserve",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "available",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "held",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "verified_non_execution",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "held",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "NGN:custody": "10200",
+        "NGN:available": "-10200"
+      }
+    },
+    {
+      "name": "unknown_retains_full_hold_no_revenue",
+      "journals": [
+        {
+          "event": "funding",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "reserve",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "available",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "held",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "NGN:custody": "10200",
+        "NGN:held": "-10200"
+      }
+    },
+    {
+      "name": "verified_return_then_authorised_release_and_fee_refund",
+      "journals": [
+        {
+          "event": "funding",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "reserve",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "available",
+              "debit_minor": "10200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "held",
+              "debit_minor": "0",
+              "credit_minor": "10200"
+            }
+          ]
+        },
+        {
+          "event": "verified_payout",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "held",
+              "debit_minor": "10000",
+              "credit_minor": "0"
+            },
+            {
+              "role": "custody",
+              "debit_minor": "0",
+              "credit_minor": "10000"
+            }
+          ]
+        },
+        {
+          "event": "earned_fee",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "held",
+              "debit_minor": "200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "fee_revenue",
+              "debit_minor": "0",
+              "credit_minor": "200"
+            }
+          ]
+        },
+        {
+          "event": "verified_return",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "10000",
+              "credit_minor": "0"
+            },
+            {
+              "role": "restricted",
+              "debit_minor": "0",
+              "credit_minor": "10000"
+            }
+          ]
+        },
+        {
+          "event": "approved_return_release",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "restricted",
+              "debit_minor": "10000",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "10000"
+            }
+          ]
+        },
+        {
+          "event": "approved_fee_refund",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "fee_refunds",
+              "debit_minor": "200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "200"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "NGN:custody": "10200",
+        "NGN:available": "-10200",
+        "NGN:fee_revenue": "-200",
+        "NGN:fee_refunds": "200"
+      }
+    },
+    {
+      "name": "fx_success_payout_failure_retains_destination_claim_and_unearned_fee",
+      "journals": [
+        {
+          "event": "funding",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "150200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "available",
+              "debit_minor": "0",
+              "credit_minor": "150200"
+            }
+          ]
+        },
+        {
+          "event": "reserve",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "available",
+              "debit_minor": "150200",
+              "credit_minor": "0"
+            },
+            {
+              "role": "held",
+              "debit_minor": "0",
+              "credit_minor": "150200"
+            }
+          ]
+        },
+        {
+          "event": "verified_fx_source",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "held",
+              "debit_minor": "150000",
+              "credit_minor": "0"
+            },
+            {
+              "role": "custody",
+              "debit_minor": "0",
+              "credit_minor": "150000"
+            }
+          ]
+        },
+        {
+          "event": "verified_fx_destination",
+          "currency": "USD",
+          "entries": [
+            {
+              "role": "custody",
+              "debit_minor": "100",
+              "credit_minor": "0"
+            },
+            {
+              "role": "restricted",
+              "debit_minor": "0",
+              "credit_minor": "100"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "NGN:custody": "200",
+        "NGN:held": "-200",
+        "USD:custody": "100",
+        "USD:restricted": "-100"
+      }
+    },
+    {
+      "name": "provider_charge_is_osai_expense_not_customer_debit",
+      "journals": [
+        {
+          "event": "verified_provider_charge",
+          "currency": "NGN",
+          "entries": [
+            {
+              "role": "provider_fee_expense",
+              "debit_minor": "50",
+              "credit_minor": "0"
+            },
+            {
+              "role": "provider_fee_payable",
+              "debit_minor": "0",
+              "credit_minor": "50"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "NGN:provider_fee_expense": "50",
+        "NGN:provider_fee_payable": "-50"
+      }
+    }
+  ]
+}

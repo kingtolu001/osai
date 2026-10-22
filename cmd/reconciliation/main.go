@@ -41,7 +41,10 @@ func main() {
 		if err == nil {
 			if err = db.Ping(); err == nil {
 				if err = reconciliation.EnsureSchema(db); err == nil {
-					service := reconciliation.NewServiceWithStore(&reconciliation.PostgresStore{DB: db})
+					service, loadErr := reconciliation.NewServiceWithStore(&reconciliation.PostgresStore{DB: db})
+					if loadErr != nil {
+						log.Fatal("reconciliation durable state unavailable")
+					}
 					if err = runAutomaticFlutterwave(service); err != nil {
 						log.Fatal(err)
 					}

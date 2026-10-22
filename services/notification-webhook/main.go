@@ -17,13 +17,14 @@ import (
 	"github.com/osai/osai/pkg/provider"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	"github.com/osai/osai/services/notification-webhook/webhookcore"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc"
 )
 
 func main() {
 	if err := observability.Init("notification-webhook"); err != nil {
-		log.Printf("otel init warning: %v", err)
+		log.Fatalf("initialize notification webhook observability: %v", err)
 	}
 	database, err := postgres.Open("notification-webhook")
 	if err != nil {
@@ -44,6 +45,9 @@ func main() {
 	}
 	if err := store.EnsureSchema(); err != nil {
 		log.Fatalf("initialize customer webhook persistence: %v", err)
+	}
+	if err := store.RegisterMetrics(); err != nil {
+		log.Fatalf("initialize customer webhook metrics: %v", err)
 	}
 	publishToken := strings.TrimSpace(os.Getenv("OSAI_NOTIFICATION_TOKEN"))
 	configureToken := strings.TrimSpace(os.Getenv("OSAI_WEBHOOK_ADMIN_TOKEN"))
@@ -96,7 +100,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("notification gRPC listen failed: %v", err)
 	}
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	notificationv1.RegisterNotificationServiceServer(server, &notificationGRPCServer{store: store, publishToken: publishToken, configureToken: configureToken})
 	log.Printf("notification gRPC listening on %s", grpcAddr)
 	if err := server.Serve(listener); err != nil {

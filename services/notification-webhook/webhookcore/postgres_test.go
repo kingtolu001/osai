@@ -73,6 +73,23 @@ func TestPostgresRetryAndDeadLetter(t *testing.T) {
 	if status != "DEAD_LETTER" || count != 2 {
 		t.Fatalf("status=%s attempts=%d", status, count)
 	}
+	history, err := store.DeliveryHistory(context.Background(), inst, eventID, 1, 0)
+	if err != nil || history.Status != "DEAD_LETTER" || history.AttemptCount != 2 || len(history.Attempts) != 1 || history.Attempts[0].AttemptNumber != 2 {
+		t.Fatalf("delivery history did not return the latest institution-scoped attempt: history=%+v err=%v", history, err)
+	}
+	if _, err = store.DeliveryHistory(context.Background(), "another-institution", eventID, 10, 0); !errors.Is(err, ErrDeliveryHistoryNotFound) {
+		t.Fatalf("cross-institution history read: got %v, want not found", err)
+	}
+	if _, err = store.DeliveryHistory(context.Background(), inst, eventID, 101, 0); err == nil {
+		t.Fatal("delivery history accepted an unbounded page size")
+	}
+	events, total, err := store.ListDeliveryEvents(context.Background(), inst, "DEAD_LETTER", 10, 0)
+	if err != nil || total != 1 || len(events) != 1 || events[0].EventID != eventID || events[0].AttemptCount != 2 {
+		t.Fatalf("dead-letter operations list mismatch: events=%+v total=%d err=%v", events, total, err)
+	}
+	if _, _, err = store.ListDeliveryEvents(context.Background(), inst, "UNKNOWN", 10, 0); !errors.Is(err, ErrInvalidDeliveryHistoryRequest) {
+		t.Fatalf("invalid delivery status filter: got %v", err)
+	}
 	replayKey := "replay-" + id
 	const concurrentReplayRequests = 8
 	var replayWG sync.WaitGroup

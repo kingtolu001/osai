@@ -3,6 +3,7 @@ package reconciliation
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	providerpkg "github.com/osai/osai/pkg/provider"
 )
 
@@ -233,7 +235,6 @@ type Service struct {
 	dedupKeyCounts     map[string]int
 	scenarios          map[string]bool
 	directLedgerWrites int
-	sequence           int
 	store              StoreReaderWriter
 }
 
@@ -247,13 +248,17 @@ func NewService() *Service {
 	}
 }
 
-func NewServiceWithStore(store StoreReaderWriter) *Service {
+func NewServiceWithStore(store StoreReaderWriter) (*Service, error) {
 	svc := NewService()
 	svc.store = store
 	if store == nil {
-		return svc
+		return nil, fmt.Errorf("reconciliation store required")
 	}
-	if items, err := store.LoadEvidence(); err == nil {
+	items, err := store.LoadEvidence()
+	if err != nil {
+		return nil, fmt.Errorf("load reconciliation evidence: %w", err)
+	}
+	{
 		seen := make(map[string]struct{}, len(items))
 		for _, ev := range items {
 			key := ev.RawPayloadHash
@@ -282,24 +287,39 @@ func NewServiceWithStore(store StoreReaderWriter) *Service {
 			}
 		}
 	}
-	if breaks, err := store.LoadBreaks(); err == nil {
+	breaks, err := store.LoadBreaks()
+	if err != nil {
+		return nil, fmt.Errorf("load reconciliation breaks: %w", err)
+	}
+	{
 		for _, brk := range breaks {
 			if brk != nil {
 				svc.breaks[brk.ID] = brk
 			}
 		}
 	}
-	if approvals, err := store.LoadApprovals(); err == nil {
+	approvals, err := store.LoadApprovals()
+	if err != nil {
+		return nil, fmt.Errorf("load reconciliation approvals: %w", err)
+	}
+	{
 		for _, approval := range approvals {
 			if approval == nil {
 				continue
+			}
+			amount, err := approvalAmountMinor(approval.ProposedEffect["amount_minor"])
+			currency := approvalCurrency(approval.ProposedEffect["currency"])
+			if err != nil || strings.TrimSpace(currency) == "" || approval.BreakID == "" ||
+				approval.Proposer == "" || approval.Approver == "" || approval.Proposer == approval.Approver ||
+				(approval.Status != "PROPOSED" && approval.Status != "APPROVED" && approval.Status != "REJECTED") {
+				return nil, fmt.Errorf("invalid persisted reconciliation approval")
 			}
 			adj := &Adjustment{
 				BreakID:     approval.BreakID,
 				Maker:       approval.Proposer,
 				Checker:     approval.Approver,
-				AmountMinor: approvalAmountMinor(approval.ProposedEffect["amount_minor"]),
-				Currency:    approvalCurrency(approval.ProposedEffect["currency"]),
+				AmountMinor: amount,
+				Currency:    currency,
 				Comment:     approval.Reason,
 				Approved:    approval.Status == "APPROVED",
 				State:       approval.Status,
@@ -312,16 +332,21 @@ func NewServiceWithStore(store StoreReaderWriter) *Service {
 			svc.adjustments[approval.BreakID] = adj
 		}
 	}
-	return svc
+	return svc, nil
 }
 
-func (s *Service) NewBreak(breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+func (s *Service) NewBreak(breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) (*ReconciliationBreak, error) {
 	return s.newBreakWithID("", breakType, provider, currency, expected, observed, delta, value, age, owner, state, evidence, comments, resolution)
 }
 
-func (s *Service) newBreakWithID(id string, breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+func (s *Service) newBreakWithID(id string, breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) (*ReconciliationBreak, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if id == "" {
-		id = fmt.Sprintf("break_%d", s.nextSequence())
+		id = "break_" + uuid.NewString()
+	}
+	if existing := s.breaks[id]; existing != nil {
+		return cloneBreak(existing), nil
 	}
 	now := time.Now().UTC()
 	brk := &ReconciliationBreak{
@@ -343,7 +368,7 @@ func (s *Service) newBreakWithID(id string, breakType BreakType, provider, curre
 		LastSeen:   now,
 		CreatedAt:  now,
 		History: []BreakTransition{{
-			ID:            fmt.Sprintf("break_event_%d", s.nextSequence()),
+			ID:            "break_event_" + uuid.NewString(),
 			BreakID:       id,
 			PreviousState: "",
 			NewState:      state,
@@ -352,20 +377,20 @@ func (s *Service) newBreakWithID(id string, breakType BreakType, provider, curre
 			Timestamp:     now,
 		}},
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.breaks[brk.ID] = brk
 	if s.store != nil {
-		_ = s.store.SaveBreak(brk)
+		if err := s.store.SaveBreak(brk); err != nil {
+			return nil, fmt.Errorf("persist reconciliation break: %w", err)
+		}
 	}
-	return brk
+	s.breaks[brk.ID] = brk
+	return cloneBreak(brk), nil
 }
 
-func (s *Service) ReconcileTransaction(expected ExpectedTransaction, observed StatementRow) *ReconciliationBreak {
+func (s *Service) ReconcileTransaction(expected ExpectedTransaction, observed StatementRow) (*ReconciliationBreak, error) {
 	if expected.ID == "" && observed.ID == "" {
-		return nil
+		return nil, nil
 	}
-	newBreak := func(breakType BreakType, provider, currency string, expectedValue, observedValue, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+	newBreak := func(breakType BreakType, provider, currency string, expectedValue, observedValue, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) (*ReconciliationBreak, error) {
 		return s.upsertTransactionBreak(expected, breakType, provider, currency, expectedValue, observedValue, delta, value, age, owner, state, evidence, comments, resolution)
 	}
 	if observed.ID == "" || observed.AmountMinor == 0 && observed.Currency == "" && observed.Beneficiary == "" {
@@ -379,8 +404,10 @@ func (s *Service) ReconcileTransaction(expected ExpectedTransaction, observed St
 		}
 	}
 	if observed.Drift == DriftAmount || observed.Drift == DriftStatement {
+		s.mu.Lock()
 		s.scenarios["amount_drift"] = true
 		s.scenarios["statement_drift"] = true
+		s.mu.Unlock()
 	}
 	if expected.Provider != "" && observed.Provider != "" && expected.Provider != observed.Provider {
 		return newBreak(BreakTypeUnmatchedExternal, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider status conflict"}, "manual_review")
@@ -389,8 +416,7 @@ func (s *Service) ReconcileTransaction(expected ExpectedTransaction, observed St
 		if observed.ProviderRef != "" && expected.ProviderRef != "" && observed.ProviderRef != expected.ProviderRef {
 			return newBreak(BreakTypeUnmatchedExternal, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider reference mismatch"}, "manual_review")
 		}
-		s.resolveTransactionBreaks(expected)
-		return nil
+		return nil, s.resolveTransactionBreaks(expected)
 	}
 	if expected.Currency != observed.Currency {
 		return newBreak(BreakTypeCurrencyMismatch, observed.Provider, observed.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"currency mismatch"}, "manual_review")
@@ -402,18 +428,20 @@ func (s *Service) ReconcileTransaction(expected ExpectedTransaction, observed St
 		return newBreak(BreakTypeFeeMismatch, observed.Provider, observed.Currency, expected.FeeMinor, observed.FeeMinor, expected.FeeMinor-observed.FeeMinor, observed.FeeMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"fee mismatch"}, "manual_review")
 	}
 	if expected.Currency == observed.Currency && expected.Beneficiary == observed.Beneficiary {
-		s.resolveTransactionBreaks(expected)
-		return nil
+		return nil, s.resolveTransactionBreaks(expected)
 	}
 	return newBreak(BreakTypeUnmatchedExternal, observed.Provider, expected.Currency, expected.AmountMinor, observed.AmountMinor, expected.AmountMinor-observed.AmountMinor, observed.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"no permitted composite fallback"}, "manual_review")
 }
 
-func (s *Service) ReconcileBalance(account string, internalNostro, providerClosing, inFlight int64) *ReconciliationBreak {
+func (s *Service) ReconcileBalance(account, currency string, internalNostro, providerClosing, inFlight int64) (*ReconciliationBreak, error) {
+	if account == "" || strings.TrimSpace(currency) == "" {
+		return nil, fmt.Errorf("account and currency required")
+	}
 	expected := internalNostro - inFlight
 	if providerClosing == expected {
-		return nil
+		return nil, nil
 	}
-	return s.newBreak(BreakTypeBalanceMismatch, account, "USD", expected, providerClosing, expected-providerClosing, providerClosing, 0, "treasury", BreakStateOpen, nil, []string{"nostro closing balance mismatch"}, "manual_review")
+	return s.newBreak(BreakTypeBalanceMismatch, account, currency, expected, providerClosing, expected-providerClosing, providerClosing, 0, "treasury", BreakStateOpen, nil, []string{"nostro closing balance mismatch"}, "manual_review")
 }
 
 func transactionBreakID(expected ExpectedTransaction, breakType BreakType) string {
@@ -428,28 +456,34 @@ func transactionBreakID(expected ExpectedTransaction, breakType BreakType) strin
 	return "break_tx_" + hex.EncodeToString(sum[:])
 }
 
-func (s *Service) upsertTransactionBreak(expected ExpectedTransaction, breakType BreakType, provider, currency string, expectedValue, observedValue, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
+func (s *Service) upsertTransactionBreak(expected ExpectedTransaction, breakType BreakType, provider, currency string, expectedValue, observedValue, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) (*ReconciliationBreak, error) {
 	id := transactionBreakID(expected, breakType)
 	s.mu.Lock()
 	if existing := s.breaks[id]; existing != nil {
+		existing = cloneBreak(existing)
 		existing.LastSeen = time.Now().UTC()
 		existing.Observed = observedValue
 		existing.Delta = delta
 		wasResolved := existing.State == BreakStateResolved
-		if s.store != nil {
-			_ = s.store.SaveBreak(existing)
-		}
-		s.mu.Unlock()
 		if wasResolved {
-			_ = s.TransitionBreak(id, BreakStateReopened, "reconciliation", "discrepancy reappeared", "")
+			existing.State = BreakStateReopened
+			existing.History = append(existing.History, BreakTransition{ID: "transition_" + uuid.NewString(), BreakID: id, PreviousState: BreakStateResolved, NewState: BreakStateReopened, Actor: "reconciliation", Reason: "discrepancy reappeared", Timestamp: existing.LastSeen})
 		}
-		return existing
+		if s.store != nil {
+			if err := s.store.SaveBreak(existing); err != nil {
+				s.mu.Unlock()
+				return nil, err
+			}
+		}
+		s.breaks[id] = existing
+		s.mu.Unlock()
+		return cloneBreak(existing), nil
 	}
 	s.mu.Unlock()
 	return s.newBreakWithID(id, breakType, provider, currency, expectedValue, observedValue, delta, value, age, owner, state, evidence, comments, resolution)
 }
 
-func (s *Service) resolveTransactionBreaks(expected ExpectedTransaction) {
+func (s *Service) resolveTransactionBreaks(expected ExpectedTransaction) error {
 	for _, kind := range []BreakType{BreakTypeMissingExternalEvidence, BreakTypeLateEvidence, BreakTypeUnmatchedExternal, BreakTypeCurrencyMismatch, BreakTypeAmountMismatch, BreakTypeFeeMismatch} {
 		id := transactionBreakID(expected, kind)
 		s.mu.Lock()
@@ -457,9 +491,12 @@ func (s *Service) resolveTransactionBreaks(expected ExpectedTransaction) {
 		open := brk != nil && brk.State != BreakStateResolved
 		s.mu.Unlock()
 		if open {
-			_ = s.ResolveBreak(id, "reconciliation", "matching provider evidence received", "")
+			if err := s.ResolveBreak(id, "reconciliation", "matching provider evidence received", ""); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 func (s *Service) IngestProviderEvidence(ev providerpkg.Evidence, row StatementRow) (StatementRow, error) {
@@ -505,7 +542,7 @@ func (s *Service) IngestBalanceEvidence(provider, account, currency string, bala
 
 func (s *Service) IngestStatement(row StatementRow) (StatementRow, error) {
 	if row.ID == "" {
-		row.ID = fmt.Sprintf("ext_%d", s.nextSequence())
+		row.ID = "ext_" + uuid.NewString()
 	}
 	if row.RawHash == "" {
 		row.RawHash = hashRow(row)
@@ -528,7 +565,6 @@ func (s *Service) IngestStatement(row StatementRow) (StatementRow, error) {
 		return row, nil
 	}
 	row.IngestionTS = time.Now().UTC()
-	s.observed[key] = row
 	if s.store != nil {
 		ev := Evidence{
 			ID:             row.ID,
@@ -550,6 +586,7 @@ func (s *Service) IngestStatement(row StatementRow) (StatementRow, error) {
 			return row, err
 		}
 	}
+	s.observed[key] = row
 	return row, nil
 }
 
@@ -562,6 +599,7 @@ func (s *Service) TransitionBreak(breakID, newState, actor, reason, correlationI
 	if !ok {
 		return fmt.Errorf("break %s not found", breakID)
 	}
+	brk = cloneBreak(brk)
 	previous := brk.State
 	if previous == "" {
 		previous = BreakStateOpen
@@ -570,7 +608,7 @@ func (s *Service) TransitionBreak(breakID, newState, actor, reason, correlationI
 		return fmt.Errorf("invalid break transition %s -> %s", previous, newState)
 	}
 	brk.History = append(brk.History, BreakTransition{
-		ID:            fmt.Sprintf("transition_%d", s.nextSequence()),
+		ID:            "transition_" + uuid.NewString(),
 		BreakID:       breakID,
 		PreviousState: previous,
 		NewState:      newState,
@@ -586,8 +624,11 @@ func (s *Service) TransitionBreak(breakID, newState, actor, reason, correlationI
 		brk.Resolution = reason
 	}
 	if s.store != nil {
-		_ = s.store.SaveBreak(brk)
+		if err := s.store.SaveBreak(brk); err != nil {
+			return fmt.Errorf("persist break transition: %w", err)
+		}
 	}
+	s.breaks[breakID] = brk
 	return nil
 }
 
@@ -616,6 +657,9 @@ func isValidBreakTransition(previous, next string) bool {
 }
 
 func (s *Service) ProposeAdjustment(breakID, maker, checker string, amountMinor int64, currency, comment string) (*Adjustment, error) {
+	if breakID == "" || amountMinor <= 0 || strings.TrimSpace(currency) == "" {
+		return nil, fmt.Errorf("break, positive integer amount and currency are required")
+	}
 	if maker == "" || checker == "" {
 		return nil, fmt.Errorf("maker and checker are required")
 	}
@@ -636,10 +680,13 @@ func (s *Service) ProposeAdjustment(breakID, maker, checker string, amountMinor 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing, ok := s.adjustments[breakID]; ok && existing.State == "APPROVED" {
-		return nil, fmt.Errorf("adjustment %s already approved", breakID)
+	if existing, ok := s.adjustments[breakID]; ok {
+		if existing.State != "PROPOSED" || existing.Maker != maker || existing.Checker != checker || existing.AmountMinor != amountMinor || existing.Currency != currency || existing.Comment != comment {
+			return nil, fmt.Errorf("adjustment proposal already exists with different state or economics")
+		}
+		copy := *existing
+		return &copy, nil
 	}
-	s.adjustments[breakID] = adj
 	if s.store != nil {
 		approval := &Approval{
 			ID:             fmt.Sprintf("approval_%s", breakID),
@@ -652,9 +699,13 @@ func (s *Service) ProposeAdjustment(breakID, maker, checker string, amountMinor 
 			CreatedAt:      adj.CreatedAt,
 			UpdatedAt:      adj.UpdatedAt,
 		}
-		_ = s.store.SaveApproval(approval)
+		if err := s.store.SaveApproval(approval); err != nil {
+			return nil, fmt.Errorf("persist adjustment proposal: %w", err)
+		}
 	}
-	return adj, nil
+	s.adjustments[breakID] = adj
+	copy := *adj
+	return &copy, nil
 }
 
 func (s *Service) ApproveAdjustment(breakID, maker, checker string) error {
@@ -676,6 +727,8 @@ func (s *Service) ApproveAdjustment(breakID, maker, checker string) error {
 	if adj.State == "REJECTED" {
 		return fmt.Errorf("adjustment %s rejected and cannot be approved", breakID)
 	}
+	copy := *adj
+	adj = &copy
 	adj.State = "APPROVED"
 	adj.Approved = true
 	adj.UpdatedAt = time.Now().UTC()
@@ -691,8 +744,11 @@ func (s *Service) ApproveAdjustment(breakID, maker, checker string) error {
 			CreatedAt:      adj.CreatedAt,
 			UpdatedAt:      adj.UpdatedAt,
 		}
-		_ = s.store.SaveApproval(approval)
+		if err := s.store.SaveApproval(approval); err != nil {
+			return fmt.Errorf("persist adjustment approval: %w", err)
+		}
 	}
+	s.adjustments[breakID] = adj
 	return nil
 }
 
@@ -709,6 +765,8 @@ func (s *Service) RejectAdjustment(breakID, checker, reason string) error {
 	if adj.Checker != checker {
 		return fmt.Errorf("checker mismatch")
 	}
+	copy := *adj
+	adj = &copy
 	adj.State = "REJECTED"
 	adj.Approved = false
 	adj.UpdatedAt = time.Now().UTC()
@@ -727,8 +785,11 @@ func (s *Service) RejectAdjustment(breakID, checker, reason string) error {
 			CreatedAt:      adj.CreatedAt,
 			UpdatedAt:      adj.UpdatedAt,
 		}
-		_ = s.store.SaveApproval(approval)
+		if err := s.store.SaveApproval(approval); err != nil {
+			return fmt.Errorf("persist adjustment rejection: %w", err)
+		}
 	}
+	s.adjustments[breakID] = adj
 	return nil
 }
 
@@ -802,47 +863,55 @@ func (s *Service) DirectLedgerWrites() int {
 	return s.directLedgerWrites
 }
 
-func (s *Service) nextSequence() int {
-	s.sequence++
-	return s.sequence
-}
-
-func (s *Service) newBreak(breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) *ReconciliationBreak {
-	brk := s.NewBreak(breakType, provider, currency, expected, observed, delta, value, age, owner, state, evidence, comments, resolution)
+func (s *Service) newBreak(breakType BreakType, provider, currency string, expected, observed, delta, value int64, age time.Duration, owner, state string, evidence []Evidence, comments []string, resolution string) (*ReconciliationBreak, error) {
 	if provider == "" {
-		brk.Provider = "provider_unknown"
+		provider = "provider_unknown"
 	}
 	if currency == "" {
-		brk.Currency = "USD"
+		return nil, fmt.Errorf("reconciliation currency required")
 	}
-	return brk
+	return s.NewBreak(breakType, provider, currency, expected, observed, delta, value, age, owner, state, evidence, comments, resolution)
 }
 
-func approvalAmountMinor(value any) int64 {
+func cloneBreak(brk *ReconciliationBreak) *ReconciliationBreak {
+	copy := *brk
+	copy.History = append([]BreakTransition(nil), brk.History...)
+	copy.Evidence = append([]Evidence(nil), brk.Evidence...)
+	copy.Comments = append([]string(nil), brk.Comments...)
+	copy.EvidenceIDs = append([]string(nil), brk.EvidenceIDs...)
+	copy.InternalIDs = append([]string(nil), brk.InternalIDs...)
+	copy.CandidateIDs = append([]string(nil), brk.CandidateIDs...)
+	return &copy
+}
+
+func approvalAmountMinor(value any) (int64, error) {
+	var amount int64
+	var err error
 	switch v := value.(type) {
 	case int:
-		return int64(v)
+		amount = int64(v)
 	case int64:
-		return v
+		amount = v
 	case int32:
-		return int64(v)
-	case float64:
-		return int64(v)
-	case float32:
-		return int64(v)
+		amount = int64(v)
+	case json.Number:
+		amount, err = v.Int64()
 	case string:
-		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return parsed
-		}
+		amount, err = strconv.ParseInt(v, 10, 64)
+	default:
+		return 0, fmt.Errorf("adjustment amount must be an exact integer")
 	}
-	return 0
+	if err != nil || amount <= 0 {
+		return 0, fmt.Errorf("invalid adjustment amount")
+	}
+	return amount, nil
 }
 
 func approvalCurrency(value any) string {
 	if s, ok := value.(string); ok {
 		return s
 	}
-	return "USD"
+	return ""
 }
 
 func hashRow(row StatementRow) string {

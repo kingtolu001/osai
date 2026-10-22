@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
@@ -85,7 +86,7 @@ func (s *tradeServer) reserveFunding(ctx context.Context, institutionID, tradeID
 		command.PricingHash = snapshot.Hash
 		command.PricingSnapshotJson = string(snapshotJSON)
 	}
-	resp, err := s.ledgerClient.ReserveFunding(ctx, command)
+	resp, err := s.ledgerClient.ReserveFunding(sandboxpolicy.Outgoing(ctx), command)
 	if err != nil {
 		return err
 	}
@@ -201,7 +202,11 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 		trade.State = tradecore.StateFunded
 		trade.Status = string(tradecore.StateFunded)
 	}
-	if pricingSnapshot != nil && pricingSnapshot.FeeMinor > 0 {
+	sandboxFees, policyErr := sandboxpolicy.Read()
+	if policyErr != nil {
+		return nil, status.Error(codes.FailedPrecondition, "invalid sandbox accounting configuration")
+	}
+	if pricingSnapshot != nil && pricingSnapshot.FeeMinor > 0 && !sandboxFees {
 		if trade.State != tradecore.StateFeeAccountingRequired {
 			if err := s.store.SetStatus(trade.ID, tradecore.StateFeeAccountingRequired); err != nil {
 				return nil, status.Error(codes.Internal, "fee accounting state persistence failed")

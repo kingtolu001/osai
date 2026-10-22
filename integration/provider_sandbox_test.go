@@ -25,12 +25,18 @@ import (
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	"github.com/osai/osai/services/notification-webhook/webhookcore"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // This opt-in test builds and starts the same service binaries as the local
 // deployment. It uses a loopback HTTP provider and a fresh PostgreSQL database.
-func TestProviderSandboxSeparateServices(t *testing.T) {
+func TestProviderSandboxSeparateServices(t *testing.T) { runProviderSandboxSeparateServices(t, false) }
+
+func TestSandboxFeeSeparateServices(t *testing.T) { runProviderSandboxSeparateServices(t, true) }
+
+func runProviderSandboxSeparateServices(t *testing.T, enableFees bool) {
 	adminDSN, temporal := os.Getenv("OSAI_POSTGRES_DSN"), os.Getenv("OSAI_TEMPORAL_ADDR")
 	if adminDSN == "" || temporal == "" {
 		t.Skip("local PostgreSQL and Temporal addresses required")
@@ -104,6 +110,11 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 		"FLW_ENV": "test", "FLW_BASE_URL": fake.URL + "/v3", "FLW_SECRET_KEY": "local-" + randomHex(t, 20), "FLW_SECRET_HASH": hash,
 		"FLW_RECONCILIATION_ENABLED": "true", "OSAI_FLW_EXPECTED_FEE_MINOR": "0", "OSAI_LOCAL_RECONCILIATION_LAG": "0s",
 		"OSAI_LOCAL_PROOF_MODE": "true", "OSAI_LOCAL_PREFUND_TOKEN": prefundToken, "OSAI_CUSTODY_BANK_ID": "local_test_bank",
+	}
+	env["OSAI_SANDBOX_ACCOUNTING_POLICY"] = ""
+	if enableFees {
+		env["OSAI_SANDBOX_ACCOUNTING_POLICY"] = "osai-sandbox-accounting/v1"
+		env["OSAI_SANDBOX_LEDGER_TOKEN"] = randomHex(t, 32)
 	}
 	runtime := newProofRuntime(t, env)
 	for _, item := range []struct{ name, pkg, port string }{
@@ -204,6 +215,9 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	defer ledgerConn.Close()
 	ledgerClient := ledgerv1.NewLedgerServiceClient(ledgerConn)
 	fixtureContext := metadata.AppendToOutgoingContext(context.Background(), "x-osai-local-prefund-token", prefundToken)
+	if enableFees {
+		fixtureContext = metadata.AppendToOutgoingContext(fixtureContext, "x-osai-sandbox-ledger-token", env["OSAI_SANDBOX_LEDGER_TOKEN"])
+	}
 	statusCode, beneficiary := call("POST", api+"/v1/beneficiaries", clientAuth, "beneficiary-1", `{"name":"Proof recipient","bank_code":"044","account_number":"0690000040"}`)
 	if statusCode != http.StatusAccepted || beneficiary["approval_status"] != "PENDING" {
 		t.Fatalf("beneficiary registration: code=%d response=%v", statusCode, beneficiary)
@@ -291,7 +305,14 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	if proofCount(db, `SELECT count(*) FROM trade_transitions WHERE trade_id=$1 AND to_state='FUNDED'`, tradeID) != 1 || proofCount(db, `SELECT count(*) FROM trade_transitions WHERE trade_id=$1 AND from_state='FUNDED' AND to_state='SETTLING'`, tradeID) != 1 {
 		t.Fatal("trade did not pass through FUNDED before SETTLING")
 	}
-	replayFunding, err := ledgerClient.ReserveFunding(context.Background(), &ledgerv1.FundingReservationCommand{InstitutionId: institution, TradeId: tradeID, Amount: &ledgerv1.Money{AmountMinor: 10000, Currency: "NGN"}, CorrelationId: correlation})
+	replayCommand := &ledgerv1.FundingReservationCommand{InstitutionId: institution, TradeId: tradeID, Amount: &ledgerv1.Money{AmountMinor: 10000, Currency: "NGN"}, CorrelationId: correlation}
+	if _, err := ledgerClient.ReserveFunding(fixtureContext, replayCommand); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("incomplete funding replay must report a payload conflict: %v", err)
+	}
+	if err := db.QueryRow(`SELECT source_principal_minor,fee_minor,pricing_hash,pricing_snapshot_json FROM ledger_funding_reservations WHERE trade_id=$1`, tradeID).Scan(&replayCommand.SourcePrincipalMinor, &replayCommand.FeeMinor, &replayCommand.PricingHash, &replayCommand.PricingSnapshotJson); err != nil {
+		t.Fatal(err)
+	}
+	replayFunding, err := ledgerClient.ReserveFunding(fixtureContext, replayCommand)
 	if err != nil || !replayFunding.AlreadyApplied || proofCount(db, `SELECT count(*) FROM ledger_journals WHERE dedup_key=$1`, "hold:"+tradeID) != 1 {
 		t.Fatalf("funding reservation replay changed hold: response=%v error=%v", replayFunding, err)
 	}
@@ -671,13 +692,21 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	if code, _ := proofHTTP(t, http.MethodPost, quoteAdmin+"/v1/operator/pricing/approve", "Bearer "+pricingCheckerToken, "", feeCorrelation, string(feeDecisionBody)); code != http.StatusNoContent {
 		t.Fatalf("fee schedule approval: code=%d", code)
 	}
-	feeQuoteCode, feeQuote := call(http.MethodPost, api+"/v1/quotes", clientAuth, "quote-fee-1", `{"base_amount_minor":20000,"base_currency":"NGN","quote_currency":"NGN","destination_rail":"sim_lp_1","customer_reference":"proof-fee-order"}`)
+	feeRail := "sim_lp_1"
+	if enableFees {
+		feeRail = "flutterwave"
+	}
+	feeQuoteBody := fmt.Sprintf(`{"base_amount_minor":20000,"base_currency":"NGN","quote_currency":"NGN","destination_rail":%q,"customer_reference":"proof-fee-order"}`, feeRail)
+	feeQuoteCode, feeQuote := call(http.MethodPost, api+"/v1/quotes", clientAuth, "quote-fee-1", feeQuoteBody)
 	if feeQuoteCode != http.StatusOK || feeQuote["source_principal_minor"] != float64(19500) ||
 		feeQuote["fee_minor"] != float64(500) || feeQuote["total_debit_minor"] != float64(20000) {
 		t.Fatalf("fee-bearing quote: code=%d response=%v", feeQuoteCode, feeQuote)
 	}
 	feeQuoteID := stringField(t, feeQuote, "quote_id")
 	feeAcceptBody := `{}`
+	if enableFees {
+		feeAcceptBody = acceptBody
+	}
 	feeAcceptCode, feeAcceptance := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody)
 	if feeAcceptCode != http.StatusOK || feeAcceptance["trade_id"] == "" {
 		t.Fatalf("fee-bearing quote acceptance: code=%d response=%v", feeAcceptCode, feeAcceptance)
@@ -696,7 +725,9 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
+	// Replaying a completed edge request returns its original receipt. A new
+	// funding attempt uses a new request key; Quote retains the original trade.
+	if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-after-short-prefund", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
 		t.Fatalf("insufficient fee funding retry lost trade identity: code=%d response=%v", code, response)
 	}
 	if proofCount(db, `SELECT count(*) FROM ledger_funding_reservations WHERE trade_id=$1`, feeTradeID) != 0 {
@@ -708,8 +739,45 @@ func TestProviderSandboxSeparateServices(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-1", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
+	if enableFees {
+		provider.mu.Lock()
+		provider.status = "SUCCESSFUL"
+		provider.mu.Unlock()
+	}
+	if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-after-exact-prefund", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
 		t.Fatalf("fee-bearing funding did not recover after exact prefund: code=%d response=%v", code, response)
+	}
+
+	if enableFees {
+		waitFor(t, 30*time.Second, func() bool {
+			return proofCount(db, `SELECT count(*) FROM ledger_funding_reservations WHERE trade_id=$1 AND state='CONSUMED'`, feeTradeID) == 1
+		})
+		waitFor(t, 20*time.Second, func() bool {
+			return proofCount(db, `SELECT count(*) FROM trades WHERE id=$1 AND status='SETTLED'`, feeTradeID) == 1
+		})
+		var earned, held int64
+		if err := db.QueryRow(`SELECT COALESCE(sum(CASE WHEN e.account_name='SANDBOX_SERVICE_FEE' THEN e.credit-e.debit ELSE 0 END),0),COALESCE(sum(CASE WHEN e.account_code='2100' THEN e.credit-e.debit ELSE 0 END),0) FROM ledger_entries e JOIN ledger_journals j ON j.journal_id=e.journal_id WHERE j.trade_id=$1`, feeTradeID).Scan(&earned, &held); err != nil {
+			t.Fatal(err)
+		}
+		if earned != 500 || held != 0 || provider.postCount() != 5 || proofCount(db, `SELECT count(*) FROM ledger_fee_finality WHERE trade_id=$1`, feeTradeID) != 1 {
+			t.Fatalf("fee finality incorrect earned=%d held=%d posts=%d", earned, held, provider.postCount())
+		}
+		// Replay through the full customer API after service restart must not repay.
+		runtime.stop("ledger")
+		runtime.start("ledger", "./cmd/ledger-server", ports["ledger"])
+		if code, response := call(http.MethodPost, api+"/v1/quotes/"+feeQuoteID+"/accept", clientAuth, "accept-fee-after-ledger-restart", feeAcceptBody); code != http.StatusOK || response["trade_id"] != feeTradeID {
+			t.Fatalf("fee replay failed: code=%d response=%v", code, response)
+		}
+		if provider.postCount() != 5 || proofCount(db, `SELECT count(*) FROM ledger_fee_finality WHERE trade_id=$1`, feeTradeID) != 1 {
+			t.Fatal("fee restart replay duplicated effect")
+		}
+		_, balances := call(http.MethodGet, api+"/v1/balances", clientAuth, "", "")
+		ngn := balanceForCurrency(t, balances, "NGN")
+		if ngn["available_minor"] != float64(0) || ngn["held_minor"] != float64(0) {
+			t.Fatalf("fee customer balances wrong: %v", ngn)
+		}
+		t.Logf("FEE_APPLICATION trade=%s principal=19500 fee=500 reserved=20000 earned=500 held=0 provider_posts=5 restart_replay=one_effect", feeTradeID)
+		return
 	}
 	feeTradeCode, feeTrade = call(http.MethodGet, api+"/v1/trades/"+feeTradeID, clientAuth, "", "")
 	pricingSnapshot, snapshotOK := feeTrade["pricing_snapshot"].(map[string]any)
@@ -745,6 +813,7 @@ type fakeTransferProvider struct {
 	id              int64
 	createdAt       string
 	statementAmount int64
+	transferAmount  int64
 	holdCreate      time.Duration
 	healthDown      bool
 }
@@ -769,14 +838,14 @@ func (p *fakeTransferProvider) ServeHTTP(w http.ResponseWriter, r *http.Request)
 			Bank      string `json:"account_bank"`
 			Amount    int64  `json:"amount"`
 		}
-		if json.NewDecoder(r.Body).Decode(&body) != nil || body.Reference == "" || body.Account != "0690000040" || body.Bank != "044" || body.Amount != 100 {
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body.Reference == "" || body.Account != "0690000040" || body.Bank != "044" || body.Amount <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		p.mu.Lock()
 		p.posts++
 		p.ref, p.id = body.Reference, 837460+int64(p.posts)
-		p.createdAt, p.statementAmount = time.Now().UTC().Format(time.RFC3339), body.Amount
+		p.createdAt, p.statementAmount, p.transferAmount = time.Now().UTC().Format(time.RFC3339), body.Amount, body.Amount
 		hold := p.holdCreate
 		p.mu.Unlock()
 		if hold > 0 {
@@ -787,7 +856,10 @@ func (p *fakeTransferProvider) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		p.mu.Unlock()
 	}
 	p.mu.Lock()
-	amount := int64(100)
+	amount := p.transferAmount
+	if amount == 0 {
+		amount = 100
+	}
 	if r.URL.Query().Get("from") != "" {
 		amount = p.statementAmount
 	}
@@ -898,7 +970,7 @@ func (r *proofRuntime) start(name, pkg, addr string) {
 	binary := r.binaries[pkg]
 	if binary == "" {
 		binary = filepath.Join(r.dir, strings.ReplaceAll(strings.TrimPrefix(pkg, "./"), "/", "_")+".exe")
-		cmd := exec.Command("go", "build", "-o", binary, pkg)
+		cmd := exec.Command("go", "build", "-p", "1", "-o", binary, pkg)
 		cmd.Dir = ".."
 		if output, err := cmd.CombinedOutput(); err != nil {
 			r.t.Fatalf("build %s: %v %s", pkg, err, output)
@@ -997,26 +1069,36 @@ func stringField(t *testing.T, row map[string]any, key string) string {
 
 func proofHTTP(t *testing.T, method, endpoint, auth, key, correlation, body string) (int, map[string]any) {
 	t.Helper()
-	req, err := http.NewRequest(method, endpoint, bytes.NewBufferString(body))
-	if err != nil {
-		t.Fatal(err)
+	for attempt := 0; attempt < 10; attempt++ {
+		req, err := http.NewRequest(method, endpoint, bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		if key != "" {
+			req.Header.Set("Idempotency-Key", key)
+		}
+		req.Header.Set("X-Osai-Correlation-Id", correlation)
+		req.Header.Set("Content-Type", "application/json")
+		response, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, endpoint, err)
+		}
+		if response.StatusCode == http.StatusTooManyRequests {
+			response.Body.Close()
+			t.Log("RATE_LIMIT: retrying throttled proof request after one second")
+			time.Sleep(time.Second)
+			continue
+		}
+		defer response.Body.Close()
+		var payload map[string]any
+		_ = json.NewDecoder(response.Body).Decode(&payload)
+		return response.StatusCode, payload
 	}
-	if auth != "" {
-		req.Header.Set("Authorization", auth)
-	}
-	if key != "" {
-		req.Header.Set("Idempotency-Key", key)
-	}
-	req.Header.Set("X-Osai-Correlation-Id", correlation)
-	req.Header.Set("Content-Type", "application/json")
-	response, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
-	if err != nil {
-		t.Fatalf("%s %s: %v", method, endpoint, err)
-	}
-	defer response.Body.Close()
-	var payload map[string]any
-	_ = json.NewDecoder(response.Body).Decode(&payload)
-	return response.StatusCode, payload
+	t.Fatal("proof request remained throttled after bounded retries")
+	return 0, nil
 }
 
 func balanceForCurrency(t *testing.T, response map[string]any, currency string) map[string]any {

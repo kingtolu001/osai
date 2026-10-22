@@ -6,6 +6,7 @@ import (
 
 	"github.com/osai/osai/pkg/correlation"
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	"github.com/osai/osai/services/settlement/settlementcore"
 	"google.golang.org/grpc"
@@ -23,7 +24,7 @@ func (c *Client) VerifyFunding(ctx context.Context, institutionID, tradeID strin
 	if c == nil || c.client == nil {
 		return fmt.Errorf("ledger funding client unavailable")
 	}
-	response, err := c.client.GetFundingReservation(ctx, &ledgerv1.FundingReservationCommand{InstitutionId: institutionID, TradeId: tradeID, Amount: &ledgerv1.Money{AmountMinor: amountMinor, Currency: currency}})
+	response, err := c.client.GetFundingReservation(sandboxpolicy.Outgoing(ctx), &ledgerv1.FundingReservationCommand{InstitutionId: institutionID, TradeId: tradeID, Amount: &ledgerv1.Money{AmountMinor: amountMinor, Currency: currency}})
 	if err != nil {
 		return err
 	}
@@ -37,7 +38,7 @@ func (c *Client) ConfirmSettlement(instruction settlementcore.Instruction) error
 	ctx, span := observability.Start(correlation.WithContext(context.Background(), instruction.CorrelationID), "osai/settlement", "ledger.confirm")
 	defer span.End()
 	ctx = observability.AttachOutgoingGRPCMetadata(ctx)
-	_, err := c.client.ConfirmSettlement(ctx, request(instruction, "confirmed"))
+	_, err := c.client.ConfirmSettlement(sandboxpolicy.Outgoing(ctx), request(instruction, "confirmed"))
 	return err
 }
 
@@ -45,7 +46,7 @@ func (c *Client) FailSettlement(instruction settlementcore.Instruction) error {
 	ctx, span := observability.Start(correlation.WithContext(context.Background(), instruction.CorrelationID), "osai/settlement", "ledger.fail")
 	defer span.End()
 	ctx = observability.AttachOutgoingGRPCMetadata(ctx)
-	_, err := c.client.FailSettlement(ctx, request(instruction, "failed"))
+	_, err := c.client.FailSettlement(sandboxpolicy.Outgoing(ctx), request(instruction, "failed"))
 	return err
 }
 

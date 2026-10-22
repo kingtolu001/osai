@@ -9,6 +9,15 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+func mustServiceWithStore(t *testing.T, store StoreReaderWriter) *Service {
+	t.Helper()
+	service, err := NewServiceWithStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
+}
+
 func TestExactMatchDoesNotCreateBreak(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{
@@ -33,25 +42,34 @@ func TestExactMatchDoesNotCreateBreak(t *testing.T) {
 		Account:     "NOSTRO_USD",
 		Watermark:   "2026-09-19T10:00:00Z",
 	}
-	if brk := service.ReconcileTransaction(expected, observed); brk != nil {
+	if brk, err := service.ReconcileTransaction(expected, observed); err != nil || brk != nil {
 		t.Fatalf("expected no break, got %+v", brk)
 	}
 }
 
 func TestMismatchReplayRetainsOneBreakAndResolvesAfterRestart(t *testing.T) {
 	store := NewMemoryStore()
-	svc := NewServiceWithStore(store)
+	svc := mustServiceWithStore(t, store)
 	expected := ExpectedTransaction{ID: "si_replay", Provider: "flutterwave", ClientRef: "si_replay", AmountMinor: 10000, Currency: "NGN", Beneficiary: "0690000040"}
 	observed := StatementRow{ID: "external_replay", Provider: "flutterwave", ClientRef: "si_replay", AmountMinor: 9000, Currency: "NGN", Beneficiary: "0690000040"}
-	first := svc.ReconcileTransaction(expected, observed)
+	first, err := svc.ReconcileTransaction(expected, observed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for range 4 {
-		again := svc.ReconcileTransaction(expected, observed)
+		again, err := svc.ReconcileTransaction(expected, observed)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if again.ID != first.ID {
 			t.Fatalf("replay changed break identity: %s != %s", again.ID, first.ID)
 		}
 	}
-	restarted := NewServiceWithStore(store)
-	again := restarted.ReconcileTransaction(expected, observed)
+	restarted := mustServiceWithStore(t, store)
+	again, err := restarted.ReconcileTransaction(expected, observed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if again.ID != first.ID {
 		t.Fatal("restart changed break identity")
 	}
@@ -60,7 +78,7 @@ func TestMismatchReplayRetainsOneBreakAndResolvesAfterRestart(t *testing.T) {
 		t.Fatalf("expected one durable break, got %d: %v", len(breaks), err)
 	}
 	observed.AmountMinor = expected.AmountMinor
-	if brk := restarted.ReconcileTransaction(expected, observed); brk != nil {
+	if brk, err := restarted.ReconcileTransaction(expected, observed); err != nil || brk != nil {
 		t.Fatalf("matching evidence left a break: %+v", brk)
 	}
 	breaks, err = store.LoadBreaks()
@@ -73,7 +91,7 @@ func TestCompositeFallbackMatchUsesAmountCurrencyBeneficiary(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_2", ClientRef: "si_2002", AmountMinor: 2000, Currency: "EUR", Beneficiary: "acct_2", FeeMinor: 20, Account: "NOSTRO_EUR", Watermark: "2026-09-19T10:00:00Z"}
 	observed := StatementRow{ID: "ext_2", ProviderRef: "ptx_2002", AmountMinor: 2000, Currency: "EUR", Beneficiary: "acct_2", FeeMinor: 20, Account: "NOSTRO_EUR", Watermark: "2026-09-19T10:00:00Z"}
-	if brk := service.ReconcileTransaction(expected, observed); brk != nil {
+	if brk, err := service.ReconcileTransaction(expected, observed); err != nil || brk != nil {
 		t.Fatalf("expected composite match fallback, got %+v", brk)
 	}
 }
@@ -95,7 +113,10 @@ func TestDuplicateStatementRowsAreDeduped(t *testing.T) {
 func TestMissingExternalEvidenceCreatesBreak(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_missing", ClientRef: "si_missing", AmountMinor: 1234, Currency: "USD", Beneficiary: "acct_missing", FeeMinor: 12, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
-	brk := service.ReconcileTransaction(expected, StatementRow{})
+	brk, err := service.ReconcileTransaction(expected, StatementRow{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || brk.Type != BreakTypeMissingExternalEvidence {
 		t.Fatalf("expected missing evidence break, got %+v", brk)
 	}
@@ -105,7 +126,10 @@ func TestLateEvidenceCreatesBreak(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_late", ClientRef: "si_late", AmountMinor: 77, Currency: "USD", Beneficiary: "acct_late", FeeMinor: 3, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
 	notice := StatementRow{ID: "ext_late", ProviderRef: "ptx_late", ClientRef: "si_late", AmountMinor: 77, Currency: "USD", Beneficiary: "acct_late", FeeMinor: 3, Account: "NOSTRO_USD", Watermark: "2026-09-19T09:00:00Z"}
-	brk := service.ReconcileTransaction(expected, notice)
+	brk, err := service.ReconcileTransaction(expected, notice)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || brk.Type != BreakTypeLateEvidence {
 		t.Fatalf("expected late evidence break, got %+v", brk)
 	}
@@ -115,7 +139,10 @@ func TestAmountMismatchCreatesBreak(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_amt", ClientRef: "si_amt", AmountMinor: 500, Currency: "USD", Beneficiary: "acct_amt", FeeMinor: 5, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
 	observed := StatementRow{ID: "ext_amt", ProviderRef: "ptx_amt", ClientRef: "si_amt", AmountMinor: 505, Currency: "USD", Beneficiary: "acct_amt", FeeMinor: 5, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
-	brk := service.ReconcileTransaction(expected, observed)
+	brk, err := service.ReconcileTransaction(expected, observed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || brk.Type != BreakTypeAmountMismatch {
 		t.Fatalf("expected amount mismatch break, got %+v", brk)
 	}
@@ -125,7 +152,10 @@ func TestFeeDriftCreatesBreak(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_fee", ClientRef: "si_fee", AmountMinor: 800, Currency: "USD", Beneficiary: "acct_fee", FeeMinor: 8, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
 	observed := StatementRow{ID: "ext_fee", ProviderRef: "ptx_fee", ClientRef: "si_fee", AmountMinor: 800, Currency: "USD", Beneficiary: "acct_fee", FeeMinor: 12, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
-	brk := service.ReconcileTransaction(expected, observed)
+	brk, err := service.ReconcileTransaction(expected, observed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || brk.Type != BreakTypeFeeMismatch {
 		t.Fatalf("expected fee mismatch break, got %+v", brk)
 	}
@@ -133,7 +163,10 @@ func TestFeeDriftCreatesBreak(t *testing.T) {
 
 func TestClosingBalanceMismatchCreatesBreak(t *testing.T) {
 	service := NewService()
-	brk := service.ReconcileBalance("NOSTRO_USD", 1000, 920, 40)
+	brk, err := service.ReconcileBalance("NOSTRO_USD", "USD", 1000, 920, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || brk.Type != BreakTypeBalanceMismatch {
 		t.Fatalf("expected balance mismatch break, got %+v", brk)
 	}
@@ -157,7 +190,7 @@ func TestWatermarkBoundaryAcceptsExactBoundary(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_boundary", ClientRef: "si_boundary", AmountMinor: 42, Currency: "USD", Beneficiary: "acct_boundary", FeeMinor: 1, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
 	observed := StatementRow{ID: "ext_boundary", ProviderRef: "ptx_boundary", ClientRef: "si_boundary", AmountMinor: 42, Currency: "USD", Beneficiary: "acct_boundary", FeeMinor: 1, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
-	if brk := service.ReconcileTransaction(expected, observed); brk != nil {
+	if brk, err := service.ReconcileTransaction(expected, observed); err != nil || brk != nil {
 		t.Fatalf("watermark boundary should match exactly, got %+v", brk)
 	}
 }
@@ -179,7 +212,7 @@ func TestAdjustmentMakerCheckerRequiresApproval(t *testing.T) {
 
 func TestApprovedAdjustmentPersistsAcrossRestart(t *testing.T) {
 	store := NewMemoryStore()
-	service := NewServiceWithStore(store)
+	service := mustServiceWithStore(t, store)
 	breakID := "break_persist_1"
 	if _, err := service.ProposeAdjustment(breakID, "maker_persist", "checker_persist", 75, "USD", "persisted adjustment"); err != nil {
 		t.Fatalf("proposal failed: %v", err)
@@ -190,7 +223,7 @@ func TestApprovedAdjustmentPersistsAcrossRestart(t *testing.T) {
 	if !service.HasApprovedAdjustment(breakID) {
 		t.Fatal("approval not recorded in memory")
 	}
-	restarted := NewServiceWithStore(store)
+	restarted := mustServiceWithStore(t, store)
 	if !restarted.HasApprovedAdjustment(breakID) {
 		t.Fatal("approval did not survive restart through persistence")
 	}
@@ -226,8 +259,11 @@ func TestResolvedBreakStateAndHistoryPersistAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &PostgresStore{DB: db}
-	service := NewServiceWithStore(store)
-	brk := service.NewBreak(BreakTypeAmountMismatch, "provider_hist", "USD", 1000, 950, 50, 950, 0, "ops_hist", BreakStateOpen, nil, []string{"history"}, "manual_review")
+	service := mustServiceWithStore(t, store)
+	brk, err := service.NewBreak(BreakTypeAmountMismatch, "provider_hist", "USD", 1000, 950, 50, 950, 0, "ops_hist", BreakStateOpen, nil, []string{"history"}, "manual_review")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := service.TransitionBreak(brk.ID, BreakStateUnderReview, "ops_hist", "review started", "corr_hist_1"); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +318,7 @@ func TestNoDirectLedgerMutationOnApprovedAdjustment(t *testing.T) {
 
 func TestServicePersistsEvidenceWhenStoreAttached(t *testing.T) {
 	store := NewMemoryStore()
-	service := NewServiceWithStore(store)
+	service := mustServiceWithStore(t, store)
 	row := StatementRow{ID: "ext_persist", ProviderRef: "ptx_persist", ClientRef: "si_persist", AmountMinor: 555, Currency: "USD", Beneficiary: "acct_persist", FeeMinor: 5, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
 	if _, err := service.IngestStatement(row); err != nil {
 		t.Fatalf("ingest failed: %v", err)
@@ -300,7 +336,10 @@ func TestStatementDriftAndAmountDriftScenario(t *testing.T) {
 	service := NewService()
 	expected := ExpectedTransaction{ID: "txn_scenario", ClientRef: "si_scenario", AmountMinor: 1000, Currency: "USD", Beneficiary: "acct_scenario", FeeMinor: 10, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z"}
 	observed := StatementRow{ID: "ext_scenario", ProviderRef: "ptx_scenario", ClientRef: "si_scenario", AmountMinor: 980, Currency: "USD", Beneficiary: "acct_scenario", FeeMinor: 17, Account: "NOSTRO_USD", Watermark: "2026-09-19T10:00:00Z", Drift: DriftAmount}
-	brk := service.ReconcileTransaction(expected, observed)
+	brk, err := service.ReconcileTransaction(expected, observed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || (brk.Type != BreakTypeAmountMismatch && brk.Type != BreakTypeFeeMismatch) {
 		t.Fatalf("expected statement drift or amount drift break, got %+v", brk)
 	}
@@ -312,7 +351,10 @@ func TestStatementDriftAndAmountDriftScenario(t *testing.T) {
 func TestLateEvidenceUsesAge(t *testing.T) {
 	service := NewService()
 	breakID := "late_age_break"
-	brk := service.NewBreak(BreakTypeLateEvidence, "provider_1", "USD", 50, 35, -15, 15, 30*time.Minute, "ops_1", "OPEN", nil, []string{"late transaction evidence"}, "")
+	brk, err := service.NewBreak(BreakTypeLateEvidence, "provider_1", "USD", 50, 35, -15, 15, 30*time.Minute, "ops_1", "OPEN", nil, []string{"late transaction evidence"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if brk == nil || brk.Age != 30*time.Minute {
 		t.Fatalf("expected age to be preserved on the break, got %+v", brk)
 	}
@@ -323,7 +365,7 @@ func TestLateEvidenceUsesAge(t *testing.T) {
 
 func TestPersistedBreakTypesCoverCoreMismatchScenarios(t *testing.T) {
 	store := NewMemoryStore()
-	service := NewServiceWithStore(store)
+	service := mustServiceWithStore(t, store)
 	cases := []struct {
 		name      string
 		expected  ExpectedTransaction
@@ -343,12 +385,15 @@ func TestPersistedBreakTypesCoverCoreMismatchScenarios(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if tc.breakType == "" {
-			if brk := service.ReconcileTransaction(tc.expected, tc.observed); brk != nil {
+			if brk, err := service.ReconcileTransaction(tc.expected, tc.observed); err != nil || brk != nil {
 				t.Fatalf("case %s unexpectedly created break %+v", tc.name, brk)
 			}
 			continue
 		}
-		brk := service.ReconcileTransaction(tc.expected, tc.observed)
+		brk, err := service.ReconcileTransaction(tc.expected, tc.observed)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if brk == nil {
 			t.Fatalf("case %s did not produce a break", tc.name)
 		}

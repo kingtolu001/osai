@@ -66,7 +66,10 @@ func run() error {
 	if err = reconciliation.EnsureSchema(db); err != nil {
 		return errors.New("reconciliation schema unavailable")
 	}
-	service := reconciliation.NewServiceWithStore(&reconciliation.PostgresStore{DB: db})
+	service, err := reconciliation.NewServiceWithStore(&reconciliation.PostgresStore{DB: db})
+	if err != nil {
+		return errors.New("reconciliation durable state unavailable")
+	}
 	rail := flutterwave.New(flutterwave.Config{BaseURL: os.Getenv("FLW_BASE_URL"), SecretKey: os.Getenv("FLW_SECRET_KEY"), Env: "sandbox", Enabled: true})
 	expected := reconciliation.ExpectedTransaction{ID: settlement.SettlementId, Provider: "flutterwave", ProviderRef: settlement.ProviderRef, ClientRef: settlement.ClientRef, AmountMinor: settlement.AmountMinor, Currency: settlement.Currency, Beneficiary: settlement.Beneficiary, FeeMinor: fee, Watermark: os.Getenv("OSAI_FLW_EXPECTED_WATERMARK")}
 	breaks, err := service.ReconcileFlutterwaveWindow(rail, flutterwave.TransactionWindow{From: from, To: to, PageSize: 100, Reference: settlement.ClientRef}, to.Add(24*time.Hour), []reconciliation.ExpectedTransaction{expected})

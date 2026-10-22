@@ -37,7 +37,11 @@ func (s *Service) ReconcileFlutterwaveWindow(rail provider.SettlementRail, windo
 		}
 		if prior, exists := byRef[row.ClientRef]; exists {
 			duplicateRefs[row.ClientRef] = true
-			breaks = append(breaks, s.upsertTransactionBreak(ExpectedTransaction{ID: row.ClientRef, Provider: "flutterwave"}, BreakTypeDuplicateExternal, "flutterwave", row.Currency, prior.AmountMinor, row.AmountMinor, prior.AmountMinor-row.AmountMinor, row.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"multiple provider IDs for one client reference"}, "manual_review"))
+			brk, err := s.upsertTransactionBreak(ExpectedTransaction{ID: row.ClientRef, Provider: "flutterwave"}, BreakTypeDuplicateExternal, "flutterwave", row.Currency, prior.AmountMinor, row.AmountMinor, prior.AmountMinor-row.AmountMinor, row.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"multiple provider IDs for one client reference"}, "manual_review")
+			if err != nil {
+				return nil, err
+			}
+			breaks = append(breaks, brk)
 			continue
 		}
 		byRef[row.ClientRef] = row
@@ -50,7 +54,11 @@ func (s *Service) ReconcileFlutterwaveWindow(rail provider.SettlementRail, windo
 			item.Provider = "flutterwave"
 		}
 		row := byRef[item.ClientRef]
-		if brk := s.ReconcileTransaction(item, row); brk != nil {
+		brk, err := s.ReconcileTransaction(item, row)
+		if err != nil {
+			return nil, err
+		}
+		if brk != nil {
 			breaks = append(breaks, brk)
 		}
 		if !duplicateRefs[item.ClientRef] {
@@ -60,13 +68,19 @@ func (s *Service) ReconcileFlutterwaveWindow(rail provider.SettlementRail, windo
 			open := brk != nil && brk.State != BreakStateResolved
 			s.mu.Unlock()
 			if open {
-				_ = s.ResolveBreak(id, "reconciliation", "duplicate provider evidence no longer present", "")
+				if err := s.ResolveBreak(id, "reconciliation", "duplicate provider evidence no longer present", ""); err != nil {
+					return nil, err
+				}
 			}
 		}
 		delete(byRef, item.ClientRef)
 	}
 	for _, row := range byRef {
-		breaks = append(breaks, s.upsertTransactionBreak(ExpectedTransaction{ID: row.ClientRef, Provider: "flutterwave"}, BreakTypeUnmatchedExternal, "flutterwave", row.Currency, 0, row.AmountMinor, -row.AmountMinor, row.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider transfer has no internal settlement expectation"}, "manual_review"))
+		brk, err := s.upsertTransactionBreak(ExpectedTransaction{ID: row.ClientRef, Provider: "flutterwave"}, BreakTypeUnmatchedExternal, "flutterwave", row.Currency, 0, row.AmountMinor, -row.AmountMinor, row.AmountMinor, 0, "reconciliation", BreakStateOpen, nil, []string{"provider transfer has no internal settlement expectation"}, "manual_review")
+		if err != nil {
+			return nil, err
+		}
+		breaks = append(breaks, brk)
 	}
 	if err := s.IngestBalanceEvidence("flutterwave", "transfers", "NGN", 0, time.Now().UTC(), watermark.UTC().Format(time.RFC3339Nano)); err != nil {
 		return nil, err

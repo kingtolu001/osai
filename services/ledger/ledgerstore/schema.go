@@ -19,8 +19,10 @@ func EnsureSchema(db *sql.DB) error {
 		pricing_hash text NOT NULL DEFAULT '', pricing_snapshot_json text NOT NULL DEFAULT '');
 	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS source_principal_minor bigint NOT NULL DEFAULT 0;
 	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS fee_minor bigint NOT NULL DEFAULT 0;
+	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS accounting_policy text NOT NULL DEFAULT '';
 	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS pricing_hash text NOT NULL DEFAULT '';
 	ALTER TABLE ledger_funding_reservations ADD COLUMN IF NOT EXISTS pricing_snapshot_json text NOT NULL DEFAULT '';
+	CREATE TABLE IF NOT EXISTS ledger_fee_finality (trade_id text PRIMARY KEY REFERENCES ledger_funding_reservations(trade_id), policy_version text NOT NULL, command_hash text NOT NULL, correlation_id text NOT NULL, provider_ref text NOT NULL, service_actor text NOT NULL, reason text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 	UPDATE ledger_funding_reservations SET source_principal_minor=amount_minor
 		WHERE source_principal_minor=0 AND fee_minor=0 AND pricing_hash='';`)
 	return err

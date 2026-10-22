@@ -38,7 +38,10 @@ func TestAutomaticFlutterwaveIngestionAndMismatchReplay(t *testing.T) {
 	defer server.Close()
 	rail := flutterwave.New(flutterwave.Config{BaseURL: server.URL + "/v3", SecretKey: "local-test-key", Env: "test", Enabled: false})
 	store := reconciliation.NewMemoryStore()
-	svc := reconciliation.NewServiceWithStore(store)
+	svc, err := reconciliation.NewServiceWithStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 9, 27, 2, 0, 0, 0, time.UTC)
 	run := func() {
 		t.Helper()
@@ -53,7 +56,10 @@ func TestAutomaticFlutterwaveIngestionAndMismatchReplay(t *testing.T) {
 	}
 	amount.Store(90)
 	run()
-	svc = reconciliation.NewServiceWithStore(store)
+	svc, err = reconciliation.NewServiceWithStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
 	run()
 	breaks, err = store.LoadBreaks()
 	if err != nil || len(breaks) != 1 || breaks[0].Type != reconciliation.BreakTypeAmountMismatch {

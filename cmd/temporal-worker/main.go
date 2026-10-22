@@ -14,6 +14,7 @@ import (
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/postgres"
 	"github.com/osai/osai/pkg/provider"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	"github.com/osai/osai/services/settlement/ledgerclient"
 	"github.com/osai/osai/services/settlement/settlementstore"
 	"github.com/osai/osai/workflows"
@@ -22,6 +23,9 @@ import (
 )
 
 func main() {
+	if _, err := sandboxpolicy.Read(); err != nil {
+		log.Fatal(err)
+	}
 	if err := observability.Init("temporal-worker"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}

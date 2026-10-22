@@ -11,6 +11,7 @@ import (
 
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	"github.com/osai/osai/services/ledger/ledgerapi"
 	"google.golang.org/grpc/codes"
@@ -23,6 +24,7 @@ type Server struct {
 	Service           *ledgerapi.Service
 	DB                *sql.DB
 	LocalPrefundToken string
+	SandboxToken      string
 }
 
 func (s *Server) PostLocalPrefund(ctx context.Context, req *ledgerv1.LocalPrefundCommand) (*ledgerv1.SettlementCommandResponse, error) {
@@ -41,6 +43,9 @@ func (s *Server) PostLocalPrefund(ctx context.Context, req *ledgerv1.LocalPrefun
 }
 
 func (s *Server) ReserveFunding(ctx context.Context, req *ledgerv1.FundingReservationCommand) (*ledgerv1.FundingReservationResponse, error) {
+	if err := s.authorizeSandbox(ctx); err != nil {
+		return nil, err
+	}
 	if s.Service == nil || req == nil || req.Amount == nil {
 		return nil, status.Error(codes.InvalidArgument, "funding command required")
 	}
@@ -61,6 +66,9 @@ func (s *Server) ReserveFunding(ctx context.Context, req *ledgerv1.FundingReserv
 		if errors.Is(err, ledgerapi.ErrInsufficientFunding) {
 			return nil, status.Error(codes.ResourceExhausted, "insufficient institution prefund")
 		}
+		if errors.Is(err, ledgerapi.ErrIdempotencyConflict) {
+			return nil, status.Error(codes.AlreadyExists, "funding reservation payload conflict")
+		}
 		log.Printf("ledger funding reservation failed: %v", err)
 		return nil, status.Error(codes.Internal, "funding reservation failed")
 	}
@@ -68,6 +76,9 @@ func (s *Server) ReserveFunding(ctx context.Context, req *ledgerv1.FundingReserv
 }
 
 func (s *Server) GetFundingReservation(ctx context.Context, req *ledgerv1.FundingReservationCommand) (*ledgerv1.FundingReservationResponse, error) {
+	if err := s.authorizeSandbox(ctx); err != nil {
+		return nil, err
+	}
 	if s.Service == nil || req == nil || req.Amount == nil {
 		return nil, status.Error(codes.InvalidArgument, "funding command required")
 	}
@@ -121,7 +132,8 @@ func (s *Server) ListCustomerTransactions(ctx context.Context, req *ledgerv1.Cus
 	rows, err := s.DB.QueryContext(ctx, `SELECT e.journal_id,j.trade_id,e.currency,
 		SUM(CASE WHEN j.kind='prefund' AND e.account_code='2000' THEN e.credit-e.debit
 		WHEN j.kind='settlement.failed' AND e.account_code='2000' THEN e.credit-e.debit
-		WHEN j.kind IN ('settlement.confirmed','legacy') AND e.account_code='2200' THEN -e.debit ELSE 0 END),
+		WHEN j.kind='settlement.confirmed' AND e.account_code='2100' THEN -e.debit
+ WHEN j.kind='legacy' AND e.account_code='2200' THEN -e.debit ELSE 0 END),
 		j.created_at FROM ledger_entries e JOIN ledger_journals j ON j.journal_id=e.journal_id
 		WHERE j.institution_id=$1 AND j.kind<>'hold'
 		GROUP BY e.journal_id,j.trade_id,e.currency,j.created_at ORDER BY j.created_at DESC,e.journal_id LIMIT $2 OFFSET $3`, req.InstitutionId, pageSize, (page-1)*pageSize)
@@ -190,6 +202,9 @@ func (s *Server) PostReconciliationAdjustment(ctx context.Context, request *ledg
 }
 
 func (s *Server) apply(ctx context.Context, request *ledgerv1.SettlementCommand, command func(ledgerapi.Command) (string, bool, error)) (*ledgerv1.SettlementCommandResponse, error) {
+	if err := s.authorizeSandbox(ctx); err != nil {
+		return nil, err
+	}
 	ctx, span := observability.Start(ctx, "osai/ledger", "ledger.command")
 	defer span.End()
 	if values := metadata.ValueFromIncomingContext(ctx, "x-osai-correlation-id"); len(values) > 0 && request != nil && request.GetCorrelationId() == "" {
@@ -212,4 +227,15 @@ func (s *Server) apply(ctx context.Context, request *ledgerv1.SettlementCommand,
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	return &ledgerv1.SettlementCommandResponse{JournalId: result, AlreadyApplied: replayed}, nil
+}
+
+func (s *Server) authorizeSandbox(ctx context.Context) error {
+	if s.SandboxToken == "" {
+		return nil
+	}
+	values := metadata.ValueFromIncomingContext(ctx, sandboxpolicy.TokenHeader)
+	if len(values) != 1 || subtle.ConstantTimeCompare([]byte(values[0]), []byte(s.SandboxToken)) != 1 {
+		return status.Error(codes.PermissionDenied, "sandbox Ledger service authentication required")
+	}
+	return nil
 }

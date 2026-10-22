@@ -1,6 +1,7 @@
 package reconciliation
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -52,50 +53,71 @@ func NewMemoryStore() *MemoryStore {
 }
 
 func (s *MemoryStore) SaveEvidence(ev Evidence) error {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if ev.ID == "" { ev.ID = fmt.Sprintf("ev_%d", time.Now().UnixNano()) }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ev.ID == "" {
+		ev.ID = fmt.Sprintf("ev_%d", time.Now().UnixNano())
+	}
 	s.evidence[ev.ID] = ev
 	return nil
 }
 
 func (s *MemoryStore) LoadEvidence() ([]Evidence, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	items := make([]Evidence, 0, len(s.evidence))
-	for _, ev := range s.evidence { items = append(items, ev) }
+	for _, ev := range s.evidence {
+		items = append(items, ev)
+	}
 	return items, nil
 }
 
 func (s *MemoryStore) SaveBreak(brk *ReconciliationBreak) error {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if brk == nil { return nil }
-	if brk.ID == "" { brk.ID = fmt.Sprintf("break_%d", time.Now().UnixNano()) }
-	s.breaks[brk.ID] = brk
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if brk == nil {
+		return nil
+	}
+	if brk.ID == "" {
+		brk.ID = fmt.Sprintf("break_%d", time.Now().UnixNano())
+	}
+	s.breaks[brk.ID] = cloneBreak(brk)
 	return nil
 }
 
 func (s *MemoryStore) LoadBreaks() ([]*ReconciliationBreak, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	items := make([]*ReconciliationBreak, 0, len(s.breaks))
-	for _, brk := range s.breaks { items = append(items, brk) }
+	for _, brk := range s.breaks {
+		items = append(items, cloneBreak(brk))
+	}
 	return items, nil
 }
 
 func (s *MemoryStore) SaveMatchResult(match MatchResult) error {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if match.ID == "" { match.ID = fmt.Sprintf("match_%d", time.Now().UnixNano()) }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if match.ID == "" {
+		match.ID = fmt.Sprintf("match_%d", time.Now().UnixNano())
+	}
 	s.matchs[match.ID] = match
 	return nil
 }
 
 func (s *MemoryStore) LoadMatchResults() ([]MatchResult, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	items := make([]MatchResult, 0, len(s.matchs))
-	for _, m := range s.matchs { items = append(items, m) }
+	for _, m := range s.matchs {
+		items = append(items, m)
+	}
 	return items, nil
 }
 
 func (s *MemoryStore) SaveWatermark(w Watermark) error {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	key := w.Provider + "|" + w.Account + "|" + w.Currency
 	w.UpdatedAt = time.Now().UTC()
 	s.watermarks[key] = w
@@ -103,82 +125,140 @@ func (s *MemoryStore) SaveWatermark(w Watermark) error {
 }
 
 func (s *MemoryStore) LoadWatermarks() ([]Watermark, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	items := make([]Watermark, 0, len(s.watermarks))
-	for _, w := range s.watermarks { items = append(items, w) }
+	for _, w := range s.watermarks {
+		items = append(items, w)
+	}
 	return items, nil
 }
 
 func (s *MemoryStore) SaveApproval(app *Approval) error {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if app == nil { return nil }
-	if app.ID == "" { app.ID = fmt.Sprintf("approval_%d", time.Now().UnixNano()) }
-	s.approvals[app.ID] = app
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if app == nil {
+		return nil
+	}
+	if app.ID == "" {
+		app.ID = fmt.Sprintf("approval_%d", time.Now().UnixNano())
+	}
+	if prior := s.approvals[app.ID]; prior != nil {
+		previousEffect, err := json.Marshal(prior.ProposedEffect)
+		if err != nil {
+			return err
+		}
+		newEffect, err := json.Marshal(app.ProposedEffect)
+		if err != nil {
+			return err
+		}
+		if prior.BreakID != app.BreakID || prior.Proposer != app.Proposer || prior.Approver != app.Approver || !bytes.Equal(previousEffect, newEffect) || (prior.Status != "PROPOSED" && prior.Status != app.Status) {
+			return fmt.Errorf("approval economics or state conflict")
+		}
+	}
+	s.approvals[app.ID] = cloneApproval(app)
 	return nil
 }
 
 func (s *MemoryStore) LoadApprovals() ([]*Approval, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	items := make([]*Approval, 0, len(s.approvals))
-	for _, a := range s.approvals { items = append(items, a) }
+	for _, a := range s.approvals {
+		items = append(items, cloneApproval(a))
+	}
 	return items, nil
 }
 
+func cloneApproval(approval *Approval) *Approval {
+	copy := *approval
+	copy.EvidenceIDs = append([]string(nil), approval.EvidenceIDs...)
+	copy.ProposedEffect = make(map[string]any, len(approval.ProposedEffect))
+	for key, value := range approval.ProposedEffect {
+		copy.ProposedEffect[key] = value
+	}
+	return &copy
+}
+
 func (s *MemoryStore) SaveResolution(res *ResolutionEvent) error {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if res == nil { return nil }
-	if res.ID == "" { res.ID = fmt.Sprintf("res_%d", time.Now().UnixNano()) }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if res == nil {
+		return nil
+	}
+	if res.ID == "" {
+		res.ID = fmt.Sprintf("res_%d", time.Now().UnixNano())
+	}
 	s.resolutions[res.ID] = res
 	return nil
 }
 
 func (s *MemoryStore) LoadResolutionHistory() ([]*ResolutionEvent, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	items := make([]*ResolutionEvent, 0, len(s.resolutions))
-	for _, r := range s.resolutions { items = append(items, r) }
+	for _, r := range s.resolutions {
+		items = append(items, r)
+	}
 	return items, nil
 }
 
 // PostgresStore persists reconciliation state in PostgreSQL.
-type PostgresStore struct { DB *sql.DB }
+type PostgresStore struct{ DB *sql.DB }
 
 func (p *PostgresStore) SaveEvidence(ev Evidence) error {
-	if p == nil || p.DB == nil { return nil }
+	if p == nil || p.DB == nil {
+		return fmt.Errorf("reconciliation store unavailable")
+	}
 	_, err := p.DB.Exec(`INSERT INTO reconciliation_evidence (id, provider, source, account, raw_payload_hash, ingested_at, watermark, paging_token, amount_minor, currency, client_ref, provider_ref, beneficiary, fee_minor, correlation_id, raw_payload) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (id) DO NOTHING`, ev.ID, ev.Provider, ev.Source, ev.Account, ev.RawPayloadHash, ev.IngestedAt, ev.Watermark, ev.PagingToken, ev.AmountMinor, ev.Currency, ev.ClientRef, ev.ProviderRef, ev.Beneficiary, ev.FeeMinor, ev.CorrelationID, marshalJSON(ev.RawPayload))
 	return err
 }
 
 func (p *PostgresStore) LoadEvidence() ([]Evidence, error) {
-	if p == nil || p.DB == nil { return nil, nil }
+	if p == nil || p.DB == nil {
+		return nil, fmt.Errorf("reconciliation store unavailable")
+	}
 	rows, err := p.DB.Query(`SELECT id, provider, source, account, raw_payload_hash, ingested_at, watermark, paging_token, amount_minor, currency, client_ref, provider_ref, beneficiary, fee_minor, correlation_id FROM reconciliation_evidence ORDER BY ingested_at ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	items := make([]Evidence, 0)
 	for rows.Next() {
 		var ev Evidence
-		if err := rows.Scan(&ev.ID, &ev.Provider, &ev.Source, &ev.Account, &ev.RawPayloadHash, &ev.IngestedAt, &ev.Watermark, &ev.PagingToken, &ev.AmountMinor, &ev.Currency, &ev.ClientRef, &ev.ProviderRef, &ev.Beneficiary, &ev.FeeMinor, &ev.CorrelationID); err != nil { return nil, err }
+		if err := rows.Scan(&ev.ID, &ev.Provider, &ev.Source, &ev.Account, &ev.RawPayloadHash, &ev.IngestedAt, &ev.Watermark, &ev.PagingToken, &ev.AmountMinor, &ev.Currency, &ev.ClientRef, &ev.ProviderRef, &ev.Beneficiary, &ev.FeeMinor, &ev.CorrelationID); err != nil {
+			return nil, err
+		}
 		items = append(items, ev)
 	}
 	return items, rows.Err()
 }
 
 func (p *PostgresStore) SaveBreak(brk *ReconciliationBreak) error {
-	if p == nil || p.DB == nil || brk == nil { return nil }
+	if p == nil || p.DB == nil || brk == nil {
+		return fmt.Errorf("reconciliation break or store unavailable")
+	}
 	historyJSON, _ := json.Marshal(brk.History)
 	_, err := p.DB.Exec(`INSERT INTO reconciliation_breaks (id, type, provider, currency, expected_value, observed_value, delta, value, age_seconds, owner, state, severity, evidence_ids, internal_ids, comments, resolution, correlation_id, history, first_seen, last_seen, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state, severity=EXCLUDED.severity, observed_value=EXCLUDED.observed_value, delta=EXCLUDED.delta, last_seen=EXCLUDED.last_seen, resolution=EXCLUDED.resolution, history=EXCLUDED.history`, brk.ID, string(brk.Type), brk.Provider, brk.Currency, brk.Expected, brk.Observed, brk.Delta, brk.Value, int64(brk.Age.Seconds()), brk.Owner, brk.State, brk.Severity, pqArray(brk.EvidenceIDs), pqArray(brk.InternalIDs), pqArray(brk.Comments), brk.Resolution, brk.CorrelationID, historyJSON, brk.FirstSeen, brk.LastSeen, brk.CreatedAt)
 	return err
 }
 
 func (p *PostgresStore) LoadBreaks() ([]*ReconciliationBreak, error) {
-	if p == nil || p.DB == nil { return nil, nil }
+	if p == nil || p.DB == nil {
+		return nil, fmt.Errorf("reconciliation store unavailable")
+	}
 	rows, err := p.DB.Query(`SELECT id, type, provider, currency, expected_value, observed_value, delta, value, age_seconds, owner, state, severity, evidence_ids, internal_ids, comments, resolution, correlation_id, history, first_seen, last_seen, created_at FROM reconciliation_breaks ORDER BY created_at ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	items := make([]*ReconciliationBreak, 0)
 	for rows.Next() {
 		var b ReconciliationBreak
 		var evidenceIDs, internalIDs, comments, historyJSON sql.NullString
-		if err := rows.Scan(&b.ID, &b.Type, &b.Provider, &b.Currency, &b.Expected, &b.Observed, &b.Delta, &b.Value, &b.AgeSeconds, &b.Owner, &b.State, &b.Severity, &evidenceIDs, &internalIDs, &comments, &b.Resolution, &b.CorrelationID, &historyJSON, &b.FirstSeen, &b.LastSeen, &b.CreatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&b.ID, &b.Type, &b.Provider, &b.Currency, &b.Expected, &b.Observed, &b.Delta, &b.Value, &b.AgeSeconds, &b.Owner, &b.State, &b.Severity, &evidenceIDs, &internalIDs, &comments, &b.Resolution, &b.CorrelationID, &historyJSON, &b.FirstSeen, &b.LastSeen, &b.CreatedAt); err != nil {
+			return nil, err
+		}
 		b.EvidenceIDs = parseStringList(evidenceIDs)
 		b.InternalIDs = parseStringList(internalIDs)
 		b.Comments = parseStringList(comments)
@@ -192,21 +272,29 @@ func (p *PostgresStore) LoadBreaks() ([]*ReconciliationBreak, error) {
 }
 
 func (p *PostgresStore) SaveMatchResult(match MatchResult) error {
-	if p == nil || p.DB == nil { return nil }
+	if p == nil || p.DB == nil {
+		return fmt.Errorf("reconciliation store unavailable")
+	}
 	_, err := p.DB.Exec(`INSERT INTO reconciliation_match_results (id, run_id, evidence_id, internal_id, strategy, matched, break_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`, match.ID, match.RunID, match.EvidenceID, match.InternalID, string(match.Strategy), match.Matched, match.BreakID, match.CreatedAt)
 	return err
 }
 
 func (p *PostgresStore) LoadMatchResults() ([]MatchResult, error) {
-	if p == nil || p.DB == nil { return nil, nil }
+	if p == nil || p.DB == nil {
+		return nil, fmt.Errorf("reconciliation store unavailable")
+	}
 	rows, err := p.DB.Query(`SELECT id, run_id, evidence_id, internal_id, strategy, matched, break_id, created_at FROM reconciliation_match_results ORDER BY created_at ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	items := make([]MatchResult, 0)
 	for rows.Next() {
 		var m MatchResult
 		var strategy string
-		if err := rows.Scan(&m.ID, &m.RunID, &m.EvidenceID, &m.InternalID, &strategy, &m.Matched, &m.BreakID, &m.CreatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&m.ID, &m.RunID, &m.EvidenceID, &m.InternalID, &strategy, &m.Matched, &m.BreakID, &m.CreatedAt); err != nil {
+			return nil, err
+		}
 		m.Strategy = MatchStrategy(strategy)
 		items = append(items, m)
 	}
@@ -214,67 +302,108 @@ func (p *PostgresStore) LoadMatchResults() ([]MatchResult, error) {
 }
 
 func (p *PostgresStore) SaveWatermark(w Watermark) error {
-	if p == nil || p.DB == nil { return nil }
+	if p == nil || p.DB == nil {
+		return fmt.Errorf("reconciliation store unavailable")
+	}
 	_, err := p.DB.Exec(`INSERT INTO reconciliation_watermarks (provider, account, currency, watermark, updated_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (provider, account, currency) DO UPDATE SET watermark=EXCLUDED.watermark, updated_at=EXCLUDED.updated_at`, w.Provider, w.Account, w.Currency, w.Value, w.UpdatedAt)
 	return err
 }
 
 func (p *PostgresStore) LoadWatermarks() ([]Watermark, error) {
-	if p == nil || p.DB == nil { return nil, nil }
+	if p == nil || p.DB == nil {
+		return nil, fmt.Errorf("reconciliation store unavailable")
+	}
 	rows, err := p.DB.Query(`SELECT provider, account, currency, watermark, updated_at FROM reconciliation_watermarks ORDER BY updated_at ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	items := make([]Watermark, 0)
 	for rows.Next() {
 		var w Watermark
-		if err := rows.Scan(&w.Provider, &w.Account, &w.Currency, &w.Value, &w.UpdatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&w.Provider, &w.Account, &w.Currency, &w.Value, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
 		items = append(items, w)
 	}
 	return items, rows.Err()
 }
 
 func (p *PostgresStore) SaveApproval(a *Approval) error {
-	if p == nil || p.DB == nil || a == nil { return nil }
-	payload, _ := json.Marshal(a.ProposedEffect)
-	_, err := p.DB.Exec(`INSERT INTO reconciliation_approvals (id, break_id, proposer, approver, reason, evidence_ids, proposed_ledger_effect, resulting_journal_ref, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status, approver=EXCLUDED.approver, updated_at=EXCLUDED.updated_at`, a.ID, a.BreakID, a.Proposer, a.Approver, a.Reason, pqArray(a.EvidenceIDs), payload, a.ResultingJournalRef, a.Status, a.CreatedAt, a.UpdatedAt)
-	return err
+	if p == nil || p.DB == nil || a == nil {
+		return fmt.Errorf("approval store unavailable")
+	}
+	payload, err := json.Marshal(a.ProposedEffect)
+	if err != nil {
+		return err
+	}
+	result, err := p.DB.Exec(`INSERT INTO reconciliation_approvals (id, break_id, proposer, approver, reason, evidence_ids, proposed_ledger_effect, resulting_journal_ref, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status, reason=EXCLUDED.reason, updated_at=EXCLUDED.updated_at WHERE reconciliation_approvals.break_id=EXCLUDED.break_id AND reconciliation_approvals.proposer=EXCLUDED.proposer AND reconciliation_approvals.approver=EXCLUDED.approver AND reconciliation_approvals.proposed_ledger_effect=EXCLUDED.proposed_ledger_effect AND (reconciliation_approvals.status='PROPOSED' OR reconciliation_approvals.status=EXCLUDED.status)`, a.ID, a.BreakID, a.Proposer, a.Approver, a.Reason, pqArray(a.EvidenceIDs), payload, a.ResultingJournalRef, a.Status, a.CreatedAt, a.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("approval economics or state conflict")
+	}
+	return nil
 }
 
 func (p *PostgresStore) LoadApprovals() ([]*Approval, error) {
-	if p == nil || p.DB == nil { return nil, nil }
+	if p == nil || p.DB == nil {
+		return nil, fmt.Errorf("reconciliation store unavailable")
+	}
 	rows, err := p.DB.Query(`SELECT id, break_id, proposer, approver, reason, evidence_ids, proposed_ledger_effect, resulting_journal_ref, status, created_at, updated_at FROM reconciliation_approvals ORDER BY created_at ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	items := make([]*Approval, 0)
 	for rows.Next() {
 		var a Approval
 		var evidenceIDs sql.NullString
 		var payload sql.NullString
-		if err := rows.Scan(&a.ID, &a.BreakID, &a.Proposer, &a.Approver, &a.Reason, &evidenceIDs, &payload, &a.ResultingJournalRef, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&a.ID, &a.BreakID, &a.Proposer, &a.Approver, &a.Reason, &evidenceIDs, &payload, &a.ResultingJournalRef, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
 		a.EvidenceIDs = parseStringList(evidenceIDs)
-		json.Unmarshal([]byte(payload.String), &a.ProposedEffect)
+		decoder := json.NewDecoder(bytes.NewBufferString(payload.String))
+		decoder.UseNumber()
+		if err := decoder.Decode(&a.ProposedEffect); err != nil {
+			return nil, fmt.Errorf("decode reconciliation approval: %w", err)
+		}
 		items = append(items, &a)
 	}
 	return items, rows.Err()
 }
 
 func (p *PostgresStore) SaveResolution(res *ResolutionEvent) error {
-	if p == nil || p.DB == nil || res == nil { return nil }
+	if p == nil || p.DB == nil || res == nil {
+		return fmt.Errorf("reconciliation resolution or store unavailable")
+	}
 	payload, _ := json.Marshal(res.Details)
 	_, err := p.DB.Exec(`INSERT INTO reconciliation_resolution_history (id, break_id, action, actor, details, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`, res.ID, res.BreakID, res.Action, res.Actor, payload, res.CreatedAt)
 	return err
 }
 
 func (p *PostgresStore) LoadResolutionHistory() ([]*ResolutionEvent, error) {
-	if p == nil || p.DB == nil { return nil, nil }
+	if p == nil || p.DB == nil {
+		return nil, fmt.Errorf("reconciliation store unavailable")
+	}
 	rows, err := p.DB.Query(`SELECT id, break_id, action, actor, details, created_at FROM reconciliation_resolution_history ORDER BY created_at ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	items := make([]*ResolutionEvent, 0)
 	for rows.Next() {
 		var r ResolutionEvent
 		var details sql.NullString
-		if err := rows.Scan(&r.ID, &r.BreakID, &r.Action, &r.Actor, &details, &r.CreatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&r.ID, &r.BreakID, &r.Action, &r.Actor, &details, &r.CreatedAt); err != nil {
+			return nil, err
+		}
 		json.Unmarshal([]byte(details.String), &r.Details)
 		items = append(items, &r)
 	}
@@ -287,15 +416,23 @@ func marshalJSON(v any) []byte {
 }
 
 func pqArray(values []string) string {
-	if len(values) == 0 { return "{}" }
-	for i := range values { values[i] = strings.ReplaceAll(values[i], "\"", "\"") }
+	if len(values) == 0 {
+		return "{}"
+	}
+	for i := range values {
+		values[i] = strings.ReplaceAll(values[i], "\"", "\"")
+	}
 	return "{" + strings.Join(values, ",") + "}"
 }
 
 func parseStringList(value sql.NullString) []string {
-	if !value.Valid || value.String == "" || value.String == "{}" { return nil }
+	if !value.Valid || value.String == "" || value.String == "{}" {
+		return nil
+	}
 	trimmed := strings.Trim(value.String, "{}")
-	if trimmed == "" { return nil }
+	if trimmed == "" {
+		return nil
+	}
 	parts := strings.Split(trimmed, ",")
 	result := make([]string, 0, len(parts))
 	for _, p := range parts {

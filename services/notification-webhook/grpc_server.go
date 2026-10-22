@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"strings"
+	"time"
 
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	"github.com/osai/osai/services/notification-webhook/webhookcore"
@@ -84,6 +85,75 @@ func (s *notificationGRPCServer) ReplayWebhook(ctx context.Context, req *notific
 		}
 	}
 	return &notificationv1.ReplayWebhookResponse{Queued: true}, nil
+}
+
+func (s *notificationGRPCServer) GetWebhookDeliveryHistory(ctx context.Context, req *notificationv1.GetWebhookDeliveryHistoryRequest) (*notificationv1.GetWebhookDeliveryHistoryResponse, error) {
+	if s == nil || !s.authorized(ctx, s.configureToken) {
+		return nil, status.Error(codes.PermissionDenied, "webhook delivery history access denied")
+	}
+	if s.store == nil {
+		return nil, status.Error(codes.Unavailable, "notification persistence unavailable")
+	}
+	if req == nil || strings.TrimSpace(req.InstitutionId) == "" || strings.TrimSpace(req.EventId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution and event are required")
+	}
+	history, err := s.store.DeliveryHistory(ctx, req.InstitutionId, req.EventId, int(req.Limit), int(req.Offset))
+	if err != nil {
+		switch {
+		case errors.Is(err, webhookcore.ErrDeliveryHistoryNotFound):
+			return nil, status.Error(codes.NotFound, "webhook delivery history not found")
+		case errors.Is(err, webhookcore.ErrInvalidDeliveryHistoryRequest):
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		default:
+			return nil, status.Error(codes.Unavailable, "webhook delivery history unavailable")
+		}
+	}
+	response := &notificationv1.GetWebhookDeliveryHistoryResponse{
+		EventId: history.EventID, EventType: history.EventType, Status: history.Status,
+		AttemptCount: int32(history.AttemptCount), ReplayCount: int32(history.ReplayCount),
+		NextAttemptAt: history.NextAttemptAt.UTC().Format(time.RFC3339Nano),
+		Attempts:      make([]*notificationv1.WebhookDeliveryAttempt, 0, len(history.Attempts)),
+	}
+	for _, attempt := range history.Attempts {
+		item := &notificationv1.WebhookDeliveryAttempt{
+			AttemptNumber: int32(attempt.AttemptNumber), AttemptedAt: attempt.AttemptedAt.UTC().Format(time.RFC3339Nano),
+			HttpStatus: int32(attempt.HTTPStatus), Outcome: attempt.Outcome,
+		}
+		if attempt.CompletedAt != nil {
+			item.CompletedAt = attempt.CompletedAt.UTC().Format(time.RFC3339Nano)
+		}
+		response.Attempts = append(response.Attempts, item)
+	}
+	return response, nil
+}
+
+func (s *notificationGRPCServer) ListWebhookDeliveryEvents(ctx context.Context, req *notificationv1.ListWebhookDeliveryEventsRequest) (*notificationv1.ListWebhookDeliveryEventsResponse, error) {
+	if s == nil || !s.authorized(ctx, s.configureToken) {
+		return nil, status.Error(codes.PermissionDenied, "webhook delivery operations access denied")
+	}
+	if s.store == nil {
+		return nil, status.Error(codes.Unavailable, "notification persistence unavailable")
+	}
+	if req == nil || strings.TrimSpace(req.InstitutionId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "institution is required")
+	}
+	events, total, err := s.store.ListDeliveryEvents(ctx, req.InstitutionId, req.Status, int(req.Limit), int(req.Offset))
+	if err != nil {
+		if errors.Is(err, webhookcore.ErrInvalidDeliveryHistoryRequest) {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Error(codes.Unavailable, "webhook delivery operations unavailable")
+	}
+	response := &notificationv1.ListWebhookDeliveryEventsResponse{Total: int32(total), Events: make([]*notificationv1.WebhookDeliveryEventSummary, 0, len(events))}
+	for _, event := range events {
+		response.Events = append(response.Events, &notificationv1.WebhookDeliveryEventSummary{
+			EventId: event.EventID, EventType: event.EventType, Status: event.Status,
+			AttemptCount: int32(event.AttemptCount), ReplayCount: int32(event.ReplayCount),
+			NextAttemptAt: event.NextAttemptAt.UTC().Format(time.RFC3339Nano),
+			OccurredAt:    event.OccurredAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return response, nil
 }
 
 func (s *notificationGRPCServer) authorized(ctx context.Context, expected string) bool {

@@ -11,6 +11,7 @@ import (
 type Postgres struct {
 	DB            *sql.DB
 	CustodyBankID string
+	sandboxFees   bool
 }
 
 func (p Postgres) SaveJournal(key string, journal ledgercore.Journal) error {

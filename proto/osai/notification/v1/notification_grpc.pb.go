@@ -19,9 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NotificationService_PublishEvent_FullMethodName     = "/osai.notification.v1.NotificationService/PublishEvent"
-	NotificationService_ConfigureWebhook_FullMethodName = "/osai.notification.v1.NotificationService/ConfigureWebhook"
-	NotificationService_ReplayWebhook_FullMethodName    = "/osai.notification.v1.NotificationService/ReplayWebhook"
+	NotificationService_PublishEvent_FullMethodName              = "/osai.notification.v1.NotificationService/PublishEvent"
+	NotificationService_ConfigureWebhook_FullMethodName          = "/osai.notification.v1.NotificationService/ConfigureWebhook"
+	NotificationService_ReplayWebhook_FullMethodName             = "/osai.notification.v1.NotificationService/ReplayWebhook"
+	NotificationService_GetWebhookDeliveryHistory_FullMethodName = "/osai.notification.v1.NotificationService/GetWebhookDeliveryHistory"
+	NotificationService_ListWebhookDeliveryEvents_FullMethodName = "/osai.notification.v1.NotificationService/ListWebhookDeliveryEvents"
 )
 
 // NotificationServiceClient is the client API for NotificationService service.
@@ -31,6 +33,8 @@ type NotificationServiceClient interface {
 	PublishEvent(ctx context.Context, in *Event, opts ...grpc.CallOption) (*Receipt, error)
 	ConfigureWebhook(ctx context.Context, in *ConfigureWebhookRequest, opts ...grpc.CallOption) (*ConfigureWebhookResponse, error)
 	ReplayWebhook(ctx context.Context, in *ReplayWebhookRequest, opts ...grpc.CallOption) (*ReplayWebhookResponse, error)
+	GetWebhookDeliveryHistory(ctx context.Context, in *GetWebhookDeliveryHistoryRequest, opts ...grpc.CallOption) (*GetWebhookDeliveryHistoryResponse, error)
+	ListWebhookDeliveryEvents(ctx context.Context, in *ListWebhookDeliveryEventsRequest, opts ...grpc.CallOption) (*ListWebhookDeliveryEventsResponse, error)
 }
 
 type notificationServiceClient struct {
@@ -71,6 +75,26 @@ func (c *notificationServiceClient) ReplayWebhook(ctx context.Context, in *Repla
 	return out, nil
 }
 
+func (c *notificationServiceClient) GetWebhookDeliveryHistory(ctx context.Context, in *GetWebhookDeliveryHistoryRequest, opts ...grpc.CallOption) (*GetWebhookDeliveryHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWebhookDeliveryHistoryResponse)
+	err := c.cc.Invoke(ctx, NotificationService_GetWebhookDeliveryHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) ListWebhookDeliveryEvents(ctx context.Context, in *ListWebhookDeliveryEventsRequest, opts ...grpc.CallOption) (*ListWebhookDeliveryEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListWebhookDeliveryEventsResponse)
+	err := c.cc.Invoke(ctx, NotificationService_ListWebhookDeliveryEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NotificationServiceServer is the server API for NotificationService service.
 // All implementations must embed UnimplementedNotificationServiceServer
 // for forward compatibility.
@@ -78,6 +102,8 @@ type NotificationServiceServer interface {
 	PublishEvent(context.Context, *Event) (*Receipt, error)
 	ConfigureWebhook(context.Context, *ConfigureWebhookRequest) (*ConfigureWebhookResponse, error)
 	ReplayWebhook(context.Context, *ReplayWebhookRequest) (*ReplayWebhookResponse, error)
+	GetWebhookDeliveryHistory(context.Context, *GetWebhookDeliveryHistoryRequest) (*GetWebhookDeliveryHistoryResponse, error)
+	ListWebhookDeliveryEvents(context.Context, *ListWebhookDeliveryEventsRequest) (*ListWebhookDeliveryEventsResponse, error)
 	mustEmbedUnimplementedNotificationServiceServer()
 }
 
@@ -96,6 +122,12 @@ func (UnimplementedNotificationServiceServer) ConfigureWebhook(context.Context, 
 }
 func (UnimplementedNotificationServiceServer) ReplayWebhook(context.Context, *ReplayWebhookRequest) (*ReplayWebhookResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReplayWebhook not implemented")
+}
+func (UnimplementedNotificationServiceServer) GetWebhookDeliveryHistory(context.Context, *GetWebhookDeliveryHistoryRequest) (*GetWebhookDeliveryHistoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWebhookDeliveryHistory not implemented")
+}
+func (UnimplementedNotificationServiceServer) ListWebhookDeliveryEvents(context.Context, *ListWebhookDeliveryEventsRequest) (*ListWebhookDeliveryEventsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListWebhookDeliveryEvents not implemented")
 }
 func (UnimplementedNotificationServiceServer) mustEmbedUnimplementedNotificationServiceServer() {}
 func (UnimplementedNotificationServiceServer) testEmbeddedByValue()                             {}
@@ -172,6 +204,42 @@ func _NotificationService_ReplayWebhook_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NotificationService_GetWebhookDeliveryHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWebhookDeliveryHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).GetWebhookDeliveryHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_GetWebhookDeliveryHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).GetWebhookDeliveryHistory(ctx, req.(*GetWebhookDeliveryHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_ListWebhookDeliveryEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListWebhookDeliveryEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).ListWebhookDeliveryEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_ListWebhookDeliveryEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).ListWebhookDeliveryEvents(ctx, req.(*ListWebhookDeliveryEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NotificationService_ServiceDesc is the grpc.ServiceDesc for NotificationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +258,14 @@ var NotificationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplayWebhook",
 			Handler:    _NotificationService_ReplayWebhook_Handler,
+		},
+		{
+			MethodName: "GetWebhookDeliveryHistory",
+			Handler:    _NotificationService_GetWebhookDeliveryHistory_Handler,
+		},
+		{
+			MethodName: "ListWebhookDeliveryEvents",
+			Handler:    _NotificationService_ListWebhookDeliveryEvents_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

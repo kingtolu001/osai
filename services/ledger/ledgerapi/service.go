@@ -92,6 +92,7 @@ type ReconciliationAdjustmentCommand struct {
 }
 
 var ErrIdempotencyConflict = errors.New("idempotency key payload conflict")
+var ErrAdjustmentPolicyRequired = errors.New("reconciliation adjustment posting requires approved account targeting, accounting policy and authenticated approval evidence")
 
 // Service is the authoritative ledger-service command boundary. It owns journal
 // creation and deduplicates terminal settlement effects by external reference.
@@ -190,30 +191,10 @@ func (s *Service) PostReconciliationAdjustment(command ReconciliationAdjustmentC
 	if command.Maker == command.Checker {
 		return "", false, errors.New("maker and checker must be different actors")
 	}
-	journalTag := command.JournalTag
-	if journalTag == "" {
-		journalTag = "reconciliation_adjustment"
-	}
-	journal := ledgercore.NewJournal("jt_reconciliation_"+command.BreakID+"_"+journalTag, command.BreakID, command.Currency)
-	journal.AddEntry("1400", "SUSPENSE", command.BreakID, command.Currency, command.AmountMinor, 0, journalTag+":debit")
-	journal.AddEntry("2000", "CLIENT_PREFUND", command.Checker, command.Currency, 0, command.AmountMinor, journalTag+":credit")
-	if err := journal.Validate(); err != nil {
-		return "", false, fmt.Errorf("validate reconciliation adjustment: %w", err)
-	}
-	key := command.IdempotencyKey + ":reconciliation_adjustment"
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.correlations = append(s.correlations, command.CorrelationID)
-	if existing, ok := s.journals[key]; ok {
-		return existing.ID, true, nil
-	}
-	if s.storage != nil {
-		if err := s.storage.SaveJournal(key, *journal); err != nil {
-			return "", false, err
-		}
-	}
-	s.journals[key] = *journal
-	return journal.ID, false, nil
+	// Maker/checker names do not establish account ownership or authenticated
+	// approval. The current command cannot express an approved economic target.
+	// Do not infer a customer or balancing entry from either actor's identity.
+	return "", false, ErrAdjustmentPolicyRequired
 }
 
 func (s *Service) FailSettlement(instruction SettlementInstruction) error {

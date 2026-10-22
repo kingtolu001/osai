@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
@@ -24,6 +25,9 @@ import (
 )
 
 func main() {
+	if _, err := sandboxpolicy.Read(); err != nil {
+		log.Fatal(err)
+	}
 	if err := observability.Init("trade-orchestrator"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}

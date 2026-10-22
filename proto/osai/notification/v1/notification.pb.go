@@ -373,6 +373,454 @@ func (x *ReplayWebhookResponse) GetQueued() bool {
 	return false
 }
 
+type GetWebhookDeliveryHistoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	EventId       string                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWebhookDeliveryHistoryRequest) Reset() {
+	*x = GetWebhookDeliveryHistoryRequest{}
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWebhookDeliveryHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWebhookDeliveryHistoryRequest) ProtoMessage() {}
+
+func (x *GetWebhookDeliveryHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWebhookDeliveryHistoryRequest.ProtoReflect.Descriptor instead.
+func (*GetWebhookDeliveryHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_notification_v1_notification_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetWebhookDeliveryHistoryRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *GetWebhookDeliveryHistoryRequest) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *GetWebhookDeliveryHistoryRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *GetWebhookDeliveryHistoryRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type WebhookDeliveryAttempt struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AttemptNumber int32                  `protobuf:"varint,1,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
+	AttemptedAt   string                 `protobuf:"bytes,2,opt,name=attempted_at,json=attemptedAt,proto3" json:"attempted_at,omitempty"`
+	HttpStatus    int32                  `protobuf:"varint,3,opt,name=http_status,json=httpStatus,proto3" json:"http_status,omitempty"`
+	Outcome       string                 `protobuf:"bytes,4,opt,name=outcome,proto3" json:"outcome,omitempty"`
+	CompletedAt   string                 `protobuf:"bytes,5,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebhookDeliveryAttempt) Reset() {
+	*x = WebhookDeliveryAttempt{}
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebhookDeliveryAttempt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebhookDeliveryAttempt) ProtoMessage() {}
+
+func (x *WebhookDeliveryAttempt) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebhookDeliveryAttempt.ProtoReflect.Descriptor instead.
+func (*WebhookDeliveryAttempt) Descriptor() ([]byte, []int) {
+	return file_proto_osai_notification_v1_notification_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *WebhookDeliveryAttempt) GetAttemptNumber() int32 {
+	if x != nil {
+		return x.AttemptNumber
+	}
+	return 0
+}
+
+func (x *WebhookDeliveryAttempt) GetAttemptedAt() string {
+	if x != nil {
+		return x.AttemptedAt
+	}
+	return ""
+}
+
+func (x *WebhookDeliveryAttempt) GetHttpStatus() int32 {
+	if x != nil {
+		return x.HttpStatus
+	}
+	return 0
+}
+
+func (x *WebhookDeliveryAttempt) GetOutcome() string {
+	if x != nil {
+		return x.Outcome
+	}
+	return ""
+}
+
+func (x *WebhookDeliveryAttempt) GetCompletedAt() string {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return ""
+}
+
+type GetWebhookDeliveryHistoryResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	EventId       string                    `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	EventType     string                    `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Status        string                    `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	AttemptCount  int32                     `protobuf:"varint,4,opt,name=attempt_count,json=attemptCount,proto3" json:"attempt_count,omitempty"`
+	ReplayCount   int32                     `protobuf:"varint,5,opt,name=replay_count,json=replayCount,proto3" json:"replay_count,omitempty"`
+	NextAttemptAt string                    `protobuf:"bytes,6,opt,name=next_attempt_at,json=nextAttemptAt,proto3" json:"next_attempt_at,omitempty"`
+	Attempts      []*WebhookDeliveryAttempt `protobuf:"bytes,7,rep,name=attempts,proto3" json:"attempts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) Reset() {
+	*x = GetWebhookDeliveryHistoryResponse{}
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWebhookDeliveryHistoryResponse) ProtoMessage() {}
+
+func (x *GetWebhookDeliveryHistoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWebhookDeliveryHistoryResponse.ProtoReflect.Descriptor instead.
+func (*GetWebhookDeliveryHistoryResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_notification_v1_notification_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetAttemptCount() int32 {
+	if x != nil {
+		return x.AttemptCount
+	}
+	return 0
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetReplayCount() int32 {
+	if x != nil {
+		return x.ReplayCount
+	}
+	return 0
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetNextAttemptAt() string {
+	if x != nil {
+		return x.NextAttemptAt
+	}
+	return ""
+}
+
+func (x *GetWebhookDeliveryHistoryResponse) GetAttempts() []*WebhookDeliveryAttempt {
+	if x != nil {
+		return x.Attempts
+	}
+	return nil
+}
+
+type ListWebhookDeliveryEventsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWebhookDeliveryEventsRequest) Reset() {
+	*x = ListWebhookDeliveryEventsRequest{}
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWebhookDeliveryEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWebhookDeliveryEventsRequest) ProtoMessage() {}
+
+func (x *ListWebhookDeliveryEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWebhookDeliveryEventsRequest.ProtoReflect.Descriptor instead.
+func (*ListWebhookDeliveryEventsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_notification_v1_notification_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ListWebhookDeliveryEventsRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *ListWebhookDeliveryEventsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListWebhookDeliveryEventsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListWebhookDeliveryEventsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type WebhookDeliveryEventSummary struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	EventType     string                 `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	AttemptCount  int32                  `protobuf:"varint,4,opt,name=attempt_count,json=attemptCount,proto3" json:"attempt_count,omitempty"`
+	ReplayCount   int32                  `protobuf:"varint,5,opt,name=replay_count,json=replayCount,proto3" json:"replay_count,omitempty"`
+	NextAttemptAt string                 `protobuf:"bytes,6,opt,name=next_attempt_at,json=nextAttemptAt,proto3" json:"next_attempt_at,omitempty"`
+	OccurredAt    string                 `protobuf:"bytes,7,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebhookDeliveryEventSummary) Reset() {
+	*x = WebhookDeliveryEventSummary{}
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebhookDeliveryEventSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebhookDeliveryEventSummary) ProtoMessage() {}
+
+func (x *WebhookDeliveryEventSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebhookDeliveryEventSummary.ProtoReflect.Descriptor instead.
+func (*WebhookDeliveryEventSummary) Descriptor() ([]byte, []int) {
+	return file_proto_osai_notification_v1_notification_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *WebhookDeliveryEventSummary) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *WebhookDeliveryEventSummary) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *WebhookDeliveryEventSummary) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *WebhookDeliveryEventSummary) GetAttemptCount() int32 {
+	if x != nil {
+		return x.AttemptCount
+	}
+	return 0
+}
+
+func (x *WebhookDeliveryEventSummary) GetReplayCount() int32 {
+	if x != nil {
+		return x.ReplayCount
+	}
+	return 0
+}
+
+func (x *WebhookDeliveryEventSummary) GetNextAttemptAt() string {
+	if x != nil {
+		return x.NextAttemptAt
+	}
+	return ""
+}
+
+func (x *WebhookDeliveryEventSummary) GetOccurredAt() string {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return ""
+}
+
+type ListWebhookDeliveryEventsResponse struct {
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	Events        []*WebhookDeliveryEventSummary `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	Total         int32                          `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWebhookDeliveryEventsResponse) Reset() {
+	*x = ListWebhookDeliveryEventsResponse{}
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWebhookDeliveryEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWebhookDeliveryEventsResponse) ProtoMessage() {}
+
+func (x *ListWebhookDeliveryEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_notification_v1_notification_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWebhookDeliveryEventsResponse.ProtoReflect.Descriptor instead.
+func (*ListWebhookDeliveryEventsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_notification_v1_notification_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListWebhookDeliveryEventsResponse) GetEvents() []*WebhookDeliveryEventSummary {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *ListWebhookDeliveryEventsResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
 var File_proto_osai_notification_v1_notification_proto protoreflect.FileDescriptor
 
 const file_proto_osai_notification_v1_notification_proto_rawDesc = "" +
@@ -404,11 +852,52 @@ const file_proto_osai_notification_v1_notification_proto_rawDesc = "" +
 	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12'\n" +
 	"\x0fidempotency_key\x18\x03 \x01(\tR\x0eidempotencyKey\"/\n" +
 	"\x15ReplayWebhookResponse\x12\x16\n" +
-	"\x06queued\x18\x01 \x01(\bR\x06queued2\xbe\x02\n" +
+	"\x06queued\x18\x01 \x01(\bR\x06queued\"\x92\x01\n" +
+	" GetWebhookDeliveryHistoryRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\xc0\x01\n" +
+	"\x16WebhookDeliveryAttempt\x12%\n" +
+	"\x0eattempt_number\x18\x01 \x01(\x05R\rattemptNumber\x12!\n" +
+	"\fattempted_at\x18\x02 \x01(\tR\vattemptedAt\x12\x1f\n" +
+	"\vhttp_status\x18\x03 \x01(\x05R\n" +
+	"httpStatus\x12\x18\n" +
+	"\aoutcome\x18\x04 \x01(\tR\aoutcome\x12!\n" +
+	"\fcompleted_at\x18\x05 \x01(\tR\vcompletedAt\"\xaf\x02\n" +
+	"!GetWebhookDeliveryHistoryResponse\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x02 \x01(\tR\teventType\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12#\n" +
+	"\rattempt_count\x18\x04 \x01(\x05R\fattemptCount\x12!\n" +
+	"\freplay_count\x18\x05 \x01(\x05R\vreplayCount\x12&\n" +
+	"\x0fnext_attempt_at\x18\x06 \x01(\tR\rnextAttemptAt\x12H\n" +
+	"\battempts\x18\a \x03(\v2,.osai.notification.v1.WebhookDeliveryAttemptR\battempts\"\x8f\x01\n" +
+	" ListWebhookDeliveryEventsRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\x80\x02\n" +
+	"\x1bWebhookDeliveryEventSummary\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x02 \x01(\tR\teventType\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12#\n" +
+	"\rattempt_count\x18\x04 \x01(\x05R\fattemptCount\x12!\n" +
+	"\freplay_count\x18\x05 \x01(\x05R\vreplayCount\x12&\n" +
+	"\x0fnext_attempt_at\x18\x06 \x01(\tR\rnextAttemptAt\x12\x1f\n" +
+	"\voccurred_at\x18\a \x01(\tR\n" +
+	"occurredAt\"\x84\x01\n" +
+	"!ListWebhookDeliveryEventsResponse\x12I\n" +
+	"\x06events\x18\x01 \x03(\v21.osai.notification.v1.WebhookDeliveryEventSummaryR\x06events\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\xdc\x04\n" +
 	"\x13NotificationService\x12J\n" +
 	"\fPublishEvent\x12\x1b.osai.notification.v1.Event\x1a\x1d.osai.notification.v1.Receipt\x12q\n" +
 	"\x10ConfigureWebhook\x12-.osai.notification.v1.ConfigureWebhookRequest\x1a..osai.notification.v1.ConfigureWebhookResponse\x12h\n" +
-	"\rReplayWebhook\x12*.osai.notification.v1.ReplayWebhookRequest\x1a+.osai.notification.v1.ReplayWebhookResponseB@Z>github.com/osai/osai/proto/osai/notification/v1;notificationv1b\x06proto3"
+	"\rReplayWebhook\x12*.osai.notification.v1.ReplayWebhookRequest\x1a+.osai.notification.v1.ReplayWebhookResponse\x12\x8c\x01\n" +
+	"\x19GetWebhookDeliveryHistory\x126.osai.notification.v1.GetWebhookDeliveryHistoryRequest\x1a7.osai.notification.v1.GetWebhookDeliveryHistoryResponse\x12\x8c\x01\n" +
+	"\x19ListWebhookDeliveryEvents\x126.osai.notification.v1.ListWebhookDeliveryEventsRequest\x1a7.osai.notification.v1.ListWebhookDeliveryEventsResponseB@Z>github.com/osai/osai/proto/osai/notification/v1;notificationv1b\x06proto3"
 
 var (
 	file_proto_osai_notification_v1_notification_proto_rawDescOnce sync.Once
@@ -422,27 +911,39 @@ func file_proto_osai_notification_v1_notification_proto_rawDescGZIP() []byte {
 	return file_proto_osai_notification_v1_notification_proto_rawDescData
 }
 
-var file_proto_osai_notification_v1_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proto_osai_notification_v1_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_proto_osai_notification_v1_notification_proto_goTypes = []any{
-	(*Event)(nil),                    // 0: osai.notification.v1.Event
-	(*Receipt)(nil),                  // 1: osai.notification.v1.Receipt
-	(*ConfigureWebhookRequest)(nil),  // 2: osai.notification.v1.ConfigureWebhookRequest
-	(*ConfigureWebhookResponse)(nil), // 3: osai.notification.v1.ConfigureWebhookResponse
-	(*ReplayWebhookRequest)(nil),     // 4: osai.notification.v1.ReplayWebhookRequest
-	(*ReplayWebhookResponse)(nil),    // 5: osai.notification.v1.ReplayWebhookResponse
+	(*Event)(nil),                             // 0: osai.notification.v1.Event
+	(*Receipt)(nil),                           // 1: osai.notification.v1.Receipt
+	(*ConfigureWebhookRequest)(nil),           // 2: osai.notification.v1.ConfigureWebhookRequest
+	(*ConfigureWebhookResponse)(nil),          // 3: osai.notification.v1.ConfigureWebhookResponse
+	(*ReplayWebhookRequest)(nil),              // 4: osai.notification.v1.ReplayWebhookRequest
+	(*ReplayWebhookResponse)(nil),             // 5: osai.notification.v1.ReplayWebhookResponse
+	(*GetWebhookDeliveryHistoryRequest)(nil),  // 6: osai.notification.v1.GetWebhookDeliveryHistoryRequest
+	(*WebhookDeliveryAttempt)(nil),            // 7: osai.notification.v1.WebhookDeliveryAttempt
+	(*GetWebhookDeliveryHistoryResponse)(nil), // 8: osai.notification.v1.GetWebhookDeliveryHistoryResponse
+	(*ListWebhookDeliveryEventsRequest)(nil),  // 9: osai.notification.v1.ListWebhookDeliveryEventsRequest
+	(*WebhookDeliveryEventSummary)(nil),       // 10: osai.notification.v1.WebhookDeliveryEventSummary
+	(*ListWebhookDeliveryEventsResponse)(nil), // 11: osai.notification.v1.ListWebhookDeliveryEventsResponse
 }
 var file_proto_osai_notification_v1_notification_proto_depIdxs = []int32{
-	0, // 0: osai.notification.v1.NotificationService.PublishEvent:input_type -> osai.notification.v1.Event
-	2, // 1: osai.notification.v1.NotificationService.ConfigureWebhook:input_type -> osai.notification.v1.ConfigureWebhookRequest
-	4, // 2: osai.notification.v1.NotificationService.ReplayWebhook:input_type -> osai.notification.v1.ReplayWebhookRequest
-	1, // 3: osai.notification.v1.NotificationService.PublishEvent:output_type -> osai.notification.v1.Receipt
-	3, // 4: osai.notification.v1.NotificationService.ConfigureWebhook:output_type -> osai.notification.v1.ConfigureWebhookResponse
-	5, // 5: osai.notification.v1.NotificationService.ReplayWebhook:output_type -> osai.notification.v1.ReplayWebhookResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	7,  // 0: osai.notification.v1.GetWebhookDeliveryHistoryResponse.attempts:type_name -> osai.notification.v1.WebhookDeliveryAttempt
+	10, // 1: osai.notification.v1.ListWebhookDeliveryEventsResponse.events:type_name -> osai.notification.v1.WebhookDeliveryEventSummary
+	0,  // 2: osai.notification.v1.NotificationService.PublishEvent:input_type -> osai.notification.v1.Event
+	2,  // 3: osai.notification.v1.NotificationService.ConfigureWebhook:input_type -> osai.notification.v1.ConfigureWebhookRequest
+	4,  // 4: osai.notification.v1.NotificationService.ReplayWebhook:input_type -> osai.notification.v1.ReplayWebhookRequest
+	6,  // 5: osai.notification.v1.NotificationService.GetWebhookDeliveryHistory:input_type -> osai.notification.v1.GetWebhookDeliveryHistoryRequest
+	9,  // 6: osai.notification.v1.NotificationService.ListWebhookDeliveryEvents:input_type -> osai.notification.v1.ListWebhookDeliveryEventsRequest
+	1,  // 7: osai.notification.v1.NotificationService.PublishEvent:output_type -> osai.notification.v1.Receipt
+	3,  // 8: osai.notification.v1.NotificationService.ConfigureWebhook:output_type -> osai.notification.v1.ConfigureWebhookResponse
+	5,  // 9: osai.notification.v1.NotificationService.ReplayWebhook:output_type -> osai.notification.v1.ReplayWebhookResponse
+	8,  // 10: osai.notification.v1.NotificationService.GetWebhookDeliveryHistory:output_type -> osai.notification.v1.GetWebhookDeliveryHistoryResponse
+	11, // 11: osai.notification.v1.NotificationService.ListWebhookDeliveryEvents:output_type -> osai.notification.v1.ListWebhookDeliveryEventsResponse
+	7,  // [7:12] is the sub-list for method output_type
+	2,  // [2:7] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_proto_osai_notification_v1_notification_proto_init() }
@@ -456,7 +957,7 @@ func file_proto_osai_notification_v1_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_notification_v1_notification_proto_rawDesc), len(file_proto_osai_notification_v1_notification_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

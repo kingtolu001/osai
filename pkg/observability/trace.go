@@ -2,14 +2,19 @@ package observability
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/osai/osai/pkg/correlation"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -19,9 +24,10 @@ import (
 )
 
 var (
-	initOnce      sync.Once
-	initErr       error
+	initOnce       sync.Once
+	initErr        error
 	tracerProvider *sdktrace.TracerProvider
+	meterProvider  *sdkmetric.MeterProvider
 )
 
 func Init(serviceName string) error {
@@ -31,16 +37,23 @@ func Init(serviceName string) error {
 	if serviceName == "" {
 		serviceName = "osai"
 	}
+	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	initOnce.Do(func() {
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{},
 			propagation.Baggage{},
 		))
 		ctx := context.Background()
-		exporter, err := otlptracegrpc.New(ctx,
-			otlptracegrpc.WithInsecure(),
-			otlptracegrpc.WithEndpoint("localhost:4317"),
-		)
+		traceOptions := make([]otlptracegrpc.Option, 0, 2)
+		metricOptions := make([]otlpmetricgrpc.Option, 0, 2)
+		if endpoint == "" {
+			traceOptions = append(traceOptions, otlptracegrpc.WithEndpoint("localhost:4317"), otlptracegrpc.WithInsecure())
+			metricOptions = append(metricOptions, otlpmetricgrpc.WithEndpoint("localhost:4317"), otlpmetricgrpc.WithInsecure())
+		} else if strings.HasPrefix(strings.ToLower(endpoint), "http://") || strings.HasPrefix(strings.ToLower(endpoint), "unix://") {
+			traceOptions = append(traceOptions, otlptracegrpc.WithInsecure())
+			metricOptions = append(metricOptions, otlpmetricgrpc.WithInsecure())
+		}
+		exporter, err := otlptracegrpc.New(ctx, traceOptions...)
 		if err != nil {
 			initErr = err
 			return
@@ -51,6 +64,13 @@ func Init(serviceName string) error {
 			),
 		)
 		if err != nil {
+			_ = exporter.Shutdown(ctx)
+			initErr = err
+			return
+		}
+		metricExporter, err := otlpmetricgrpc.New(ctx, metricOptions...)
+		if err != nil {
+			_ = exporter.Shutdown(ctx)
 			initErr = err
 			return
 		}
@@ -58,21 +78,33 @@ func Init(serviceName string) error {
 			sdktrace.WithBatcher(exporter),
 			sdktrace.WithResource(res),
 		)
+		metrics := sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(10*time.Second))),
+			sdkmetric.WithResource(res),
+		)
 		tracerProvider = provider
+		meterProvider = metrics
 		otel.SetTracerProvider(provider)
+		otel.SetMeterProvider(metrics)
 	})
 	return initErr
 }
 
 func Shutdown(ctx context.Context) error {
-	if tracerProvider == nil {
-		return nil
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return tracerProvider.Shutdown(ctx)
+	var errs []error
+	if tracerProvider != nil {
+		errs = append(errs, tracerProvider.Shutdown(ctx))
+	}
+	if meterProvider != nil {
+		errs = append(errs, meterProvider.Shutdown(ctx))
+	}
+	return errors.Join(errs...)
 }
+
+func Meter(name string) otelmetric.Meter { return otel.Meter(name) }
 
 func Start(ctx context.Context, component, operation string) (context.Context, oteltrace.Span) {
 	return otel.Tracer(component).Start(ctx, operation)

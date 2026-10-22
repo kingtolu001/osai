@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net"
@@ -8,6 +9,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/osai/osai/pkg/observability"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	"github.com/osai/osai/services/ledger/ledgerapi"
 	"github.com/osai/osai/services/ledger/ledgergrpc"
@@ -16,6 +18,10 @@ import (
 )
 
 func main() {
+	sandboxFees, policyErr := sandboxpolicy.Read()
+	if policyErr != nil {
+		log.Fatal(policyErr)
+	}
 	if err := observability.Init("ledger-server"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}
@@ -34,7 +40,16 @@ func main() {
 	if err := ledgerstore.EnsureSchema(db); err != nil {
 		log.Fatal(err)
 	}
-	service, err := ledgerapi.NewServiceWithStorage(ledgerstore.Postgres{DB: db, CustodyBankID: os.Getenv("OSAI_CUSTODY_BANK_ID")})
+	storage := ledgerstore.Postgres{DB: db, CustodyBankID: os.Getenv("OSAI_CUSTODY_BANK_ID")}
+	sandboxToken := ""
+	if sandboxFees {
+		storage, err = storage.WithSandboxFees(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		sandboxToken = os.Getenv("OSAI_SANDBOX_LEDGER_TOKEN")
+	}
+	service, err := ledgerapi.NewServiceWithStorage(storage)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,7 +62,7 @@ func main() {
 		log.Fatal(err)
 	}
 	server := grpc.NewServer()
-	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service, DB: db, LocalPrefundToken: os.Getenv("OSAI_LOCAL_PREFUND_TOKEN")})
+	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service, DB: db, LocalPrefundToken: os.Getenv("OSAI_LOCAL_PREFUND_TOKEN"), SandboxToken: sandboxToken})
 	log.Printf("ledger gRPC server listening on %s", addr)
 	log.Fatal(server.Serve(listener))
 }

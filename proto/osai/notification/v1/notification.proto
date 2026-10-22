@@ -24,8 +24,51 @@ message ReplayWebhookRequest {
  string idempotency_key = 3;
 }
 message ReplayWebhookResponse { bool queued = 1; }
+message GetWebhookDeliveryHistoryRequest {
+ string institution_id = 1;
+ string event_id = 2;
+ int32 limit = 3;
+ int32 offset = 4;
+}
+message WebhookDeliveryAttempt {
+ int32 attempt_number = 1;
+ string attempted_at = 2;
+ int32 http_status = 3;
+ string outcome = 4;
+ string completed_at = 5;
+}
+message GetWebhookDeliveryHistoryResponse {
+ string event_id = 1;
+ string event_type = 2;
+ string status = 3;
+ int32 attempt_count = 4;
+ int32 replay_count = 5;
+ string next_attempt_at = 6;
+ repeated WebhookDeliveryAttempt attempts = 7;
+}
+message ListWebhookDeliveryEventsRequest {
+ string institution_id = 1;
+ string status = 2;
+ int32 limit = 3;
+ int32 offset = 4;
+}
+message WebhookDeliveryEventSummary {
+ string event_id = 1;
+ string event_type = 2;
+ string status = 3;
+ int32 attempt_count = 4;
+ int32 replay_count = 5;
+ string next_attempt_at = 6;
+ string occurred_at = 7;
+}
+message ListWebhookDeliveryEventsResponse {
+ repeated WebhookDeliveryEventSummary events = 1;
+ int32 total = 2;
+}
 service NotificationService {
  rpc PublishEvent(Event) returns (Receipt);
  rpc ConfigureWebhook(ConfigureWebhookRequest) returns (ConfigureWebhookResponse);
  rpc ReplayWebhook(ReplayWebhookRequest) returns (ReplayWebhookResponse);
+ rpc GetWebhookDeliveryHistory(GetWebhookDeliveryHistoryRequest) returns (GetWebhookDeliveryHistoryResponse);
+ rpc ListWebhookDeliveryEvents(ListWebhookDeliveryEventsRequest) returns (ListWebhookDeliveryEventsResponse);
 }

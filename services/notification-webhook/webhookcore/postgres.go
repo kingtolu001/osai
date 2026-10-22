@@ -12,9 +12,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/osai/osai/pkg/observability"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
+	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
 // Postgres owns customer event delivery history and encrypted signing secrets.
@@ -24,13 +27,45 @@ type Postgres struct {
 	ConfigEncryptionKey []byte
 	RetryDelay          time.Duration
 	MaxAttempts         int
+	deliveryFailures    otelmetric.Int64Counter
+	metricsRegistered   bool
 }
 
 var (
-	ErrReplayEventNotFound = errors.New("webhook event not found")
-	ErrReplayNotAllowed    = errors.New("webhook event is not eligible for replay")
-	ErrReplayKeyConflict   = errors.New("webhook replay idempotency key conflict")
+	ErrReplayEventNotFound           = errors.New("webhook event not found")
+	ErrReplayNotAllowed              = errors.New("webhook event is not eligible for replay")
+	ErrReplayKeyConflict             = errors.New("webhook replay idempotency key conflict")
+	ErrDeliveryHistoryNotFound       = errors.New("webhook delivery history not found")
+	ErrInvalidDeliveryHistoryRequest = errors.New("invalid webhook delivery history request")
 )
+
+type DeliveryHistory struct {
+	EventID       string
+	EventType     string
+	Status        string
+	AttemptCount  int
+	ReplayCount   int
+	NextAttemptAt time.Time
+	Attempts      []DeliveryHistoryAttempt
+}
+
+type DeliveryHistoryAttempt struct {
+	AttemptNumber int
+	AttemptedAt   time.Time
+	HTTPStatus    int
+	Outcome       string
+	CompletedAt   *time.Time
+}
+
+type DeliveryEventSummary struct {
+	EventID       string
+	EventType     string
+	Status        string
+	AttemptCount  int
+	ReplayCount   int
+	NextAttemptAt time.Time
+	OccurredAt    time.Time
+}
 
 func (p *Postgres) EnsureSchema() error {
 	_, err := p.DB.Exec(`CREATE TABLE IF NOT EXISTS webhook_config (institution_id text PRIMARY KEY, endpoint_url text NOT NULL, secret_ref text NOT NULL, secret_ciphertext bytea, status text NOT NULL, subscriptions text[] NOT NULL);
@@ -41,6 +76,40 @@ func (p *Postgres) EnsureSchema() error {
  ALTER TABLE outbound_events ADD COLUMN IF NOT EXISTS replay_count int NOT NULL DEFAULT 0;
  CREATE TABLE IF NOT EXISTS webhook_delivery_replays (institution_id text NOT NULL,event_id text NOT NULL REFERENCES outbound_events(event_id),idempotency_key text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(institution_id,idempotency_key));`)
 	return err
+}
+
+// RegisterMetrics wires the Phase 5 webhook backlog and delivery-failure
+// instruments. Metrics are process-wide and intentionally have no tenant or
+// event labels, avoiding customer-data leakage and unbounded cardinality.
+func (p *Postgres) RegisterMetrics() error {
+	if p == nil || p.DB == nil {
+		return errors.New("notification database is required for metrics")
+	}
+	if p.metricsRegistered {
+		return nil
+	}
+	meter := observability.Meter("osai/notification-webhook")
+	failures, err := meter.Int64Counter("webhook_failures_total", otelmetric.WithDescription("Persisted customer webhook delivery attempts that did not succeed"))
+	if err != nil {
+		return err
+	}
+	backlog, err := meter.Int64ObservableGauge("webhook_delivery_backlog", otelmetric.WithDescription("Customer webhook events waiting for delivery or retry"))
+	if err != nil {
+		return err
+	}
+	if _, err = meter.RegisterCallback(func(ctx context.Context, observer otelmetric.Observer) error {
+		var count int64
+		if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM outbound_events WHERE status IN ('PENDING','RETRY')`).Scan(&count); err != nil {
+			return err
+		}
+		observer.ObserveInt64(backlog, count)
+		return nil
+	}, backlog); err != nil {
+		return err
+	}
+	p.deliveryFailures = failures
+	p.metricsRegistered = true
+	return nil
 }
 func (p *Postgres) Configure(institution, endpointURL, signingSecret string, subscriptions []string) error {
 	if institution == "" || endpointURL == "" || signingSecret == "" || len(subscriptions) == 0 {
@@ -195,6 +264,9 @@ func (p *Postgres) DeliverDue(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	if deliveryErr != nil || attempt.Outcome != "success" {
+		if p.deliveryFailures != nil {
+			p.deliveryFailures.Add(ctx, 1)
+		}
 		return true, errors.New("customer webhook delivery attempt failed; result persisted")
 	}
 	return true, nil
@@ -263,6 +335,113 @@ func (p *Postgres) Replay(ctx context.Context, institutionID, eventID, idempoten
 		}
 	}
 	return tx.Commit()
+}
+
+// DeliveryHistory returns only institution-scoped delivery metadata. Event
+// payloads, endpoint URLs, and encrypted signing configuration are excluded.
+func (p *Postgres) DeliveryHistory(ctx context.Context, institutionID, eventID string, limit, offset int) (*DeliveryHistory, error) {
+	if institutionID == "" || eventID == "" {
+		return nil, fmt.Errorf("%w: institution and event are required", ErrInvalidDeliveryHistoryRequest)
+	}
+	if limit < 1 || limit > 100 || offset < 0 {
+		return nil, fmt.Errorf("%w: limit must be 1..100 and offset non-negative", ErrInvalidDeliveryHistoryRequest)
+	}
+	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	history := &DeliveryHistory{EventID: eventID, Attempts: make([]DeliveryHistoryAttempt, 0)}
+	err = tx.QueryRowContext(ctx, `SELECT event_type,status,attempt_count,replay_count,next_attempt_at
+		FROM outbound_events WHERE event_id=$1 AND institution_id=$2`, eventID, institutionID).Scan(
+		&history.EventType, &history.Status, &history.AttemptCount, &history.ReplayCount, &history.NextAttemptAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrDeliveryHistoryNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT attempt_number,attempted_at,http_status,outcome,completed_at
+		FROM webhook_delivery_attempts WHERE event_id=$1 ORDER BY attempt_number DESC LIMIT $2 OFFSET $3`, eventID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var attempt DeliveryHistoryAttempt
+		var completedAt sql.NullTime
+		if err := rows.Scan(&attempt.AttemptNumber, &attempt.AttemptedAt, &attempt.HTTPStatus, &attempt.Outcome, &completedAt); err != nil {
+			return nil, err
+		}
+		if completedAt.Valid {
+			completed := completedAt.Time
+			attempt.CompletedAt = &completed
+		}
+		history.Attempts = append(history.Attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return history, nil
+}
+
+// ListDeliveryEvents provides the authenticated operational queue view. It
+// returns identifiers and lifecycle metadata without exposing event payloads.
+func (p *Postgres) ListDeliveryEvents(ctx context.Context, institutionID, status string, limit, offset int) ([]DeliveryEventSummary, int, error) {
+	institutionID = strings.TrimSpace(institutionID)
+	status = strings.ToUpper(strings.TrimSpace(status))
+	if institutionID == "" {
+		return nil, 0, fmt.Errorf("%w: institution is required", ErrInvalidDeliveryHistoryRequest)
+	}
+	if limit < 1 || limit > 100 || offset < 0 {
+		return nil, 0, fmt.Errorf("%w: limit must be 1..100 and offset non-negative", ErrInvalidDeliveryHistoryRequest)
+	}
+	switch status {
+	case "", "PENDING", "RETRY", "SUCCESS", "DEAD_LETTER":
+	default:
+		return nil, 0, fmt.Errorf("%w: unsupported delivery status", ErrInvalidDeliveryHistoryRequest)
+	}
+	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback()
+	var total int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM outbound_events WHERE institution_id=$1 AND ($2='' OR status=$2)`, institutionID, status).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT event_id,event_type,status,attempt_count,replay_count,next_attempt_at,occurred_at
+		FROM outbound_events WHERE institution_id=$1 AND ($2='' OR status=$2)
+		ORDER BY next_attempt_at,event_id LIMIT $3 OFFSET $4`, institutionID, status, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	events := make([]DeliveryEventSummary, 0, min(limit, total))
+	for rows.Next() {
+		var event DeliveryEventSummary
+		if err := rows.Scan(&event.EventID, &event.EventType, &event.Status, &event.AttemptCount,
+			&event.ReplayCount, &event.NextAttemptAt, &event.OccurredAt); err != nil {
+			return nil, 0, err
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
+	}
+	return events, total, nil
 }
 
 func parseTime(s string) time.Time { t, _ := time.Parse(time.RFC3339Nano, s); return t }

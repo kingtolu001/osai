@@ -26,7 +26,8 @@ func main() {
     if err := reconciliation.EnsureSchema(db); err != nil { log.Fatal(err) }
 
     store := &reconciliation.PostgresStore{DB: db}
-    svc := reconciliation.NewServiceWithStore(store)
+    svc, loadErr := reconciliation.NewServiceWithStore(store)
+    if loadErr != nil { panic(loadErr) }
 
     row := reconciliation.StatementRow{
         ID:          "phase4_evidence_20260920_001",
@@ -53,13 +54,15 @@ func main() {
         Account:     "NOSTRO_USD",
         Watermark:   "2026-09-20T10:00:00Z",
     }
-    brk := svc.ReconcileTransaction(expected, row)
+    brk, reconcileErr := svc.ReconcileTransaction(expected, row)
+    if reconcileErr != nil { panic(reconcileErr) }
     if brk == nil { log.Fatal("expected a break for amount mismatch") }
     if err := svc.TransitionBreak(brk.ID, reconciliation.BreakStateUnderReview, "ops_phase4", "review started", "corr_phase4_1"); err != nil { log.Fatal(err) }
     if _, err := svc.ProposeAdjustment(brk.ID, "maker_phase4", "checker_phase4", 50, "USD", "phase4 runtime adjustment"); err != nil { log.Fatal(err) }
     if err := svc.ApproveAdjustment(brk.ID, "maker_phase4", "checker_phase4"); err != nil { log.Fatal(err) }
 
-    restarted := reconciliation.NewServiceWithStore(store)
+    restarted, loadErr := reconciliation.NewServiceWithStore(store)
+    if loadErr != nil { panic(loadErr) }
     if got := len(restarted.Evidence()); got != 1 { log.Fatalf("restarted evidence count mismatch: got %d", got) }
     if !restarted.HasApprovedAdjustment(brk.ID) { log.Fatal("approval did not survive restart") }
 

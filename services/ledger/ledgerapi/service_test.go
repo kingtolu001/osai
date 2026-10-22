@@ -1,8 +1,23 @@
 package ledgerapi
 
 import (
+	"errors"
 	"testing"
 )
+
+func TestAdjustmentWithoutApprovedTargetCannotPost(t *testing.T) {
+	service := NewService()
+	command := ReconciliationAdjustmentCommand{IdempotencyKey: "fixture-adjustment", CorrelationID: "fixture-correlation", BreakID: "fixture-break", Maker: "maker", Checker: "checker", Currency: "NGN", AmountMinor: 100}
+	for range 2 {
+		id, replayed, err := service.PostReconciliationAdjustment(command)
+		if !errors.Is(err, ErrAdjustmentPolicyRequired) || id != "" || replayed {
+			t.Fatalf("unsafe adjustment accepted: id=%q replay=%v err=%v", id, replayed, err)
+		}
+	}
+	if len(service.Journals()) != 0 {
+		t.Fatal("disabled adjustment mutated journals")
+	}
+}
 
 func TestTerminalSettlementPostingIsIdempotent(t *testing.T) {
 	service := NewService()
