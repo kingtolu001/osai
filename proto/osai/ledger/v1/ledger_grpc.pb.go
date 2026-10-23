@@ -19,6 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	LedgerService_GetSandboxPosition_FullMethodName           = "/osai.ledger.v1.LedgerService/GetSandboxPosition"
+	LedgerService_ApplySandboxAccounting_FullMethodName       = "/osai.ledger.v1.LedgerService/ApplySandboxAccounting"
 	LedgerService_ConfirmSettlement_FullMethodName            = "/osai.ledger.v1.LedgerService/ConfirmSettlement"
 	LedgerService_FailSettlement_FullMethodName               = "/osai.ledger.v1.LedgerService/FailSettlement"
 	LedgerService_ReverseSettlement_FullMethodName            = "/osai.ledger.v1.LedgerService/ReverseSettlement"
@@ -34,6 +36,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LedgerServiceClient interface {
+	GetSandboxPosition(ctx context.Context, in *SandboxPositionRequest, opts ...grpc.CallOption) (*SandboxPositionResponse, error)
+	ApplySandboxAccounting(ctx context.Context, in *SandboxAccountingCommand, opts ...grpc.CallOption) (*SandboxAccountingResponse, error)
 	ConfirmSettlement(ctx context.Context, in *SettlementCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
 	FailSettlement(ctx context.Context, in *SettlementCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
 	ReverseSettlement(ctx context.Context, in *SettlementCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error)
@@ -51,6 +55,26 @@ type ledgerServiceClient struct {
 
 func NewLedgerServiceClient(cc grpc.ClientConnInterface) LedgerServiceClient {
 	return &ledgerServiceClient{cc}
+}
+
+func (c *ledgerServiceClient) GetSandboxPosition(ctx context.Context, in *SandboxPositionRequest, opts ...grpc.CallOption) (*SandboxPositionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxPositionResponse)
+	err := c.cc.Invoke(ctx, LedgerService_GetSandboxPosition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) ApplySandboxAccounting(ctx context.Context, in *SandboxAccountingCommand, opts ...grpc.CallOption) (*SandboxAccountingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxAccountingResponse)
+	err := c.cc.Invoke(ctx, LedgerService_ApplySandboxAccounting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *ledgerServiceClient) ConfirmSettlement(ctx context.Context, in *SettlementCommand, opts ...grpc.CallOption) (*SettlementCommandResponse, error) {
@@ -147,6 +171,8 @@ func (c *ledgerServiceClient) GetFundingReservation(ctx context.Context, in *Fun
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
 type LedgerServiceServer interface {
+	GetSandboxPosition(context.Context, *SandboxPositionRequest) (*SandboxPositionResponse, error)
+	ApplySandboxAccounting(context.Context, *SandboxAccountingCommand) (*SandboxAccountingResponse, error)
 	ConfirmSettlement(context.Context, *SettlementCommand) (*SettlementCommandResponse, error)
 	FailSettlement(context.Context, *SettlementCommand) (*SettlementCommandResponse, error)
 	ReverseSettlement(context.Context, *SettlementCommand) (*SettlementCommandResponse, error)
@@ -166,6 +192,12 @@ type LedgerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLedgerServiceServer struct{}
 
+func (UnimplementedLedgerServiceServer) GetSandboxPosition(context.Context, *SandboxPositionRequest) (*SandboxPositionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSandboxPosition not implemented")
+}
+func (UnimplementedLedgerServiceServer) ApplySandboxAccounting(context.Context, *SandboxAccountingCommand) (*SandboxAccountingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplySandboxAccounting not implemented")
+}
 func (UnimplementedLedgerServiceServer) ConfirmSettlement(context.Context, *SettlementCommand) (*SettlementCommandResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ConfirmSettlement not implemented")
 }
@@ -212,6 +244,42 @@ func RegisterLedgerServiceServer(s grpc.ServiceRegistrar, srv LedgerServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&LedgerService_ServiceDesc, srv)
+}
+
+func _LedgerService_GetSandboxPosition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxPositionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).GetSandboxPosition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_GetSandboxPosition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).GetSandboxPosition(ctx, req.(*SandboxPositionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_ApplySandboxAccounting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxAccountingCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).ApplySandboxAccounting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_ApplySandboxAccounting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).ApplySandboxAccounting(ctx, req.(*SandboxAccountingCommand))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _LedgerService_ConfirmSettlement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -383,6 +451,14 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "osai.ledger.v1.LedgerService",
 	HandlerType: (*LedgerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSandboxPosition",
+			Handler:    _LedgerService_GetSandboxPosition_Handler,
+		},
+		{
+			MethodName: "ApplySandboxAccounting",
+			Handler:    _LedgerService_ApplySandboxAccounting_Handler,
+		},
 		{
 			MethodName: "ConfirmSettlement",
 			Handler:    _LedgerService_ConfirmSettlement_Handler,

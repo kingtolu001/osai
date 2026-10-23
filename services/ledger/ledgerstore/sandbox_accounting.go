@@ -9,30 +9,23 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/osai/osai/pkg/sandboxaccounting"
+	"github.com/osai/osai/services/ledger/ledgerapi"
 	"github.com/osai/osai/services/ledger/ledgercore"
 )
 
-const SandboxAccountingVersion = "osai-sandbox-accounting/v1"
+const SandboxAccountingVersion = sandboxaccounting.Version
 
 // SandboxAccounting has no production or provider routing entry point. All
 // accounts and evidence supplied here are explicit fixtures in a local proof DB.
 type SandboxAccounting struct{ db *sql.DB }
 
-type SandboxTerms struct {
-	TradeID, InstitutionID   string
-	PrincipalMinor, FeeMinor int64
-	FX                       *ledgercore.FXExecutionEvidence
-}
-
-type SandboxAccountingCommand struct {
-	ExpectedRevision                                            int64 `json:",omitempty"`
-	PolicyVersion, EventID, Event, Actor, CorrelationID, Reason string
-	EvidenceHash, Maker, Checker                                string
-	EvidencePayload                                             string
-	Terms                                                       SandboxTerms
-}
+type SandboxTerms = sandboxaccounting.Terms
+type SandboxAccountingCommand = sandboxaccounting.Command
 
 func NewSandboxAccounting(ctx context.Context, db *sql.DB, environment string) (*SandboxAccounting, error) {
 	if db == nil || environment != "local-sandbox" {
@@ -59,7 +52,13 @@ func NewSandboxAccounting(ctx context.Context, db *sql.DB, environment string) (
  payload_hash text NOT NULL, state text NOT NULL, policy_version text NOT NULL,
  actor text NOT NULL, correlation_id text NOT NULL, reason text NOT NULL,
  evidence_hash text NOT NULL, maker text NOT NULL, checker text NOT NULL,
- command_json text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());`)
+ command_json text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+ CREATE TABLE IF NOT EXISTS ledger_sandbox_payout_bindings (
+ settlement_id text PRIMARY KEY, client_reference text NOT NULL UNIQUE,
+ trade_id text NOT NULL REFERENCES ledger_sandbox_positions(trade_id),
+ binding_json text NOT NULL, state text NOT NULL,
+ bound_revision bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(trade_id,bound_revision));`)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +69,7 @@ func NewSandboxAccounting(ctx context.Context, db *sql.DB, environment string) (
 // It accepts fixture observations, not authenticated real-provider evidence.
 func (s *SandboxAccounting) Apply(ctx context.Context, c SandboxAccountingCommand) (string, bool, error) {
 	if c.PolicyVersion != SandboxAccountingVersion || c.EventID == "" || c.Actor == "" || c.CorrelationID == "" || c.Reason == "" ||
-		!strings.HasPrefix(c.Terms.TradeID, "sbx:") || !strings.HasPrefix(c.Terms.InstitutionID, "sbx:") || c.Terms.PrincipalMinor <= 0 || c.Terms.FeeMinor < 0 || c.Terms.FeeMinor > 9223372036854775807-c.Terms.PrincipalMinor {
+		!sandboxTradeIdentity(c.Terms) || !strings.HasPrefix(c.Terms.InstitutionID, "sbx:") || c.Terms.PrincipalMinor <= 0 || c.Terms.FeeMinor < 0 || c.Terms.FeeMinor > 9223372036854775807-c.Terms.PrincipalMinor {
 		return "", false, errors.New("invalid sandbox command or immutable economics")
 	}
 	hash, err := hex.DecodeString(c.EvidenceHash)
@@ -80,6 +79,9 @@ func (s *SandboxAccounting) Apply(ctx context.Context, c SandboxAccountingComman
 	actualHash := sha256.Sum256([]byte(c.EvidencePayload))
 	if !json.Valid([]byte(c.EvidencePayload)) || !strings.EqualFold(c.EvidenceHash, hex.EncodeToString(actualHash[:])) {
 		return "", false, errors.New("fixture evidence payload hash mismatch")
+	}
+	if err := validateSandboxPlan(c); err != nil {
+		return "", false, err
 	}
 	if c.Terms.FX != nil {
 		e := c.Terms.FX
@@ -118,7 +120,7 @@ func (s *SandboxAccounting) Apply(ctx context.Context, c SandboxAccountingComman
 	}
 	defer tx.Rollback()
 	// All changes to a trade and all uses of an event ID serialize independently.
-	for _, key := range []string{"sandbox-event:" + c.EventID, "sandbox-trade:" + c.Terms.TradeID} {
+	for _, key := range []string{"sandbox-event:" + c.EventID, "sandbox-institution:" + c.Terms.InstitutionID, "sandbox-trade:" + c.Terms.TradeID} {
 		if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, key); err != nil {
 			return "", false, err
 		}
@@ -137,11 +139,16 @@ func (s *SandboxAccounting) Apply(ctx context.Context, c SandboxAccountingComman
 	var revision int64
 	err = tx.QueryRowContext(ctx, `SELECT terms_hash,state,revision FROM ledger_sandbox_positions WHERE trade_id=$1 FOR UPDATE`, c.Terms.TradeID).Scan(&existing, &state, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
-		if c.Event != "fund" {
+		if c.Event != "fund" && (c.Event != "reserve" || c.Terms.Plan == nil) {
 			return "", false, errors.New("sandbox funding required")
 		}
 		state = "NEW"
-		if _, err = tx.ExecContext(ctx, `INSERT INTO ledger_sandbox_positions(trade_id,terms_hash,state) VALUES($1,$2,'NEW')`, c.Terms.TradeID, hex.EncodeToString(termsHash[:])); err != nil {
+		if c.Event == "reserve" {
+			// A runtime trade may reserve existing institution prefund. It must
+			// never create its own fund event to manufacture an available balance.
+			state = "AVAILABLE"
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO ledger_sandbox_positions(trade_id,terms_hash,state) VALUES($1,$2,$3)`, c.Terms.TradeID, hex.EncodeToString(termsHash[:]), state); err != nil {
 			return "", false, err
 		}
 	} else if err != nil {
@@ -151,6 +158,18 @@ func (s *SandboxAccounting) Apply(ctx context.Context, c SandboxAccountingComman
 	}
 	if revision != c.ExpectedRevision {
 		return "", false, errors.New("stale sandbox observation revision")
+	}
+	if err = applySandboxPayoutBinding(ctx, tx, c, state, revision); err != nil {
+		return "", false, err
+	}
+	if c.Event == "reserve" {
+		var available int64
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(credit-debit),0) FROM ledger_entries WHERE owner=$1 AND currency='NGN' AND account_code='sbx:NGN:available'`, c.Terms.InstitutionID).Scan(&available); err != nil {
+			return "", false, err
+		}
+		if available < c.Terms.PrincipalMinor+c.Terms.FeeMinor {
+			return "", false, ledgerapi.ErrInsufficientFunding
+		}
 	}
 	journals, next, err := sandboxJournals(c, state)
 	if err != nil {
@@ -169,6 +188,70 @@ func (s *SandboxAccounting) Apply(ctx context.Context, c SandboxAccountingComman
 		return "", false, err
 	}
 	return next, false, tx.Commit()
+}
+
+func sandboxTradeIdentity(t SandboxTerms) bool {
+	if strings.HasPrefix(t.TradeID, "sbx:") {
+		return true
+	}
+	// Trade owns its identifiers. Do not relabel authenticated FX evidence to
+	// force it into a fixture namespace; the institution and proof DB remain
+	// explicit fixture boundaries.
+	_, err := uuid.Parse(strings.TrimPrefix(t.TradeID, "trd_"))
+	return t.Plan != nil && strings.HasPrefix(t.TradeID, "trd_") && err == nil
+}
+
+func validateSandboxPlan(c SandboxAccountingCommand) error {
+	p := c.Terms.Plan
+	if p == nil {
+		if c.Execution != nil {
+			return errors.New("execution requires accepted sandbox FX plan")
+		}
+		return nil
+	}
+	if c.Terms.FX != nil || !sandboxaccounting.FixtureQuoteID(p.QuoteID) || !strings.HasPrefix(p.Executor, "sbx:") || p.DestinationMinor <= 0 || len(p.AppliedRate) > 64 || strings.Trim(p.AppliedRate, "0123456789.") != "" {
+		return errors.New("invalid sandbox FX plan")
+	}
+	if strings.HasPrefix(c.Terms.TradeID, "trd_") && (!sandboxaccounting.ValidBeneficiaryID(p.BeneficiaryID) || p.ProviderID != "sbx:provider") {
+		return errors.New("runtime FX plan requires immutable sandbox beneficiary and payout provider")
+	}
+	rate, ok := new(big.Rat).SetString(p.AppliedRate)
+	if !ok || rate.Sign() <= 0 || (p.RateDirection != ledgercore.DestinationPerSource && p.RateDirection != ledgercore.SourcePerDestination) {
+		return errors.New("invalid sandbox FX plan rate")
+	}
+	exact := new(big.Rat).SetFrac64(c.Terms.PrincipalMinor, p.DestinationMinor)
+	if p.RateDirection == ledgercore.DestinationPerSource {
+		exact.Inv(exact)
+	}
+	if exact.Cmp(rate) != 0 {
+		return errors.New("sandbox FX plan requires exact conversion without remainder")
+	}
+	if c.Event != "fx_complete" {
+		if c.Execution != nil {
+			return errors.New("execution evidence is accepted only on FX completion")
+		}
+		return nil
+	}
+	e := c.Execution
+	if e == nil {
+		return errors.New("verified execution evidence required after reservation")
+	}
+	if err := ledgercore.ValidateFXExecutionEvidence(*e); err != nil {
+		return err
+	}
+	if e.TradeID != c.Terms.TradeID || e.InstitutionID != c.Terms.InstitutionID || e.QuoteID != p.QuoteID || e.Executor != p.Executor || e.SourceCurrency != "NGN" || e.DestinationCurrency != "USD" || e.SourceExponent != 2 || e.DestinationExponent != 2 || e.SourcePrincipalMinor != c.Terms.PrincipalMinor || e.DestinationProceedsMinor != p.DestinationMinor || e.AppliedRate != p.AppliedRate || e.RateDirection != p.RateDirection || len(e.Fees) != 0 {
+		return errors.New("execution differs from accepted sandbox FX economics")
+	}
+	for _, reference := range []string{e.ExecutionReference, e.SourceEvidenceReference, e.DestinationEvidenceRef} {
+		if !strings.HasPrefix(reference, "sbx:") {
+			return errors.New("sandbox execution references required")
+		}
+	}
+	var recorded ledgercore.FXExecutionEvidence
+	if err := json.Unmarshal([]byte(c.EvidencePayload), &recorded); err != nil || !reflect.DeepEqual(recorded, *e) {
+		return errors.New("sandbox execution differs from audit evidence")
+	}
+	return nil
 }
 
 func sandboxJournals(c SandboxAccountingCommand, state string) ([]ledgercore.Journal, string, error) {
@@ -194,6 +277,13 @@ func sandboxJournals(c SandboxAccountingCommand, state string) ([]ledgercore.Jou
 		journals = append(journals, *j)
 	}
 	total := c.Terms.PrincipalMinor + c.Terms.FeeMinor
+	hasFX := c.Terms.FX != nil || c.Terms.Plan != nil
+	var destination int64
+	if c.Terms.Plan != nil {
+		destination = c.Terms.Plan.DestinationMinor
+	} else if c.Terms.FX != nil {
+		destination = c.Terms.FX.DestinationProceedsMinor
+	}
 	next := ""
 	switch c.Event {
 	case "fund":
@@ -216,48 +306,52 @@ func sandboxJournals(c SandboxAccountingCommand, state string) ([]ledgercore.Jou
 			next = "RELEASED"
 		}
 	case "fx_complete":
-		if (state == "HELD" || state == "UNKNOWN_HELD") && c.Terms.FX != nil {
+		if (state == "HELD" || state == "UNKNOWN_HELD") && hasFX {
 			move("NGN", "held", "custody", c.Terms.PrincipalMinor)
-			move("USD", "custody", "held", c.Terms.FX.DestinationProceedsMinor)
+			move("USD", "custody", "held", destination)
 			next = "FX_HELD"
 		}
 	case "payout_failed":
 		if state == "FX_HELD" || state == "UNKNOWN_FX_HELD" {
-			move("USD", "held", "restricted", c.Terms.FX.DestinationProceedsMinor)
+			move("USD", "held", "restricted", destination)
 			next = "FX_PAYOUT_FAILED"
+		}
+	case "payout_bind", "payout_submitted":
+		if state == "FX_HELD" && c.Payout != nil {
+			next = state
 		}
 	case "retry_payout":
 		if state == "FX_PAYOUT_FAILED" {
-			move("USD", "restricted", "held", c.Terms.FX.DestinationProceedsMinor)
+			move("USD", "restricted", "held", destination)
 			next = "FX_HELD"
 		}
 	case "payout_complete":
-		if c.Terms.FX == nil && (state == "HELD" || state == "UNKNOWN_HELD") {
+		if !hasFX && (state == "HELD" || state == "UNKNOWN_HELD") {
 			move("NGN", "held", "custody", c.Terms.PrincipalMinor)
 			next = "COMPLETE"
 		}
-		if c.Terms.FX != nil && (state == "FX_HELD" || state == "UNKNOWN_FX_HELD") {
-			move("USD", "held", "custody", c.Terms.FX.DestinationProceedsMinor)
+		if hasFX && (state == "FX_HELD" || state == "UNKNOWN_FX_HELD") {
+			move("USD", "held", "custody", destination)
 			next = "COMPLETE"
 		}
 		if next != "" {
 			move("NGN", "held", "fee_revenue", c.Terms.FeeMinor)
 		}
-	case "return":
+	case "return", "reversal":
 		if state == "COMPLETE" {
-			if c.Terms.FX == nil {
+			if !hasFX {
 				move("NGN", "custody", "restricted", c.Terms.PrincipalMinor)
 			} else {
-				move("USD", "custody", "restricted", c.Terms.FX.DestinationProceedsMinor)
+				move("USD", "custody", "restricted", destination)
 			}
 			next = "RETURNED"
 		}
 	case "release_return":
 		if state == "RETURNED" {
-			if c.Terms.FX == nil {
+			if !hasFX {
 				move("NGN", "restricted", "available", c.Terms.PrincipalMinor)
 			} else {
-				move("USD", "restricted", "available", c.Terms.FX.DestinationProceedsMinor)
+				move("USD", "restricted", "available", destination)
 			}
 			next = "RETURN_RELEASED"
 		}

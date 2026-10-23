@@ -478,12 +478,13 @@ func (x *CustomerReadRequest) GetPageSize() int32 {
 }
 
 type CustomerBalance struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Currency       string                 `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
-	AvailableMinor int64                  `protobuf:"varint,2,opt,name=available_minor,json=availableMinor,proto3" json:"available_minor,omitempty"`
-	HeldMinor      int64                  `protobuf:"varint,3,opt,name=held_minor,json=heldMinor,proto3" json:"held_minor,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Currency        string                 `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	AvailableMinor  int64                  `protobuf:"varint,2,opt,name=available_minor,json=availableMinor,proto3" json:"available_minor,omitempty"`
+	HeldMinor       int64                  `protobuf:"varint,3,opt,name=held_minor,json=heldMinor,proto3" json:"held_minor,omitempty"`
+	RestrictedMinor int64                  `protobuf:"varint,4,opt,name=restricted_minor,json=restrictedMinor,proto3" json:"restricted_minor,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CustomerBalance) Reset() {
@@ -533,6 +534,13 @@ func (x *CustomerBalance) GetAvailableMinor() int64 {
 func (x *CustomerBalance) GetHeldMinor() int64 {
 	if x != nil {
 		return x.HeldMinor
+	}
+	return 0
+}
+
+func (x *CustomerBalance) GetRestrictedMinor() int64 {
+	if x != nil {
+		return x.RestrictedMinor
 	}
 	return 0
 }
@@ -939,6 +947,232 @@ func (x *FundingReservationResponse) GetAlreadyApplied() bool {
 	return false
 }
 
+// Fixture-only internal contract, unavailable without the local proof profile
+// and service authentication. JSON follows pkg/sandboxaccounting.Command.
+type SandboxAccountingCommand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandJson   string                 `protobuf:"bytes,1,opt,name=command_json,json=commandJson,proto3" json:"command_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SandboxAccountingCommand) Reset() {
+	*x = SandboxAccountingCommand{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SandboxAccountingCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SandboxAccountingCommand) ProtoMessage() {}
+
+func (x *SandboxAccountingCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SandboxAccountingCommand.ProtoReflect.Descriptor instead.
+func (*SandboxAccountingCommand) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *SandboxAccountingCommand) GetCommandJson() string {
+	if x != nil {
+		return x.CommandJson
+	}
+	return ""
+}
+
+type SandboxAccountingResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	EventId        string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	State          string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	AlreadyApplied bool                   `protobuf:"varint,3,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	Revision       int64                  `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SandboxAccountingResponse) Reset() {
+	*x = SandboxAccountingResponse{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SandboxAccountingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SandboxAccountingResponse) ProtoMessage() {}
+
+func (x *SandboxAccountingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SandboxAccountingResponse.ProtoReflect.Descriptor instead.
+func (*SandboxAccountingResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *SandboxAccountingResponse) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *SandboxAccountingResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *SandboxAccountingResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
+func (x *SandboxAccountingResponse) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+type SandboxPositionRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId  string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	TradeId        string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	Reconciliation bool                   `protobuf:"varint,3,opt,name=reconciliation,proto3" json:"reconciliation,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SandboxPositionRequest) Reset() {
+	*x = SandboxPositionRequest{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SandboxPositionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SandboxPositionRequest) ProtoMessage() {}
+
+func (x *SandboxPositionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SandboxPositionRequest.ProtoReflect.Descriptor instead.
+func (*SandboxPositionRequest) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SandboxPositionRequest) GetInstitutionId() string {
+	if x != nil {
+		return x.InstitutionId
+	}
+	return ""
+}
+
+func (x *SandboxPositionRequest) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
+}
+
+func (x *SandboxPositionRequest) GetReconciliation() bool {
+	if x != nil {
+		return x.Reconciliation
+	}
+	return false
+}
+
+type SandboxPositionResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	PositionJson       string                 `protobuf:"bytes,1,opt,name=position_json,json=positionJson,proto3" json:"position_json,omitempty"`
+	ReconciliationJson string                 `protobuf:"bytes,2,opt,name=reconciliation_json,json=reconciliationJson,proto3" json:"reconciliation_json,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *SandboxPositionResponse) Reset() {
+	*x = SandboxPositionResponse{}
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SandboxPositionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SandboxPositionResponse) ProtoMessage() {}
+
+func (x *SandboxPositionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_osai_ledger_v1_ledger_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SandboxPositionResponse.ProtoReflect.Descriptor instead.
+func (*SandboxPositionResponse) Descriptor() ([]byte, []int) {
+	return file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SandboxPositionResponse) GetPositionJson() string {
+	if x != nil {
+		return x.PositionJson
+	}
+	return ""
+}
+
+func (x *SandboxPositionResponse) GetReconciliationJson() string {
+	if x != nil {
+		return x.ReconciliationJson
+	}
+	return ""
+}
+
 var File_proto_osai_ledger_v1_ledger_proto protoreflect.FileDescriptor
 
 const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
@@ -982,12 +1216,13 @@ const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"\x13CustomerReadRequest\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x12\n" +
 	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\"u\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\"\xa0\x01\n" +
 	"\x0fCustomerBalance\x12\x1a\n" +
 	"\bcurrency\x18\x01 \x01(\tR\bcurrency\x12'\n" +
 	"\x0favailable_minor\x18\x02 \x01(\x03R\x0eavailableMinor\x12\x1d\n" +
 	"\n" +
-	"held_minor\x18\x03 \x01(\x03R\theldMinor\"V\n" +
+	"held_minor\x18\x03 \x01(\x03R\theldMinor\x12)\n" +
+	"\x10restricted_minor\x18\x04 \x01(\x03R\x0frestrictedMinor\"V\n" +
 	"\x17CustomerBalanceResponse\x12;\n" +
 	"\bbalances\x18\x01 \x03(\v2\x1f.osai.ledger.v1.CustomerBalanceR\bbalances\"\xaf\x01\n" +
 	"\x13CustomerTransaction\x12\x1d\n" +
@@ -1019,8 +1254,24 @@ const file_proto_osai_ledger_v1_ledger_proto_rawDesc = "" +
 	"\n" +
 	"journal_id\x18\x01 \x01(\tR\tjournalId\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12'\n" +
-	"\x0falready_applied\x18\x03 \x01(\bR\x0ealreadyApplied2\xc1\a\n" +
-	"\rLedgerService\x12a\n" +
+	"\x0falready_applied\x18\x03 \x01(\bR\x0ealreadyApplied\"=\n" +
+	"\x18SandboxAccountingCommand\x12!\n" +
+	"\fcommand_json\x18\x01 \x01(\tR\vcommandJson\"\x91\x01\n" +
+	"\x19SandboxAccountingResponse\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12'\n" +
+	"\x0falready_applied\x18\x03 \x01(\bR\x0ealreadyApplied\x12\x1a\n" +
+	"\brevision\x18\x04 \x01(\x03R\brevision\"\x82\x01\n" +
+	"\x16SandboxPositionRequest\x12%\n" +
+	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x19\n" +
+	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12&\n" +
+	"\x0ereconciliation\x18\x03 \x01(\bR\x0ereconciliation\"o\n" +
+	"\x17SandboxPositionResponse\x12#\n" +
+	"\rposition_json\x18\x01 \x01(\tR\fpositionJson\x12/\n" +
+	"\x13reconciliation_json\x18\x02 \x01(\tR\x12reconciliationJson2\x97\t\n" +
+	"\rLedgerService\x12e\n" +
+	"\x12GetSandboxPosition\x12&.osai.ledger.v1.SandboxPositionRequest\x1a'.osai.ledger.v1.SandboxPositionResponse\x12m\n" +
+	"\x16ApplySandboxAccounting\x12(.osai.ledger.v1.SandboxAccountingCommand\x1a).osai.ledger.v1.SandboxAccountingResponse\x12a\n" +
 	"\x11ConfirmSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12^\n" +
 	"\x0eFailSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12a\n" +
 	"\x11ReverseSettlement\x12!.osai.ledger.v1.SettlementCommand\x1a).osai.ledger.v1.SettlementCommandResponse\x12z\n" +
@@ -1043,7 +1294,7 @@ func file_proto_osai_ledger_v1_ledger_proto_rawDescGZIP() []byte {
 	return file_proto_osai_ledger_v1_ledger_proto_rawDescData
 }
 
-var file_proto_osai_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_proto_osai_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_proto_osai_ledger_v1_ledger_proto_goTypes = []any{
 	(*Money)(nil),                           // 0: osai.ledger.v1.Money
 	(*SettlementCommand)(nil),               // 1: osai.ledger.v1.SettlementCommand
@@ -1058,6 +1309,10 @@ var file_proto_osai_ledger_v1_ledger_proto_goTypes = []any{
 	(*LocalPrefundCommand)(nil),             // 10: osai.ledger.v1.LocalPrefundCommand
 	(*FundingReservationCommand)(nil),       // 11: osai.ledger.v1.FundingReservationCommand
 	(*FundingReservationResponse)(nil),      // 12: osai.ledger.v1.FundingReservationResponse
+	(*SandboxAccountingCommand)(nil),        // 13: osai.ledger.v1.SandboxAccountingCommand
+	(*SandboxAccountingResponse)(nil),       // 14: osai.ledger.v1.SandboxAccountingResponse
+	(*SandboxPositionRequest)(nil),          // 15: osai.ledger.v1.SandboxPositionRequest
+	(*SandboxPositionResponse)(nil),         // 16: osai.ledger.v1.SandboxPositionResponse
 }
 var file_proto_osai_ledger_v1_ledger_proto_depIdxs = []int32{
 	0,  // 0: osai.ledger.v1.SettlementCommand.amount:type_name -> osai.ledger.v1.Money
@@ -1066,26 +1321,30 @@ var file_proto_osai_ledger_v1_ledger_proto_depIdxs = []int32{
 	8,  // 3: osai.ledger.v1.CustomerTransactionResponse.items:type_name -> osai.ledger.v1.CustomerTransaction
 	0,  // 4: osai.ledger.v1.LocalPrefundCommand.amount:type_name -> osai.ledger.v1.Money
 	0,  // 5: osai.ledger.v1.FundingReservationCommand.amount:type_name -> osai.ledger.v1.Money
-	1,  // 6: osai.ledger.v1.LedgerService.ConfirmSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	1,  // 7: osai.ledger.v1.LedgerService.FailSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	1,  // 8: osai.ledger.v1.LedgerService.ReverseSettlement:input_type -> osai.ledger.v1.SettlementCommand
-	4,  // 9: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:input_type -> osai.ledger.v1.ReconciliationAdjustmentCommand
-	5,  // 10: osai.ledger.v1.LedgerService.GetCustomerBalances:input_type -> osai.ledger.v1.CustomerReadRequest
-	5,  // 11: osai.ledger.v1.LedgerService.ListCustomerTransactions:input_type -> osai.ledger.v1.CustomerReadRequest
-	10, // 12: osai.ledger.v1.LedgerService.PostLocalPrefund:input_type -> osai.ledger.v1.LocalPrefundCommand
-	11, // 13: osai.ledger.v1.LedgerService.ReserveFunding:input_type -> osai.ledger.v1.FundingReservationCommand
-	11, // 14: osai.ledger.v1.LedgerService.GetFundingReservation:input_type -> osai.ledger.v1.FundingReservationCommand
-	3,  // 15: osai.ledger.v1.LedgerService.ConfirmSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3,  // 16: osai.ledger.v1.LedgerService.FailSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3,  // 17: osai.ledger.v1.LedgerService.ReverseSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
-	3,  // 18: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:output_type -> osai.ledger.v1.SettlementCommandResponse
-	7,  // 19: osai.ledger.v1.LedgerService.GetCustomerBalances:output_type -> osai.ledger.v1.CustomerBalanceResponse
-	9,  // 20: osai.ledger.v1.LedgerService.ListCustomerTransactions:output_type -> osai.ledger.v1.CustomerTransactionResponse
-	3,  // 21: osai.ledger.v1.LedgerService.PostLocalPrefund:output_type -> osai.ledger.v1.SettlementCommandResponse
-	12, // 22: osai.ledger.v1.LedgerService.ReserveFunding:output_type -> osai.ledger.v1.FundingReservationResponse
-	12, // 23: osai.ledger.v1.LedgerService.GetFundingReservation:output_type -> osai.ledger.v1.FundingReservationResponse
-	15, // [15:24] is the sub-list for method output_type
-	6,  // [6:15] is the sub-list for method input_type
+	15, // 6: osai.ledger.v1.LedgerService.GetSandboxPosition:input_type -> osai.ledger.v1.SandboxPositionRequest
+	13, // 7: osai.ledger.v1.LedgerService.ApplySandboxAccounting:input_type -> osai.ledger.v1.SandboxAccountingCommand
+	1,  // 8: osai.ledger.v1.LedgerService.ConfirmSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	1,  // 9: osai.ledger.v1.LedgerService.FailSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	1,  // 10: osai.ledger.v1.LedgerService.ReverseSettlement:input_type -> osai.ledger.v1.SettlementCommand
+	4,  // 11: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:input_type -> osai.ledger.v1.ReconciliationAdjustmentCommand
+	5,  // 12: osai.ledger.v1.LedgerService.GetCustomerBalances:input_type -> osai.ledger.v1.CustomerReadRequest
+	5,  // 13: osai.ledger.v1.LedgerService.ListCustomerTransactions:input_type -> osai.ledger.v1.CustomerReadRequest
+	10, // 14: osai.ledger.v1.LedgerService.PostLocalPrefund:input_type -> osai.ledger.v1.LocalPrefundCommand
+	11, // 15: osai.ledger.v1.LedgerService.ReserveFunding:input_type -> osai.ledger.v1.FundingReservationCommand
+	11, // 16: osai.ledger.v1.LedgerService.GetFundingReservation:input_type -> osai.ledger.v1.FundingReservationCommand
+	16, // 17: osai.ledger.v1.LedgerService.GetSandboxPosition:output_type -> osai.ledger.v1.SandboxPositionResponse
+	14, // 18: osai.ledger.v1.LedgerService.ApplySandboxAccounting:output_type -> osai.ledger.v1.SandboxAccountingResponse
+	3,  // 19: osai.ledger.v1.LedgerService.ConfirmSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 20: osai.ledger.v1.LedgerService.FailSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 21: osai.ledger.v1.LedgerService.ReverseSettlement:output_type -> osai.ledger.v1.SettlementCommandResponse
+	3,  // 22: osai.ledger.v1.LedgerService.PostReconciliationAdjustment:output_type -> osai.ledger.v1.SettlementCommandResponse
+	7,  // 23: osai.ledger.v1.LedgerService.GetCustomerBalances:output_type -> osai.ledger.v1.CustomerBalanceResponse
+	9,  // 24: osai.ledger.v1.LedgerService.ListCustomerTransactions:output_type -> osai.ledger.v1.CustomerTransactionResponse
+	3,  // 25: osai.ledger.v1.LedgerService.PostLocalPrefund:output_type -> osai.ledger.v1.SettlementCommandResponse
+	12, // 26: osai.ledger.v1.LedgerService.ReserveFunding:output_type -> osai.ledger.v1.FundingReservationResponse
+	12, // 27: osai.ledger.v1.LedgerService.GetFundingReservation:output_type -> osai.ledger.v1.FundingReservationResponse
+	17, // [17:28] is the sub-list for method output_type
+	6,  // [6:17] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -1102,7 +1361,7 @@ func file_proto_osai_ledger_v1_ledger_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_osai_ledger_v1_ledger_proto_rawDesc), len(file_proto_osai_ledger_v1_ledger_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

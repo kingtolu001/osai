@@ -42,12 +42,17 @@ func main() {
 	}
 	storage := ledgerstore.Postgres{DB: db, CustodyBankID: os.Getenv("OSAI_CUSTODY_BANK_ID")}
 	sandboxToken := ""
+	var accounting *ledgerstore.SandboxAccounting
 	if sandboxFees {
 		storage, err = storage.WithSandboxFees(context.Background())
 		if err != nil {
 			log.Fatal(err)
 		}
 		sandboxToken = os.Getenv("OSAI_SANDBOX_LEDGER_TOKEN")
+		accounting, err = ledgerstore.NewSandboxAccounting(context.Background(), db, "local-sandbox")
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	service, err := ledgerapi.NewServiceWithStorage(storage)
 	if err != nil {
@@ -62,7 +67,11 @@ func main() {
 		log.Fatal(err)
 	}
 	server := grpc.NewServer()
-	ledgerv1.RegisterLedgerServiceServer(server, &ledgergrpc.Server{Service: service, DB: db, LocalPrefundToken: os.Getenv("OSAI_LOCAL_PREFUND_TOKEN"), SandboxToken: sandboxToken})
+	ledgerServer := &ledgergrpc.Server{Service: service, DB: db, LocalPrefundToken: os.Getenv("OSAI_LOCAL_PREFUND_TOKEN"), SandboxToken: sandboxToken}
+	if accounting != nil {
+		ledgerServer.SandboxAccounting = accounting
+	}
+	ledgerv1.RegisterLedgerServiceServer(server, ledgerServer)
 	log.Printf("ledger gRPC server listening on %s", addr)
 	log.Fatal(server.Serve(listener))
 }

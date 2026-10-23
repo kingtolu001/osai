@@ -23,6 +23,13 @@ import (
 )
 
 func main() {
+	if os.Getenv("OSAI_SANDBOX_RECONCILIATION_URL") != "" || os.Getenv("OSAI_SANDBOX_RECONCILIATION_KEY") != "" || os.Getenv("OSAI_SANDBOX_RECONCILIATION_INSTITUTION") != "" || os.Getenv("OSAI_SANDBOX_RECONCILIATION_TRADE_ID") != "" {
+		if err := runSandboxReconciliation(); err != nil {
+			log.Print("sandbox reconciliation unavailable or unresolved; inspect durable breaks")
+			os.Exit(1)
+		}
+		return
+	}
 	if err := observability.Init("reconciliation"); err != nil {
 		log.Printf("otel init warning: %v", err)
 	}

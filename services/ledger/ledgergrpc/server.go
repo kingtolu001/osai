@@ -1,16 +1,20 @@
 package ledgergrpc
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/pkg/sandboxaccounting"
 	"github.com/osai/osai/pkg/sandboxpolicy"
 	ledgerv1 "github.com/osai/osai/proto/osai/ledger/v1"
 	"github.com/osai/osai/services/ledger/ledgerapi"
@@ -25,6 +29,42 @@ type Server struct {
 	DB                *sql.DB
 	LocalPrefundToken string
 	SandboxToken      string
+	SandboxAccounting SandboxAccountingWriter
+}
+
+type SandboxAccountingWriter interface {
+	Apply(context.Context, sandboxaccounting.Command) (string, bool, error)
+}
+
+func (s *Server) ApplySandboxAccounting(ctx context.Context, req *ledgerv1.SandboxAccountingCommand) (*ledgerv1.SandboxAccountingResponse, error) {
+	// Unlike ordinary Ledger commands, this fixture route is never available
+	// when sandbox authentication is disabled.
+	if s.SandboxToken == "" || s.SandboxAccounting == nil {
+		return nil, status.Error(codes.PermissionDenied, "sandbox accounting unavailable")
+	}
+	if err := s.authorizeSandbox(ctx); err != nil {
+		return nil, err
+	}
+	if req == nil || len(req.CommandJson) == 0 || len(req.CommandJson) > 1<<20 {
+		return nil, status.Error(codes.InvalidArgument, "bounded sandbox command required")
+	}
+	var command sandboxaccounting.Command
+	decoder := json.NewDecoder(bytes.NewBufferString(req.CommandJson))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&command); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid sandbox command")
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return nil, status.Error(codes.InvalidArgument, "one sandbox command required")
+	}
+	state, replay, err := s.SandboxAccounting.Apply(ctx, command)
+	if err != nil {
+		if errors.Is(err, ledgerapi.ErrInsufficientFunding) {
+			return nil, status.Error(codes.ResourceExhausted, "insufficient sandbox institution prefund")
+		}
+		return nil, status.Error(codes.FailedPrecondition, "sandbox accounting command rejected")
+	}
+	return &ledgerv1.SandboxAccountingResponse{EventId: command.EventID, State: state, AlreadyApplied: replay, Revision: command.ExpectedRevision + 1}, nil
 }
 
 func (s *Server) PostLocalPrefund(ctx context.Context, req *ledgerv1.LocalPrefundCommand) (*ledgerv1.SettlementCommandResponse, error) {
@@ -93,7 +133,13 @@ func (s *Server) GetCustomerBalances(ctx context.Context, req *ledgerv1.Customer
 	if req == nil || req.InstitutionId == "" || s.DB == nil {
 		return nil, status.Error(codes.InvalidArgument, "institution and ledger storage required")
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT currency,SUM(CASE WHEN account_code='2000' THEN credit-debit ELSE 0 END),SUM(CASE WHEN account_code='2100' THEN credit-debit ELSE 0 END) FROM ledger_entries WHERE owner=$1 AND account_code IN ('2000','2100') GROUP BY currency ORDER BY currency`, req.InstitutionId)
+	fixture := s.SandboxToken != "" && s.SandboxAccounting != nil && strings.HasPrefix(req.InstitutionId, "sbx:")
+	rows, err := s.DB.QueryContext(ctx, `SELECT currency,
+ SUM(CASE WHEN account_code='2000' OR ($2 AND account_code='sbx:'||currency||':available') THEN credit-debit ELSE 0 END),
+ SUM(CASE WHEN account_code='2100' OR ($2 AND account_code='sbx:'||currency||':held') THEN credit-debit ELSE 0 END),
+ SUM(CASE WHEN $2 AND account_code='sbx:'||currency||':restricted' THEN credit-debit ELSE 0 END)
+ FROM ledger_entries WHERE owner=$1 AND (account_code IN ('2000','2100') OR ($2 AND account_code IN ('sbx:'||currency||':available','sbx:'||currency||':held','sbx:'||currency||':restricted')))
+ GROUP BY currency ORDER BY currency`, req.InstitutionId, fixture)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "ledger read failed")
 	}
@@ -101,7 +147,7 @@ func (s *Server) GetCustomerBalances(ctx context.Context, req *ledgerv1.Customer
 	result := &ledgerv1.CustomerBalanceResponse{}
 	for rows.Next() {
 		var b ledgerv1.CustomerBalance
-		if err = rows.Scan(&b.Currency, &b.AvailableMinor, &b.HeldMinor); err != nil {
+		if err = rows.Scan(&b.Currency, &b.AvailableMinor, &b.HeldMinor, &b.RestrictedMinor); err != nil {
 			return nil, status.Error(codes.Internal, "ledger read failed")
 		}
 		result.Balances = append(result.Balances, &b)
@@ -126,17 +172,11 @@ func (s *Server) ListCustomerTransactions(ctx context.Context, req *ledgerv1.Cus
 		pageSize = 25
 	}
 	var count int32
-	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM ledger_journals WHERE institution_id=$1 AND kind<>'hold'`, req.InstitutionId).Scan(&count); err != nil {
+	fixture := s.SandboxToken != "" && s.SandboxAccounting != nil && strings.HasPrefix(req.InstitutionId, "sbx:")
+	if err := s.DB.QueryRowContext(ctx, customerTransactionRead+` SELECT count(*) FROM visible`, req.InstitutionId, fixture).Scan(&count); err != nil {
 		return nil, status.Error(codes.Internal, "ledger read failed")
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT e.journal_id,j.trade_id,e.currency,
-		SUM(CASE WHEN j.kind='prefund' AND e.account_code='2000' THEN e.credit-e.debit
-		WHEN j.kind='settlement.failed' AND e.account_code='2000' THEN e.credit-e.debit
-		WHEN j.kind='settlement.confirmed' AND e.account_code='2100' THEN -e.debit
- WHEN j.kind='legacy' AND e.account_code='2200' THEN -e.debit ELSE 0 END),
-		j.created_at FROM ledger_entries e JOIN ledger_journals j ON j.journal_id=e.journal_id
-		WHERE j.institution_id=$1 AND j.kind<>'hold'
-		GROUP BY e.journal_id,j.trade_id,e.currency,j.created_at ORDER BY j.created_at DESC,e.journal_id LIMIT $2 OFFSET $3`, req.InstitutionId, pageSize, (page-1)*pageSize)
+	rows, err := s.DB.QueryContext(ctx, customerTransactionRead+` SELECT journal_id,trade_id,currency,amount_minor,created_at FROM visible ORDER BY created_at DESC,journal_id LIMIT $3 OFFSET $4`, req.InstitutionId, fixture, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "ledger read failed")
 	}

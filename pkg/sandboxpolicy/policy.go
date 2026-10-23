@@ -15,6 +15,40 @@ import (
 const Version = "osai-sandbox-accounting/v1"
 const TokenHeader = "x-osai-sandbox-ledger-token"
 
+// FXAcceptance enables only the local NGN/USD fixture lifecycle. It is not an
+// approval to route cross-currency transactions to a real provider.
+func FXAcceptance() (bool, error) {
+	selected := os.Getenv("OSAI_SANDBOX_FX_ACCEPTANCE")
+	if selected == "" {
+		return false, nil
+	}
+	enabled, err := Read()
+	base, parseErr := url.Parse(os.Getenv("OSAI_SANDBOX_FX_BASE_URL"))
+	local := parseErr == nil && base != nil && base.Scheme == "http" && base.User == nil && base.RawQuery == "" && base.Fragment == "" && (base.Hostname() == "127.0.0.1" || base.Hostname() == "localhost" || base.Hostname() == "::1") && (base.Path == "" || base.Path == "/sandbox-fx")
+	if selected != "true" || err != nil || !enabled || os.Getenv("OSAI_SANDBOX_FX_LEDGER_POSTING") != "true" || !local || !strings.HasPrefix(os.Getenv("OSAI_SANDBOX_FX_EXECUTOR_ID"), "sbx:") || !strings.HasPrefix(os.Getenv("OSAI_SANDBOX_FX_SIGNING_KEY"), "local-") || len(os.Getenv("OSAI_SANDBOX_FX_SIGNING_KEY")) < 32 {
+		return false, errors.New("sandbox FX acceptance requires the complete local executor and Ledger posting profile")
+	}
+	return true, nil
+}
+
+func FXTradeAllowed(institution, source, destination, provider string) (bool, error) {
+	enabled, err := FXAcceptance()
+	return enabled && strings.HasPrefix(institution, "sbx:") && source == "NGN" && destination == "USD" && provider == "sbx:provider", err
+}
+
+// FXPayout cannot enable a real-provider route or a non-proof database.
+func FXPayout() (bool, error) {
+	selected := os.Getenv("OSAI_SANDBOX_FX_PAYOUT")
+	if selected == "" {
+		return false, nil
+	}
+	enabled, err := FXAcceptance()
+	if selected != "true" || err != nil || !enabled {
+		return false, errors.New("sandbox FX payout requires the complete local FX acceptance profile")
+	}
+	return true, nil
+}
+
 func Read() (bool, error) {
 	policy := os.Getenv("OSAI_SANDBOX_ACCOUNTING_POLICY")
 	if policy == "" {
@@ -25,7 +59,7 @@ func Read() (bool, error) {
 	if policy != Version || os.Getenv("OSAI_LOCAL_PROOF_MODE") != "true" || os.Getenv("OSAI_API_ENVIRONMENT") != "sandbox" || os.Getenv("FLW_ENV") != "test" || !localProvider || !strings.HasPrefix(os.Getenv("FLW_SECRET_KEY"), "local-") || len(os.Getenv("OSAI_SANDBOX_LEDGER_TOKEN")) < 32 || !LocalProofDSN(os.Getenv("OSAI_POSTGRES_DSN")) {
 		return false, errors.New("sandbox accounting requires the local proof profile, loopback proof database and service token")
 	}
-	for _, key := range []string{"OSAI_TRADE_POSTGRES_DSN", "OSAI_SETTLEMENT_POSTGRES_DSN", "OSAI_LEDGER_POSTGRES_DSN"} {
+	for _, key := range []string{"OSAI_TRADE_POSTGRES_DSN", "OSAI_SETTLEMENT_POSTGRES_DSN", "OSAI_LEDGER_POSTGRES_DSN", "OSAI_QUOTE_POSTGRES_DSN"} {
 		if dsn := os.Getenv(key); dsn != "" && !LocalProofDSN(dsn) {
 			return false, errors.New("sandbox service database override must remain a local proof database")
 		}
