@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -148,10 +149,11 @@ type BalanceReadResponse struct {
 }
 
 type BalanceItem struct {
-	Currency       string
-	AvailableMinor int64
-	HeldMinor      int64
-	TotalMinor     int64
+	Currency        string
+	AvailableMinor  int64
+	HeldMinor       int64
+	RestrictedMinor int64
+	TotalMinor      int64
 }
 
 type TransactionItem struct {
@@ -372,10 +374,17 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Rate limiting
 	credentialID := authenticatedCredentialID(r.Header.Get("Authorization"))
-	if g.rateLimiter != nil && !g.rateLimiter.allow("institution:"+customerID, "credential:"+credentialID) {
-		w.Header().Set("Retry-After", "1")
-		writeHTTPJSON(w, http.StatusTooManyRequests, errorEnvelope("RATE_LIMIT_EXCEEDED", "too many requests", requestID))
-		return
+	if g.rateLimiter != nil {
+		allowed, err := g.rateLimiter.allowContext(r.Context(), "institution:"+customerID, "credential:"+credentialID)
+		if err != nil {
+			writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("SERVICE_UNAVAILABLE", "request limit service unavailable", requestID))
+			return
+		}
+		if !allowed {
+			w.Header().Set("Retry-After", "1")
+			writeHTTPJSON(w, http.StatusTooManyRequests, errorEnvelope("RATE_LIMIT_EXCEEDED", "too many requests", requestID))
+			return
+		}
 	}
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/webhook-endpoints" &&
@@ -1028,6 +1037,13 @@ func (g *Gateway) handleAcceptQuote(w http.ResponseWriter, r *http.Request, cust
 	beneficiaryID, _ := payload["beneficiary_id"].(string)
 	quote, err := g.quoteClient.AcceptQuote(customerID, quoteID, idKey, requestID, strings.TrimSpace(beneficiaryID))
 	if err != nil {
+		if code := status.Code(err); code != codes.InvalidArgument && code != codes.FailedPrecondition && code != codes.PermissionDenied && code != codes.NotFound && code != codes.AlreadyExists {
+			// The durable edge lease remains in force while the owner outcome
+			// is unknown. A new selection must not bypass an ambiguous hold.
+			w.Header().Set("Retry-After", "30")
+			writeHTTPJSON(w, http.StatusServiceUnavailable, errorEnvelope("SERVICE_UNAVAILABLE", "quote acceptance outcome is unresolved; retry the same selection", requestID))
+			return
+		}
 		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", err.Error(), requestID))
 		return
 	}
@@ -1225,8 +1241,8 @@ func (g *Gateway) handleSettlementReport(w http.ResponseWriter, r *http.Request,
 	}
 	request.Currency = strings.TrimSpace(query.Get("currency"))
 	request.Status = strings.TrimSpace(query.Get("status"))
-	if request.Status != "" && request.Status != "CONFIRMED" && request.Status != "FAILED" {
-		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "status must be CONFIRMED or FAILED", requestID))
+	if request.Status != "" && request.Status != "CONFIRMED" && request.Status != "FAILED" && request.Status != "RETURNED" && request.Status != "REVERSED" {
+		writeHTTPJSON(w, http.StatusBadRequest, errorEnvelope("VALIDATION_ERROR", "status must be CONFIRMED, FAILED, RETURNED or REVERSED", requestID))
 		return
 	}
 	page, err := g.settlementClient.ListCustomerSettlementReport(customerID, request)
@@ -1258,10 +1274,11 @@ func (g *Gateway) handleGetBalances(w http.ResponseWriter, r *http.Request, cust
 	items := make([]map[string]any, 0, len(balances.Balances))
 	for _, balance := range balances.Balances {
 		items = append(items, map[string]any{
-			"currency":        balance.Currency,
-			"available_minor": balance.AvailableMinor,
-			"held_minor":      balance.HeldMinor,
-			"total_minor":     balance.TotalMinor,
+			"currency":         balance.Currency,
+			"available_minor":  balance.AvailableMinor,
+			"held_minor":       balance.HeldMinor,
+			"restricted_minor": balance.RestrictedMinor,
+			"total_minor":      balance.TotalMinor,
 		})
 	}
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"institution_id": balances.InstitutionID, "balances": items, "request_id": requestID})
@@ -1465,6 +1482,7 @@ func authenticatedCredentialID(authorization string) string {
 // rateLimiterStore enforces independent token buckets per institution and credential.
 // Each scope allows 100 requests per minute with a burst of 10.
 type rateLimiterStore struct {
+	db     *sql.DB
 	mu     sync.RWMutex
 	tokens map[string]*tokenBucket
 }
@@ -1485,6 +1503,10 @@ func newRateLimiterStore() *rateLimiterStore {
 }
 
 func (r *rateLimiterStore) allow(keys ...string) bool {
+	if r.db != nil {
+		allowed, err := r.allowContext(context.Background(), keys...)
+		return err == nil && allowed
+	}
 	if len(keys) == 0 {
 		return false
 	}

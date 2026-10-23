@@ -98,6 +98,7 @@ func main() {
 	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	quoteService := &grpcServer{store: store, pricing: store, tradeClient: tradev1.NewTradeServiceClient(tradeConn), liquidity: liquidity}
 	quotev1.RegisterQuoteServiceServer(server, quoteService)
+	startQuoteAcceptanceRecovery(context.Background(), quoteService)
 	pricingOperators, err := loadPricingOperators()
 	if err != nil {
 		log.Fatal(err)

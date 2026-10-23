@@ -13,7 +13,8 @@ import (
 
 func NewPostgresStore(db *sql.DB) (*QuoteStore, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS quotes (id text PRIMARY KEY, institution_id text NOT NULL, idempotency_key text NOT NULL, body jsonb NOT NULL, UNIQUE(institution_id,idempotency_key));
- CREATE TABLE IF NOT EXISTS quote_outbox (event_id text PRIMARY KEY, institution_id text NOT NULL, body jsonb NOT NULL, delivered_at timestamptz);`)
+ CREATE TABLE IF NOT EXISTS quote_outbox (event_id text PRIMARY KEY, institution_id text NOT NULL, body jsonb NOT NULL, delivered_at timestamptz);
+ ALTER TABLE quotes ADD COLUMN IF NOT EXISTS acceptance_attempted_at timestamptz;`)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +71,19 @@ func (s *QuoteStore) getDB(id string) (*ExecutableQuote, bool) {
 	return &q, true
 }
 func (s *QuoteStore) acceptDB(id, key, tradeID, correlation string, now time.Time) (*ExecutableQuote, error) {
-	tx, err := s.db.Begin()
+	return s.acceptDBContext(context.Background(), id, key, tradeID, correlation, now)
+}
+
+func (s *QuoteStore) acceptDBContext(ctx context.Context, id, key, tradeID, correlation string, now time.Time) (*ExecutableQuote, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	var raw []byte
-	if err = tx.QueryRow(`SELECT body FROM quotes WHERE id=$1 FOR UPDATE`, id).Scan(&raw); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT body FROM quotes WHERE id=$1 FOR UPDATE`, id).Scan(&raw); err != nil {
 		return nil, err
 	}
 	var q ExecutableQuote
@@ -89,8 +96,11 @@ func (s *QuoteStore) acceptDB(id, key, tradeID, correlation string, now time.Tim
 		}
 		return &q, tx.Commit()
 	}
-	if q.Status != QuoteStatusQuoted || !now.Before(q.ExpiresAt) {
+	if q.Status != QuoteStatusQuoted {
 		return nil, errors.New("quote is not executable")
+	}
+	if err = validateAcceptanceCompletion(&q, key, now); err != nil {
+		return nil, err
 	}
 	q.Status = QuoteStatusAccepted
 	q.AcceptedTradeID = tradeID
@@ -100,7 +110,7 @@ func (s *QuoteStore) acceptDB(id, key, tradeID, correlation string, now time.Tim
 	if err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec(`UPDATE quotes SET body=$2 WHERE id=$1`, id, string(raw)); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE quotes SET body=$2 WHERE id=$1`, id, string(raw)); err != nil {
 		return nil, err
 	}
 	payload, _ := json.Marshal(map[string]string{"quote_id": id, "trade_id": tradeID, "status": "ACCEPTED"})
@@ -109,7 +119,7 @@ func (s *QuoteStore) acceptDB(id, key, tradeID, correlation string, now time.Tim
 	if err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec(`INSERT INTO quote_outbox(event_id,institution_id,body) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, event.EventId, event.InstitutionId, string(raw)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO quote_outbox(event_id,institution_id,body) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, event.EventId, event.InstitutionId, string(raw)); err != nil {
 		return nil, err
 	}
 	return &q, tx.Commit()
@@ -121,13 +131,20 @@ func (s *QuoteStore) AcceptWithCorrelation(id, key, tradeID, correlation string,
 	return s.Accept(id, key, tradeID, now)
 }
 
+func (s *QuoteStore) AcceptWithCorrelationContext(ctx context.Context, id, key, tradeID, correlation string, now time.Time) (*ExecutableQuote, error) {
+	if s.db != nil {
+		return s.acceptDBContext(ctx, id, key, tradeID, correlation, now)
+	}
+	return s.Accept(id, key, tradeID, now)
+}
+
 func (s *QuoteStore) ExpireDue(ctx context.Context, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT id,body FROM quotes WHERE body->>'Status'=$1 AND (body->>'ExpiresAt')::timestamptz <= $2 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED`, string(QuoteStatusQuoted), now.UTC())
+	rows, err := tx.QueryContext(ctx, `SELECT id,body FROM quotes WHERE body->>'Status'=$1 AND body->>'AcceptanceStartedAt' IS NULL AND (body->>'ExpiresAt')::timestamptz <= $2 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED`, string(QuoteStatusQuoted), now.UTC())
 	if err != nil {
 		return err
 	}

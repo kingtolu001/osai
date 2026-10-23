@@ -82,15 +82,16 @@ func (x *Pagination) GetCursor() string {
 }
 
 type Balance struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	InstitutionId  string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
-	Currency       string                 `protobuf:"bytes,2,opt,name=currency,proto3" json:"currency,omitempty"`
-	AvailableMinor int64                  `protobuf:"varint,3,opt,name=available_minor,json=availableMinor,proto3" json:"available_minor,omitempty"`
-	HeldMinor      int64                  `protobuf:"varint,4,opt,name=held_minor,json=heldMinor,proto3" json:"held_minor,omitempty"`
-	ReservedMinor  int64                  `protobuf:"varint,5,opt,name=reserved_minor,json=reservedMinor,proto3" json:"reserved_minor,omitempty"`
-	TotalMinor     int64                  `protobuf:"varint,6,opt,name=total_minor,json=totalMinor,proto3" json:"total_minor,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	InstitutionId   string                 `protobuf:"bytes,1,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	Currency        string                 `protobuf:"bytes,2,opt,name=currency,proto3" json:"currency,omitempty"`
+	AvailableMinor  int64                  `protobuf:"varint,3,opt,name=available_minor,json=availableMinor,proto3" json:"available_minor,omitempty"`
+	HeldMinor       int64                  `protobuf:"varint,4,opt,name=held_minor,json=heldMinor,proto3" json:"held_minor,omitempty"`
+	ReservedMinor   int64                  `protobuf:"varint,5,opt,name=reserved_minor,json=reservedMinor,proto3" json:"reserved_minor,omitempty"`
+	TotalMinor      int64                  `protobuf:"varint,6,opt,name=total_minor,json=totalMinor,proto3" json:"total_minor,omitempty"`
+	RestrictedMinor int64                  `protobuf:"varint,7,opt,name=restricted_minor,json=restrictedMinor,proto3" json:"restricted_minor,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Balance) Reset() {
@@ -161,6 +162,13 @@ func (x *Balance) GetReservedMinor() int64 {
 func (x *Balance) GetTotalMinor() int64 {
 	if x != nil {
 		return x.TotalMinor
+	}
+	return 0
+}
+
+func (x *Balance) GetRestrictedMinor() int64 {
+	if x != nil {
+		return x.RestrictedMinor
 	}
 	return 0
 }
@@ -530,7 +538,7 @@ const file_proto_osai_reporting_v1_reporting_proto_rawDesc = "" +
 	"Pagination\x12\x12\n" +
 	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
-	"\x06cursor\x18\x03 \x01(\tR\x06cursor\"\xdc\x01\n" +
+	"\x06cursor\x18\x03 \x01(\tR\x06cursor\"\x87\x02\n" +
 	"\aBalance\x12%\n" +
 	"\x0einstitution_id\x18\x01 \x01(\tR\rinstitutionId\x12\x1a\n" +
 	"\bcurrency\x18\x02 \x01(\tR\bcurrency\x12'\n" +
@@ -539,7 +547,8 @@ const file_proto_osai_reporting_v1_reporting_proto_rawDesc = "" +
 	"held_minor\x18\x04 \x01(\x03R\theldMinor\x12%\n" +
 	"\x0ereserved_minor\x18\x05 \x01(\x03R\rreservedMinor\x12\x1f\n" +
 	"\vtotal_minor\x18\x06 \x01(\x03R\n" +
-	"totalMinor\"\xce\x02\n" +
+	"totalMinor\x12)\n" +
+	"\x10restricted_minor\x18\a \x01(\x03R\x0frestrictedMinor\"\xce\x02\n" +
 	"\vTransaction\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12\x12\n" +

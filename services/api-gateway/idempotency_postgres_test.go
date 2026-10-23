@@ -37,6 +37,7 @@ func newIdempotencyTestDB(t *testing.T) *sql.DB {
 		admin.Close()
 		t.Fatal(err)
 	}
+	configureCustomerAPIPool(isolated)
 	if err := ensureCustomerAPISchema(isolated); err != nil {
 		isolated.Close()
 		admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`)

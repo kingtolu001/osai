@@ -258,6 +258,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AcceptQuoteResponse'
+        '503':
+          description: Acceptance outcome unresolved; retry the same selection and idempotency key after Retry-After.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 30
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /v1/trades:
     get:
       operationId: listTrades
@@ -887,7 +898,7 @@ components:
                 type: string
               status:
                 type: string
-                enum: [CONFIRMED, FAILED]
+                enum: [CONFIRMED, FAILED, RETURNED, REVERSED]
               amount_minor:
                 type: integer
               currency:
@@ -937,7 +948,7 @@ components:
           type: array
           items:
             type: object
-            required: [currency, available_minor, held_minor, total_minor]
+            required: [currency, available_minor, held_minor, restricted_minor, total_minor]
             properties:
               currency:
                 type: string
@@ -945,8 +956,12 @@ components:
                 type: integer
               held_minor:
                 type: integer
+              restricted_minor:
+                type: integer
+                description: Funds retained for controlled recovery and unavailable for spending.
               total_minor:
                 type: integer
+                description: Sum of available, held, and restricted minor units in this currency.
         request_id:
           type: string
     TransactionItem:

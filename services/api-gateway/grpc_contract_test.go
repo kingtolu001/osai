@@ -594,7 +594,7 @@ func (stubReportingServiceClient) ListTransactions(context.Context, *reportingv1
 
 func TestGRPCReportingClientPreservesAllBalanceCurrencies(t *testing.T) {
 	client := &grpcReportingClient{client: stubReportingServiceClient{balances: []*reportingv1.Balance{
-		{InstitutionId: "inst_1", Currency: "USD", AvailableMinor: 5000, HeldMinor: 1000, TotalMinor: 6000},
+		{InstitutionId: "inst_1", Currency: "USD", AvailableMinor: 5000, HeldMinor: 1000, RestrictedMinor: 250, TotalMinor: 6250},
 		{InstitutionId: "inst_1", Currency: "NGN", AvailableMinor: 7000, HeldMinor: 3000, TotalMinor: 10000},
 	}}}
 	got, err := client.GetBalances("inst_1")
@@ -603,8 +603,21 @@ func TestGRPCReportingClientPreservesAllBalanceCurrencies(t *testing.T) {
 	}
 	if got.InstitutionID != "inst_1" || len(got.Balances) != 2 ||
 		got.Balances[0].Currency != "USD" || got.Balances[1].Currency != "NGN" ||
-		got.Balances[1].TotalMinor != 10000 {
+		got.Balances[1].TotalMinor != 10000 || got.Balances[0].RestrictedMinor != 250 {
 		t.Fatalf("reporting balances were not preserved: %+v", got)
+	}
+	gateway := NewGatewayWithClients(customerReadEntitledClient{}, stubQuoteClient{})
+	gateway.SetReadModelClient(client)
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+	public := doJSONGET(t, server, "/v1/balances", "ApiKey ck_ok:s3cr3t")
+	items, ok := public.Body["balances"].([]any)
+	if public.StatusCode != http.StatusOK || !ok || len(items) != 2 {
+		t.Fatalf("public balance contract: %+v", public)
+	}
+	usd, ok := items[0].(map[string]any)
+	if !ok || usd["restricted_minor"] != float64(250) || usd["available_minor"] != float64(5000) || usd["total_minor"] != float64(6250) {
+		t.Fatalf("public API omitted restricted funds or made them spendable: %+v", usd)
 	}
 
 	emptyClient := &grpcReportingClient{client: stubReportingServiceClient{}}

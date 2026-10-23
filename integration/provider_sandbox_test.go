@@ -100,7 +100,7 @@ func runProviderSandboxSeparateServices(t *testing.T, enableFees bool) {
 		"OSAI_QUOTE_GRPC_ADDR": ports["quote_grpc"], "OSAI_QUOTE_PORT": ports["quote_http"], "OSAI_REPORTING_GRPC_ADDR": ports["reporting"], "OSAI_API_GATEWAY_PORT": ports["gateway"],
 		"OSAI_API_ENVIRONMENT": "sandbox",
 		"OSAI_SANDBOX_SEED":    "1", "OSAI_SANDBOX_INSTITUTION_ID": institution, "OSAI_SANDBOX_CLIENT_ID": clientID, "OSAI_SANDBOX_CLIENT_SECRET": clientSecret,
-		"OSAI_SANDBOX_ENTITLEMENTS":       "quotes:read,quotes:write,webhooks:write,providers:read,beneficiaries:write,trades:read,settlements:read,reports:read,balances:read,transactions:read",
+		"OSAI_SANDBOX_ENTITLEMENTS":       "quotes:read,quotes:write,webhooks:write,providers:read,beneficiaries:write,trades:read,settlements:read,reports:read,balances:read,transactions:read,credentials:read,credentials:write",
 		"OSAI_BENEFICIARY_OPERATORS_JSON": string(operatorJSON), "OSAI_BENEFICIARY_WRITE_TOKEN": writeToken,
 		"OSAI_QUOTE_PRICING_OPERATORS_JSON": string(pricingOperatorJSON), "OSAI_QUOTE_PRICING_ADMIN_ADDR": ports["quote_admin"],
 		"OSAI_NOTIFICATION_TOKEN": notifyToken, "OSAI_WEBHOOK_SECRET": webhookSecret, "OSAI_WEBHOOK_ADMIN_TOKEN": webhookAdminToken,
@@ -112,6 +112,7 @@ func runProviderSandboxSeparateServices(t *testing.T, enableFees bool) {
 		"OSAI_LOCAL_PROOF_MODE": "true", "OSAI_LOCAL_PREFUND_TOKEN": prefundToken, "OSAI_CUSTODY_BANK_ID": "local_test_bank",
 	}
 	env["OSAI_SANDBOX_ACCOUNTING_POLICY"] = ""
+	env["OSAI_TEMPORAL_TASK_QUEUE"] = "osai-proof-" + randomHex(t, 8)
 	if enableFees {
 		env["OSAI_SANDBOX_ACCOUNTING_POLICY"] = "osai-sandbox-accounting/v1"
 		env["OSAI_SANDBOX_LEDGER_TOKEN"] = randomHex(t, 32)
@@ -208,6 +209,10 @@ func runProviderSandboxSeparateServices(t *testing.T, enableFees bool) {
 	if restartedCustomerStatus != http.StatusOK {
 		t.Fatalf("customer API credential did not survive customer-kyb restart: code=%d response=%v", restartedCustomerStatus, restartedCustomerResponse)
 	}
+	verifyPublicCredentialLifecycle(t, api, clientAuth, correlation, func() {
+		runtime.stop("customer")
+		runtime.start("customer", "./services/customer-kyb", ports["customer_grpc"])
+	})
 	ledgerConn, err := grpc.Dial(ports["ledger"], grpc.WithInsecure())
 	if err != nil {
 		t.Fatal(err)

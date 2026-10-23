@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"github.com/osai/osai/services/quote/quotecore"
 	"os"
@@ -204,17 +203,7 @@ func NewGatewayWithClients(customerClient CustomerClient, quoteClient QuoteClien
 }
 
 func newIdempotencyStore() *idempotencyStore {
-	dsn := strings.TrimSpace(os.Getenv("OSAI_POSTGRES_DSN"))
-	if dsn == "" {
-		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
-	}
-	if err := ensureCustomerAPISchema(db); err != nil {
-		_ = db.Close()
-		return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
-	}
-	return &idempotencyStore{rows: map[string]*idempotencyEntry{}, db: db}
+	// Database durability is exercised by the explicit PostgreSQL tests with
+	// isolated schemas and cleanup, rather than leaking pools from UI fixtures.
+	return &idempotencyStore{rows: map[string]*idempotencyEntry{}}
 }

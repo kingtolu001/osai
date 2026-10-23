@@ -17,6 +17,7 @@ message Balance {
   int64 held_minor = 4;
   int64 reserved_minor = 5;
   int64 total_minor = 6;
+  int64 restricted_minor = 7;
 }
 
 message Transaction {

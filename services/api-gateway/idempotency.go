@@ -29,6 +29,7 @@ func newPersistentIdempotencyStore() (*idempotencyStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	configureCustomerAPIPool(db)
 	if err = db.Ping(); err != nil {
 		db.Close()
 		return nil, err
@@ -38,6 +39,13 @@ func newPersistentIdempotencyStore() (*idempotencyStore, error) {
 		return nil, err
 	}
 	return &idempotencyStore{rows: map[string]*idempotencyEntry{}, db: db}, nil
+}
+
+func configureCustomerAPIPool(db *sql.DB) {
+	// Requests queue within their deadlines instead of opening one connection
+	// each and exhausting the database shared by the local service replicas.
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
 }
 
 type idempotencyEntry struct {

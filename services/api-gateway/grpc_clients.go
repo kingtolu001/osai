@@ -467,10 +467,11 @@ func (r *grpcReportingClient) GetBalances(institutionID string) (BalanceReadResp
 			continue
 		}
 		balances = append(balances, BalanceItem{
-			Currency:       balance.Currency,
-			AvailableMinor: balance.AvailableMinor,
-			HeldMinor:      balance.HeldMinor,
-			TotalMinor:     balance.TotalMinor,
+			Currency:        balance.Currency,
+			AvailableMinor:  balance.AvailableMinor,
+			HeldMinor:       balance.HeldMinor,
+			RestrictedMinor: balance.RestrictedMinor,
+			TotalMinor:      balance.TotalMinor,
 		})
 	}
 	return BalanceReadResponse{InstitutionID: institutionID, Balances: balances}, nil

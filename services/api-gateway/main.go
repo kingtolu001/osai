@@ -23,7 +23,11 @@ func main() {
 		log.Fatalf("initialize persistent API idempotency: %v", err)
 	}
 	defer idempotency.db.Close()
-	gateway := &Gateway{idempotency: idempotency, rateLimiter: newRateLimiterStore()}
+	rateLimiter, err := newPersistentRateLimiterStore(idempotency.db)
+	if err != nil {
+		log.Fatalf("initialize persistent API rate limits: %v", err)
+	}
+	gateway := &Gateway{idempotency: idempotency, rateLimiter: rateLimiter}
 	credentialEnvironment := strings.TrimSpace(os.Getenv("OSAI_API_ENVIRONMENT"))
 	if credentialEnvironment == "" {
 		log.Fatal("OSAI_API_ENVIRONMENT is required")

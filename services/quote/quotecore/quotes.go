@@ -48,23 +48,26 @@ type RouteCandidate struct {
 
 // ExecutableQuote contains the accepted quote economics for a trade.
 type ExecutableQuote struct {
-	ID               string
-	Request          QuoteRequest
-	RequestHash      string
-	ProviderID       string
-	Status           QuoteStatus
-	RateMinor        int64
-	FeeMinor         int64
-	AmountOutMinor   int64
-	ExpiresAt        time.Time
-	AcceptedTradeID  string
-	AcceptanceKey    string
-	AcceptedAt       *time.Time
-	CreatedAt        time.Time
-	SettlementRail   string
-	ProviderEvidence map[string]string
-	RouteCandidates  []RouteCandidate
-	Pricing          *QuotePricingSnapshot
+	ID                    string
+	Request               QuoteRequest
+	RequestHash           string
+	ProviderID            string
+	Status                QuoteStatus
+	RateMinor             int64
+	FeeMinor              int64
+	AmountOutMinor        int64
+	ExpiresAt             time.Time
+	AcceptedTradeID       string
+	AcceptanceKey         string
+	AcceptanceStartedAt   *time.Time `json:",omitempty"`
+	AcceptanceBeneficiary string     `json:",omitempty"`
+	AcceptanceCorrelation string     `json:",omitempty"`
+	AcceptedAt            *time.Time
+	CreatedAt             time.Time
+	SettlementRail        string
+	ProviderEvidence      map[string]string
+	RouteCandidates       []RouteCandidate
+	Pricing               *QuotePricingSnapshot
 }
 
 type QuotePricingSnapshot struct {
@@ -109,6 +112,10 @@ func cloneExecutableQuote(quote *ExecutableQuote) *ExecutableQuote {
 	if quote.AcceptedAt != nil {
 		acceptedAt := *quote.AcceptedAt
 		cloned.AcceptedAt = &acceptedAt
+	}
+	if quote.AcceptanceStartedAt != nil {
+		started := *quote.AcceptanceStartedAt
+		cloned.AcceptanceStartedAt = &started
 	}
 	return &cloned
 }
@@ -369,7 +376,7 @@ func (s *QuoteStore) Accept(quoteID, idempotencyKey, tradeID string, now time.Ti
 		return nil, errors.New("quote not found")
 	}
 	if quote.Status == QuoteStatusAccepted {
-		if quote.AcceptedTradeID == tradeID || idempotencyKey == quote.AcceptanceKey {
+		if quote.AcceptedTradeID == tradeID {
 			return cloneExecutableQuote(quote), nil
 		}
 		return nil, errors.New("quote already accepted for different trade")
@@ -377,9 +384,8 @@ func (s *QuoteStore) Accept(quoteID, idempotencyKey, tradeID string, now time.Ti
 	if quote.Status == QuoteStatusExpired || quote.Status == QuoteStatusRejected {
 		return nil, fmt.Errorf("quote cannot accept from status %s", quote.Status)
 	}
-	if now.After(quote.ExpiresAt) || now.Equal(quote.ExpiresAt) {
-		quote.Status = QuoteStatusExpired
-		return nil, fmt.Errorf("quote expired at %s", quote.ExpiresAt.Format(time.RFC3339))
+	if err := validateAcceptanceCompletion(quote, idempotencyKey, now); err != nil {
+		return nil, err
 	}
 	quote.Status = QuoteStatusAccepted
 	quote.AcceptedTradeID = tradeID

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"math/big"
 	"net"
 	"os"
 	"strings"
@@ -34,14 +35,27 @@ func (s *grpcServer) GetBalances(ctx context.Context, req *reportingv1.GetBalanc
 	if err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, status.Error(codes.Internal, "ledger balance response unavailable")
+	}
 	response := &reportingv1.GetBalancesResponse{Balances: make([]*reportingv1.Balance, 0, len(result.Balances))}
 	for _, balance := range result.Balances {
+		if balance == nil {
+			return nil, status.Error(codes.Internal, "ledger balance response unavailable")
+		}
+		total := new(big.Int).SetInt64(balance.AvailableMinor)
+		total.Add(total, big.NewInt(balance.HeldMinor))
+		total.Add(total, big.NewInt(balance.RestrictedMinor))
+		if !total.IsInt64() {
+			return nil, status.Error(codes.Internal, "ledger balance total exceeds supported range")
+		}
 		response.Balances = append(response.Balances, &reportingv1.Balance{
-			InstitutionId:  req.InstitutionId,
-			Currency:       balance.Currency,
-			AvailableMinor: balance.AvailableMinor,
-			HeldMinor:      balance.HeldMinor,
-			TotalMinor:     balance.AvailableMinor + balance.HeldMinor,
+			InstitutionId:   req.InstitutionId,
+			Currency:        balance.Currency,
+			AvailableMinor:  balance.AvailableMinor,
+			HeldMinor:       balance.HeldMinor,
+			RestrictedMinor: balance.RestrictedMinor,
+			TotalMinor:      total.Int64(),
 		})
 	}
 	return response, nil

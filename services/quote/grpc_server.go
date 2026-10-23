@@ -10,6 +10,7 @@ import (
 	"github.com/osai/osai/adapters/flutterwave"
 	"github.com/osai/osai/adapters/simulator/simcore"
 	"github.com/osai/osai/pkg/pricing"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	quotev1 "github.com/osai/osai/proto/osai/quote/v1"
 	tradev1 "github.com/osai/osai/proto/osai/trade/v1"
 	"github.com/osai/osai/services/quote/quotecore"
@@ -232,7 +233,10 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 		return nil, status.Error(codes.PermissionDenied, "forbidden")
 	}
 	if quote.Request.BaseCurrency != quote.Request.QuoteCurrency {
-		return nil, status.Error(codes.FailedPrecondition, "cross-currency funding requires verified FX execution and Ledger posting")
+		allowed, err := sandboxpolicy.FXTradeAllowed(req.InstitutionId, quote.Request.BaseCurrency, quote.Request.QuoteCurrency, quote.Request.DestinationRail)
+		if err != nil || !allowed {
+			return nil, status.Error(codes.FailedPrecondition, "cross-currency funding requires verified FX execution and Ledger posting")
+		}
 	}
 	if quote.Pricing == nil {
 		return nil, status.Error(codes.FailedPrecondition, "immutable pricing snapshot is required for quote acceptance")
@@ -262,24 +266,30 @@ func (s *grpcServer) AcceptQuote(ctx context.Context, req *quotev1.AcceptQuoteRe
 	if s.tradeClient == nil {
 		return nil, status.Error(codes.Unavailable, "trade service unavailable")
 	}
-	if quote.IsExpiredAt(time.Now()) || quote.Status != quotecore.QuoteStatusQuoted {
-		return nil, status.Error(codes.FailedPrecondition, "quote is not executable")
+	quote, err := s.store.BeginAcceptanceContext(ctx, quote.ID, req.IdempotencyKey, req.BeneficiaryId, req.CorrelationId, time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, quotecore.ErrQuoteAcceptanceSelection) || errors.Is(err, quotecore.ErrQuoteNotExecutable) {
+			return nil, status.Error(codes.FailedPrecondition, "quote acceptance is expired or conflicts with an existing selection")
+		}
+		return nil, status.Error(codes.Unavailable, "quote acceptance selection could not be persisted; retry the same selection")
 	}
+	// Preserve the original correlation across an ambiguous response and retry.
+	req = &quotev1.AcceptQuoteRequest{InstitutionId: req.InstitutionId, QuoteId: req.QuoteId, IdempotencyKey: req.IdempotencyKey, BeneficiaryId: req.BeneficiaryId, CorrelationId: quote.AcceptanceCorrelation}
 	tradeRequest, err := tradeRequestFromQuote(req, quote)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "quote pricing snapshot could not be serialized")
 	}
 	tradeResp, err := s.tradeClient.CreateTradeFromAcceptedQuote(ctx, tradeRequest)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Unavailable, "trade acceptance outcome is unresolved; retry the same selection")
 	}
 	tradeID := tradeResp.GetTradeId()
 	if strings.TrimSpace(tradeID) == "" {
 		return nil, status.Error(codes.Internal, "trade-orchestrator did not return a trade id")
 	}
-	quote, err = s.store.AcceptWithCorrelation(quote.ID, req.IdempotencyKey, tradeID, req.CorrelationId, time.Now().UTC())
+	quote, err = s.store.AcceptWithCorrelationContext(ctx, quote.ID, req.IdempotencyKey, tradeID, req.CorrelationId, time.Now().UTC())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, status.Error(codes.Unavailable, "trade acceptance acknowledged but quote receipt is unresolved; retry the same selection")
 	}
 	quote.AcceptedTradeID = tradeID
 	resp := toQuoteResponse(quote)
