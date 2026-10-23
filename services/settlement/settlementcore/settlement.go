@@ -21,9 +21,13 @@ const (
 	Failed           State = "FAILED"
 	Unknown          State = "UNKNOWN"
 	ManualReview     State = "MANUAL_REVIEW"
+	Returned         State = "RETURNED"
+	Reversed         State = "REVERSED"
 )
 
-func (s State) Terminal() bool { return s == Confirmed || s == Failed }
+func (s State) Terminal() bool {
+	return s == Confirmed || s == Failed || s == Returned || s == Reversed
+}
 
 type Instruction struct {
 	ID            string

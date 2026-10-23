@@ -25,6 +25,8 @@ const (
 	StateFailed                TradeState = "FAILED"
 	StateSettling              TradeState = "SETTLING"
 	StateSettled               TradeState = "SETTLED"
+	StateReturned              TradeState = "RETURNED"
+	StateReversed              TradeState = "REVERSED"
 	StateFeeAccountingRequired TradeState = "FEE_ACCOUNTING_REQUIRED"
 	StateFXExecutionRequired   TradeState = "FX_EXECUTION_REQUIRED"
 	StateFXExecuting           TradeState = "FX_EXECUTING"
@@ -80,6 +82,7 @@ type Store struct {
 }
 
 type FinalityEvent struct {
+	Supersedes    string
 	EventID       string
 	InstitutionID string
 	SettlementID  string
@@ -330,7 +333,7 @@ func (s *Store) SetStatus(tradeID string, state TradeState) error {
 
 func (s *Store) ApplySettlementFinality(event FinalityEvent) error {
 	if event.EventID == "" || event.InstitutionID == "" || event.SettlementID == "" || event.TradeID == "" || event.CorrelationID == "" ||
-		(event.Status != StateSettled && event.Status != StateFailed) {
+		(event.Status != StateSettled && event.Status != StateFailed && event.Status != StateReturned && event.Status != StateReversed && event.Status != StateSettling) {
 		return errors.New("invalid settlement finality event")
 	}
 	if s.db != nil {
@@ -348,15 +351,36 @@ func (s *Store) ApplySettlementFinality(event FinalityEvent) error {
 	if trade == nil {
 		return errors.New("trade not found")
 	}
-	if trade.InstitutionID != event.InstitutionID || trade.SettlementID != event.SettlementID || trade.CorrelationID != event.CorrelationID {
+	if !settlementEventMatches(*trade, event) {
 		return errors.New("settlement finality identity mismatch")
 	}
-	if trade.State != StateSettling && trade.State != event.Status {
+	if event.Supersedes == "" && !settlementFinalityAllowed(trade.State, event.Status) {
 		return errors.New("settlement finality conflicts with trade state")
 	}
 	trade.State, trade.Status, trade.UpdatedAt = event.Status, string(event.Status), time.Now().UTC()
+	trade.SettlementID = event.SettlementID
 	s.finalityEvents[event.EventID] = event
 	return nil
+}
+
+func settlementEventMatches(trade Trade, event FinalityEvent) bool {
+	if trade.InstitutionID != event.InstitutionID || trade.CorrelationID != event.CorrelationID {
+		return false
+	}
+	if event.Supersedes != "" {
+		return event.Status == StateSettling && trade.State == StateFailed && trade.SettlementID == event.Supersedes && event.SettlementID != event.Supersedes
+	}
+	return event.Status != StateSettling && trade.SettlementID == event.SettlementID
+}
+
+func settlementFinalityAllowed(current, next TradeState) bool {
+	if current == next {
+		return true
+	}
+	if next == StateReturned || next == StateReversed {
+		return current == StateSettled
+	}
+	return current == StateSettling && (next == StateSettled || next == StateFailed)
 }
 
 func (t *Trade) Accept() error {

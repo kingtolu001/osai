@@ -18,6 +18,7 @@ import (
 type Postgres struct{ DB *sql.DB }
 
 type FinalityEvent struct {
+	Supersedes    string
 	EventID       string
 	InstitutionID string
 	SettlementID  string
@@ -50,7 +51,7 @@ type CustomerSettlementReportItem struct {
 func (p Postgres) ListCustomerSettlementReport(ctx context.Context, institutionID string, from, to time.Time, currency, status string, page, pageSize int) ([]CustomerSettlementReportItem, int, error) {
 	if institutionID == "" || page < 1 || pageSize < 1 || pageSize > 100 ||
 		(!from.IsZero() && !to.IsZero() && !from.Before(to)) ||
-		(status != "" && status != string(settlementcore.Confirmed) && status != string(settlementcore.Failed)) {
+		(status != "" && status != string(settlementcore.Confirmed) && status != string(settlementcore.Failed) && status != string(settlementcore.Returned) && status != string(settlementcore.Reversed)) {
 		return nil, 0, errors.New("invalid customer settlement report query")
 	}
 	var fromValue, toValue any
@@ -61,7 +62,7 @@ func (p Postgres) ListCustomerSettlementReport(ctx context.Context, institutionI
 		toValue = to
 	}
 	args := []any{institutionID, currency, status, fromValue, toValue}
-	const queryFilter = `i.institution_id=$1 AND i.trade_id IS NOT NULL AND i.trade_id<>'' AND i.state IN ('CONFIRMED','FAILED') AND ($2='' OR upper(i.currency)=upper($2)) AND ($3='' OR i.state=$3) AND ($4::timestamptz IS NULL OR t.occurred_at >= $4) AND ($5::timestamptz IS NULL OR t.occurred_at < $5)`
+	const queryFilter = `i.institution_id=$1 AND i.trade_id IS NOT NULL AND i.trade_id<>'' AND i.state IN ('CONFIRMED','FAILED','RETURNED','REVERSED') AND ($2='' OR upper(i.currency)=upper($2)) AND ($3='' OR i.state=$3) AND ($4::timestamptz IS NULL OR t.occurred_at >= $4) AND ($5::timestamptz IS NULL OR t.occurred_at < $5)`
 	var total int
 	if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM settlement_instructions i JOIN LATERAL (SELECT occurred_at FROM settlement_transitions WHERE settlement_id=i.id AND to_state=i.state ORDER BY occurred_at DESC LIMIT 1) t ON true WHERE `+queryFilter, args...).Scan(&total); err != nil {
 		return nil, 0, err
@@ -117,18 +118,18 @@ func (p Postgres) CreateForTrade(ctx context.Context, institutionID, tradeID, qu
 	now := time.Now().UTC()
 	id := ids.NewSettlementID()
 	ref := ids.NewSettlementID()
-	_, err := p.DB.ExecContext(ctx, `INSERT INTO settlement_instructions(id,client_ref,beneficiary,amount_minor,currency,purpose,state,created_at,updated_at,institution_id,trade_id,quote_id,correlation_id,provider_id,bank_code,account_number) VALUES($1,$2,$3,$4,$5,$6,'CREATED',$7,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (trade_id) WHERE trade_id IS NOT NULL DO NOTHING`, id, ref, beneficiary, amountMinor, currency, purpose, now, institutionID, tradeID, quoteID, correlationID, providerID, bankCode, accountNumber)
+	_, err := p.DB.ExecContext(ctx, `INSERT INTO settlement_instructions(id,client_ref,beneficiary,amount_minor,currency,purpose,state,created_at,updated_at,institution_id,trade_id,quote_id,correlation_id,provider_id,bank_code,account_number) VALUES($1,$2,$3,$4,$5,$6,'CREATED',$7,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (trade_id) WHERE trade_id IS NOT NULL AND (supersedes IS NULL OR supersedes='') DO NOTHING`, id, ref, beneficiary, amountMinor, currency, purpose, now, institutionID, tradeID, quoteID, correlationID, providerID, bankCode, accountNumber)
 	if err != nil {
 		return settlementcore.Instruction{}, err
 	}
 	var i settlementcore.Instruction
 	var state string
-	err = p.DB.QueryRowContext(ctx, `SELECT id,client_ref,provider_ref,beneficiary,amount_minor,currency,purpose,state,created_at,updated_at,institution_id,trade_id,quote_id,correlation_id,provider_id,bank_code,account_number FROM settlement_instructions WHERE trade_id=$1`, tradeID).Scan(&i.ID, &i.ClientRef, &i.ProviderRef, &i.Beneficiary, &i.AmountMinor, &i.Currency, &i.Purpose, &state, &i.CreatedAt, &i.UpdatedAt, &i.InstitutionID, &i.TradeID, &i.QuoteID, &i.CorrelationID, &i.ProviderID, &i.BankCode, &i.AccountNumber)
+	err = p.DB.QueryRowContext(ctx, `SELECT id,client_ref,provider_ref,beneficiary,amount_minor,currency,purpose,state,created_at,updated_at,institution_id,trade_id,quote_id,correlation_id,provider_id,bank_code,account_number FROM settlement_instructions WHERE trade_id=$1 AND (supersedes IS NULL OR supersedes='')`, tradeID).Scan(&i.ID, &i.ClientRef, &i.ProviderRef, &i.Beneficiary, &i.AmountMinor, &i.Currency, &i.Purpose, &state, &i.CreatedAt, &i.UpdatedAt, &i.InstitutionID, &i.TradeID, &i.QuoteID, &i.CorrelationID, &i.ProviderID, &i.BankCode, &i.AccountNumber)
 	if err != nil {
 		return settlementcore.Instruction{}, err
 	}
 	i.State = settlementcore.State(state)
-	if i.InstitutionID != institutionID || i.QuoteID != quoteID || i.AmountMinor != amountMinor || i.Currency != currency || i.ProviderID != providerID || i.BankCode != bankCode || i.AccountNumber != accountNumber {
+	if i.InstitutionID != institutionID || i.QuoteID != quoteID || i.AmountMinor != amountMinor || i.Currency != currency || i.ProviderID != providerID || i.BankCode != bankCode || i.AccountNumber != accountNumber || i.Beneficiary != beneficiary || i.Purpose != purpose || i.CorrelationID != correlationID {
 		return settlementcore.Instruction{}, errors.New("settlement replay conflict")
 	}
 	return i, nil
@@ -185,7 +186,7 @@ func (p Postgres) RecordRuntimeState(ctx context.Context, id string, next settle
 	if err = tx.QueryRowContext(ctx, `SELECT state,provider_ref,institution_id,COALESCE(trade_id,''),correlation_id FROM settlement_instructions WHERE id=$1 FOR UPDATE`, id).Scan(&current, &existingRef, &institutionID, &tradeID, &correlationID); err != nil {
 		return err
 	}
-	if current == string(settlementcore.Confirmed) || current == string(settlementcore.Failed) {
+	if settlementcore.State(current).Terminal() {
 		return tx.Commit()
 	}
 	if current == string(settlementcore.ManualReview) || next == settlementcore.Submitted && current != string(settlementcore.Created) {
@@ -259,10 +260,23 @@ func (p Postgres) RelayDomainEvents(ctx context.Context, client notificationv1.N
 		return err
 	}
 	for _, event := range events {
+		customerStatus := "PROCESSING"
+		if event.EventType == "trade.settled" {
+			customerStatus = "SETTLED"
+		}
+		if event.EventType == "si.unknown_escalated" {
+			customerStatus = "UNKNOWN"
+		}
+		if event.EventType == "trade.returned" {
+			customerStatus = "RETURNED"
+		}
+		if event.EventType == "trade.reversed" {
+			customerStatus = "REVERSED"
+		}
 		payload, err := json.Marshal(map[string]string{
 			"settlement_id": event.SettlementID,
 			"trade_id":      event.TradeID,
-			"status":        "PROCESSING",
+			"status":        customerStatus,
 		})
 		if err != nil {
 			return err
@@ -288,7 +302,11 @@ func (p Postgres) ListPendingFinalityEvents(ctx context.Context, limit int) ([]F
 	if limit < 1 || limit > 100 {
 		return nil, errors.New("invalid finality event limit")
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT event_id,institution_id,settlement_id,trade_id,status,correlation_id,occurred_at FROM settlement_finality_outbox WHERE delivered_at IS NULL ORDER BY occurred_at,event_id LIMIT $1`, limit)
+	rows, err := p.DB.QueryContext(ctx, `SELECT f.event_id,f.institution_id,f.settlement_id,f.trade_id,f.status,f.correlation_id,f.occurred_at,f.supersedes FROM settlement_finality_outbox f WHERE f.delivered_at IS NULL
+ AND (f.status<>'RETRYING' OR EXISTS (SELECT 1 FROM settlement_finality_outbox prior WHERE prior.settlement_id=f.supersedes AND prior.status='FAILED' AND prior.delivered_at IS NOT NULL))
+ AND (f.status='RETRYING' OR NOT EXISTS (SELECT 1 FROM settlement_finality_outbox retry WHERE retry.settlement_id=f.settlement_id AND retry.status='RETRYING' AND retry.delivered_at IS NULL))
+ AND (f.status NOT IN ('RETURNED','REVERSED') OR EXISTS (SELECT 1 FROM settlement_finality_outbox confirmed WHERE confirmed.settlement_id=f.settlement_id AND confirmed.status='CONFIRMED' AND confirmed.delivered_at IS NOT NULL))
+ ORDER BY f.occurred_at,f.event_id LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +314,7 @@ func (p Postgres) ListPendingFinalityEvents(ctx context.Context, limit int) ([]F
 	events := make([]FinalityEvent, 0)
 	for rows.Next() {
 		var event FinalityEvent
-		if err := rows.Scan(&event.EventID, &event.InstitutionID, &event.SettlementID, &event.TradeID, &event.Status, &event.CorrelationID, &event.OccurredAt); err != nil {
+		if err := rows.Scan(&event.EventID, &event.InstitutionID, &event.SettlementID, &event.TradeID, &event.Status, &event.CorrelationID, &event.OccurredAt, &event.Supersedes); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -325,7 +343,7 @@ func (p Postgres) AcknowledgeFinalityEvent(ctx context.Context, eventID string) 
 func (p Postgres) GetByID(ctx context.Context, id string) (settlementcore.Instruction, error) {
 	var i settlementcore.Instruction
 	var state string
-	err := p.DB.QueryRowContext(ctx, `SELECT id,client_ref,provider_ref,beneficiary,amount_minor,currency,purpose,state,created_at,updated_at,institution_id,COALESCE(trade_id,''),quote_id,correlation_id,provider_id,bank_code,account_number FROM settlement_instructions WHERE id=$1`, id).Scan(&i.ID, &i.ClientRef, &i.ProviderRef, &i.Beneficiary, &i.AmountMinor, &i.Currency, &i.Purpose, &state, &i.CreatedAt, &i.UpdatedAt, &i.InstitutionID, &i.TradeID, &i.QuoteID, &i.CorrelationID, &i.ProviderID, &i.BankCode, &i.AccountNumber)
+	err := p.DB.QueryRowContext(ctx, `SELECT id,client_ref,provider_ref,beneficiary,amount_minor,currency,purpose,state,created_at,updated_at,institution_id,COALESCE(trade_id,''),quote_id,correlation_id,provider_id,bank_code,account_number,COALESCE(supersedes,'') FROM settlement_instructions WHERE id=$1`, id).Scan(&i.ID, &i.ClientRef, &i.ProviderRef, &i.Beneficiary, &i.AmountMinor, &i.Currency, &i.Purpose, &state, &i.CreatedAt, &i.UpdatedAt, &i.InstitutionID, &i.TradeID, &i.QuoteID, &i.CorrelationID, &i.ProviderID, &i.BankCode, &i.AccountNumber, &i.Supersedes)
 	i.State = settlementcore.State(state)
 	return i, err
 }

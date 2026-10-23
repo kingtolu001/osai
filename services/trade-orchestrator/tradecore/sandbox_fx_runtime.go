@@ -105,7 +105,7 @@ func (c *SandboxFXClient) SubmitFX(ctx context.Context, e FXExecution) error {
 
 func (c *SandboxFXClient) decode(e FXExecution, raw []byte) (SandboxFXPayload, error) {
 	var envelope SandboxFXEnvelope
-	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Payload) == 0 {
+	if err := decodeSandboxFXJSON(raw, &envelope); err != nil || len(envelope.Payload) == 0 {
 		return SandboxFXPayload{}, errors.New("invalid sandbox FX envelope")
 	}
 	signature, err := hex.DecodeString(envelope.Signature)
@@ -117,9 +117,7 @@ func (c *SandboxFXClient) decode(e FXExecution, raw []byte) (SandboxFXPayload, e
 		return SandboxFXPayload{}, errors.New("sandbox FX authentication failed")
 	}
 	var payload SandboxFXPayload
-	decoder := json.NewDecoder(bytes.NewReader(envelope.Payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
+	if err := decodeSandboxFXJSON(envelope.Payload, &payload); err != nil {
 		return payload, errors.New("invalid signed sandbox FX payload")
 	}
 	now := time.Now().UTC()
@@ -145,6 +143,21 @@ func (c *SandboxFXClient) decode(e FXExecution, raw []byte) (SandboxFXPayload, e
 		return payload, errors.New("non-executed response contains execution economics")
 	}
 	return payload, nil
+}
+
+// A signature authenticates bytes, but the protocol must also give those bytes
+// a single meaning. Reject trailing JSON values and undeclared fields at both
+// envelope and payload boundaries.
+func decodeSandboxFXJSON(raw []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return errors.New("sandbox FX response must contain exactly one JSON value")
+	}
+	return nil
 }
 
 func (c *SandboxFXClient) QueryFX(ctx context.Context, e FXExecution) (FXQueryResult, error) {

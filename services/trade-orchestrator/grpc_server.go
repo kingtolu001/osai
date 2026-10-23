@@ -58,6 +58,9 @@ func (s *tradeServer) validateApprovedBeneficiary(ctx context.Context, instituti
 	if resp == nil || strings.TrimSpace(resp.InstitutionId) == "" || resp.InstitutionId != institutionID {
 		return status.Error(codes.FailedPrecondition, "beneficiary institution mismatch")
 	}
+	if resp.BeneficiaryId != beneficiaryID {
+		return status.Error(codes.FailedPrecondition, "beneficiary identity mismatch")
+	}
 	if strings.EqualFold(resp.Status, "DISABLED") || !strings.EqualFold(resp.ApprovalStatus, "APPROVED") || !strings.EqualFold(resp.Status, "ACTIVE") {
 		return status.Error(codes.FailedPrecondition, "beneficiary not approved for settlement")
 	}
@@ -135,6 +138,10 @@ func (s *tradeServer) CreateTradeFromAcceptedQuote(ctx context.Context, req *tra
 			}
 		}
 		if converted.SourceCurrency != converted.DestinationCurrency {
+			allowed, err := sandboxpolicy.FXTradeAllowed(req.InstitutionId, converted.SourceCurrency, converted.DestinationCurrency, req.SettlementProviderId)
+			if err == nil && allowed {
+				return s.createSandboxFXTrade(ctx, req, converted)
+			}
 			return nil, status.Error(codes.FailedPrecondition, "cross-currency funding requires verified FX execution and Ledger posting")
 		}
 		if s.ledgerClient == nil {
@@ -384,12 +391,18 @@ func consumeSettlementFinality(ctx context.Context, client settlementv1.Settleme
 			state = tradecore.StateSettled
 		case "FAILED":
 			state = tradecore.StateFailed
+		case "RETURNED":
+			state = tradecore.StateReturned
+		case "REVERSED":
+			state = tradecore.StateReversed
+		case "RETRYING":
+			state = tradecore.StateSettling
 		default:
 			return status.Error(codes.DataLoss, "settlement service returned a non-final status")
 		}
 		if err := store.ApplySettlementFinality(tradecore.FinalityEvent{
 			EventID: event.EventId, InstitutionID: event.InstitutionId, SettlementID: event.SettlementId,
-			TradeID: event.TradeId, Status: state, CorrelationID: event.CorrelationId,
+			TradeID: event.TradeId, Status: state, CorrelationID: event.CorrelationId, Supersedes: event.SupersedesSettlementId,
 		}); err != nil {
 			return err
 		}

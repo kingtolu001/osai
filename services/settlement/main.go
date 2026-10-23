@@ -19,6 +19,8 @@ import (
 	"github.com/osai/osai/adapters/flutterwave"
 	"github.com/osai/osai/pkg/observability"
 	"github.com/osai/osai/pkg/provider"
+	"github.com/osai/osai/pkg/sandboxaccounting"
+	"github.com/osai/osai/pkg/sandboxpolicy"
 	customerv1 "github.com/osai/osai/proto/osai/customer/v1"
 	notificationv1 "github.com/osai/osai/proto/osai/notification/v1"
 	settlementv1 "github.com/osai/osai/proto/osai/settlement/v1"
@@ -145,6 +147,17 @@ func main() {
 		log.Fatal("OSAI_TRADE_SETTLEMENT_TOKEN is required")
 	}
 	settlementServer := &settlementGRPCServer{store: store, repository: repository, temporal: temporalClient, reconciliationToken: os.Getenv("OSAI_RECONCILIATION_TOKEN"), tradeFinalityToken: tradeFinalityToken, beneficiaries: customerv1.NewCustomerServiceClient(customerConn), selector: selector}
+	settlementServer.sandboxPayout, err = startSandboxPayout(context.Background(), repository, settlementServer.beneficiaries)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if settlementServer.sandboxPayout != nil {
+		operators, err := loadRecoveryOperators()
+		if err != nil {
+			log.Fatal(err)
+		}
+		http.Handle("/v1/operator/sandbox-recovery/", settlementServer.sandboxPayout.recoveryHandler(operators))
+	}
 	settlementv1.RegisterSettlementServiceServer(server, settlementServer)
 	if temporalClient != nil {
 		for _, instruction := range settlementServer.pendingFlutterwave() {
@@ -225,6 +238,7 @@ type settlementGRPCServer struct {
 	tradeFinalityToken  string
 	beneficiaries       beneficiaryVerifier
 	selector            settlementRouteSelector
+	sandboxPayout       *sandboxPayoutRuntime
 }
 
 func (s *settlementGRPCServer) ListPendingSettlementFinalityEvents(ctx context.Context, req *settlementv1.ListPendingSettlementFinalityEventsRequest) (*settlementv1.ListPendingSettlementFinalityEventsResponse, error) {
@@ -243,7 +257,8 @@ func (s *settlementGRPCServer) ListPendingSettlementFinalityEvents(ctx context.C
 		response.Events = append(response.Events, &settlementv1.SettlementFinalityEvent{
 			EventId: event.EventID, InstitutionId: event.InstitutionID, SettlementId: event.SettlementID,
 			TradeId: event.TradeID, Status: event.Status, CorrelationId: event.CorrelationID,
-			OccurredAtUnixNano: event.OccurredAt.UnixNano(),
+			OccurredAtUnixNano:     event.OccurredAt.UnixNano(),
+			SupersedesSettlementId: event.Supersedes,
 		})
 	}
 	return response, nil
@@ -350,8 +365,31 @@ func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req
 	if providerID == "" {
 		providerID = "sim_lp_1"
 	}
-	if providerID != "sim_lp_1" && providerID != "flutterwave" {
+	if providerID != "sim_lp_1" && providerID != "flutterwave" && providerID != "sbx:provider" {
 		return nil, status.Error(codes.InvalidArgument, "unsupported settlement provider")
+	}
+	if providerID == "sbx:provider" {
+		values := metadata.ValueFromIncomingContext(ctx, sandboxpolicy.TokenHeader)
+		if s.sandboxPayout == nil || len(values) != 1 || subtle.ConstantTimeCompare([]byte(values[0]), []byte(os.Getenv("OSAI_SANDBOX_LEDGER_TOKEN"))) != 1 {
+			return nil, status.Error(codes.PermissionDenied, "sandbox payout unavailable")
+		}
+		if req.Amount == nil || req.Amount.Currency != "USD" || req.Amount.AmountMinor <= 0 || !strings.HasPrefix(req.InstitutionId, "sbx:") || !sandboxaccounting.ValidBeneficiaryID(req.BeneficiaryId) || req.Beneficiary != "" || req.BankCode != "" || req.AccountNumber != "" || s.beneficiaries == nil {
+			return nil, status.Error(codes.InvalidArgument, "explicit sandbox destination and approved beneficiary required")
+		}
+		approved, err := s.beneficiaries.GetApprovedBeneficiary(ctx, &customerv1.BeneficiaryRequest{InstitutionId: req.InstitutionId, BeneficiaryId: req.BeneficiaryId})
+		if err != nil || approved == nil || approved.InstitutionId != req.InstitutionId || approved.BeneficiaryId != req.BeneficiaryId || approved.Status != "ACTIVE" || approved.ApprovalStatus != "APPROVED" {
+			return nil, status.Error(codes.PermissionDenied, "sandbox beneficiary unavailable")
+		}
+		position, err := s.sandboxPayout.position(ctx, req.InstitutionId, req.TradeId)
+		if err != nil || position.Terms.Plan == nil || position.Terms.Plan.QuoteID != req.QuoteId || position.Terms.Plan.DestinationMinor != req.Amount.AmountMinor || position.Terms.Plan.BeneficiaryID != req.BeneficiaryId || position.Terms.Plan.ProviderID != providerID || (position.Payout == nil && position.State != "FX_HELD") || (position.Payout != nil && (position.Payout.BeneficiaryID != req.BeneficiaryId || position.Payout.ProviderID != providerID || position.Payout.Currency != req.Amount.Currency || position.Payout.AmountMinor != req.Amount.AmountMinor)) {
+			return nil, status.Error(codes.FailedPrecondition, "verified sandbox destination proceeds unavailable")
+		}
+		if position.Payout != nil {
+			bound, err := s.repository.GetByID(ctx, position.Payout.SettlementID)
+			if err != nil || bound.TradeID != req.TradeId || bound.InstitutionID != req.InstitutionId || bound.ClientRef != position.Payout.ClientReference {
+				return nil, status.Error(codes.FailedPrecondition, "sandbox proceeds already bound to another instruction")
+			}
+		}
 	}
 	if providerID == "flutterwave" {
 		if os.Getenv("FLW_SETTLEMENT_ENABLED") != "true" || s.temporal == nil {
@@ -372,6 +410,9 @@ func (s *settlementGRPCServer) CreateSettlementForTrade(ctx context.Context, req
 		return nil, status.Error(codes.InvalidArgument, "settlement currency required")
 	}
 	beneficiary, bankCode, accountNumber := req.Beneficiary, "", ""
+	if providerID == "sbx:provider" {
+		beneficiary = req.BeneficiaryId
+	}
 	if providerID == "flutterwave" {
 		resolved, err := s.beneficiaries.GetApprovedBeneficiary(ctx, &customerv1.BeneficiaryRequest{InstitutionId: req.InstitutionId, BeneficiaryId: req.BeneficiaryId})
 		if err != nil || resolved == nil || resolved.InstitutionId != req.InstitutionId || resolved.BeneficiaryId != req.BeneficiaryId || resolved.Status != "ACTIVE" || resolved.ApprovalStatus != "APPROVED" || !bankDigits(resolved.BankCode, 3, 6) || !bankDigits(resolved.AccountNumber, 10, 10) {
@@ -462,7 +503,11 @@ func (s *settlementGRPCServer) ensureWorkflow(ctx context.Context, instruction s
 	if os.Getenv("FLW_ENV") == "test" {
 		interval = time.Second
 	}
-	_, err := s.temporal.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: "settlement-" + instruction.ClientRef, TaskQueue: workflows.TaskQueue}, workflows.TemporalSettlementWorkflow, workflows.TemporalSettlementInput{
+	queue, err := workflows.ConfiguredTaskQueue()
+	if err != nil {
+		return err
+	}
+	_, err = s.temporal.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: "settlement-" + instruction.ClientRef, TaskQueue: queue}, workflows.TemporalSettlementWorkflow, workflows.TemporalSettlementInput{
 		InstructionID: instruction.ID, InstitutionID: instruction.InstitutionID, TradeID: instruction.TradeID, CorrelationID: instruction.CorrelationID, ClientRef: instruction.ClientRef, ProviderRef: instruction.ProviderRef, ProviderID: instruction.ProviderID, BankCode: instruction.BankCode, AccountNumber: instruction.AccountNumber, Beneficiary: instruction.Beneficiary, AmountMinor: instruction.AmountMinor, Currency: instruction.Currency, Purpose: instruction.Purpose, PollInterval: interval,
 	})
 	var started *serviceerror.WorkflowExecutionAlreadyStarted

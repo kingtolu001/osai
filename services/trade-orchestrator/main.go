@@ -108,6 +108,12 @@ func main() {
 		}
 	}
 	notificationToken := strings.TrimSpace(os.Getenv("OSAI_NOTIFICATION_TOKEN"))
+	if err := startSandboxFXLedgerPosting(context.Background(), store, ledgerClient); err != nil {
+		log.Fatal(err)
+	}
+	if err := startSandboxFXPayout(context.Background(), store, settlementClient); err != nil {
+		log.Fatal(err)
+	}
 	if notificationToken == "" {
 		log.Fatal("OSAI_NOTIFICATION_TOKEN is required for durable customer events")
 	}

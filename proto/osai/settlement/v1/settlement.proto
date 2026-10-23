@@ -95,6 +95,7 @@ message SettlementFinalityEvent {
   string status = 5;
   string correlation_id = 6;
   int64 occurred_at_unix_nano = 7;
+  string supersedes_settlement_id = 8;
 }
 
 message ListPendingSettlementFinalityEventsRequest {

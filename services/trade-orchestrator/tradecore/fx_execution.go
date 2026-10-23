@@ -51,9 +51,12 @@ type FXExecution struct {
 	RecoveryCount          int                             `json:"recovery_count"`
 	LastRecoveryEvidence   *FXQueryEvidence                `json:"last_recovery_evidence,omitempty"`
 	ExecutionEvidence      *fxevidence.FXExecutionEvidence `json:"execution_evidence,omitempty"`
-	FailureEvidence        *FXQueryEvidence                `json:"failure_evidence,omitempty"`
-	CreatedAt              time.Time                       `json:"created_at"`
-	UpdatedAt              time.Time                       `json:"updated_at"`
+	// Retain the exact authenticated response as durable audit evidence. A
+	// digest alone cannot reconstruct or independently inspect its contents.
+	VerifiedResponse []byte           `json:"verified_response,omitempty"`
+	FailureEvidence  *FXQueryEvidence `json:"failure_evidence,omitempty"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
 }
 
 type FXQueryStatus string
@@ -154,7 +157,14 @@ func (s *Store) ListFXExecutionsForRecovery(limit int) ([]FXExecution, error) {
 }
 
 func (s *Store) MarkFXExecutionSubmitted(tradeID string) (*FXExecution, error) {
+	return s.markFXExecutionSubmitted(tradeID, nil)
+}
+
+func (s *Store) markFXExecutionSubmitted(tradeID string, expected *FXExecution) (*FXExecution, error) {
 	return s.mutateFXExecution(tradeID, func(execution *FXExecution, trade *Trade) (string, error) {
+		if expected != nil && (execution.SubmissionCount != expected.SubmissionCount || execution.RecoveryGeneration != expected.RecoveryGeneration) {
+			return "", errors.New("stale FX submission claim")
+		}
 		if execution.Status == FXExecutionSubmitted {
 			return "", errors.New("FX execution already submitted; query before any retry")
 		}
@@ -231,6 +241,7 @@ func (s *Store) applyFXQueryResult(tradeID string, result FXQueryResult) (*FXExe
 			}
 			execution.Status = FXExecutionComplete
 			execution.ExecutionEvidence = cloneFXExecutionEvidence(result.Execution)
+			execution.VerifiedResponse = append([]byte(nil), result.QueryEvidence.RawPayload...)
 			execution.LastRecoveryEvidence = cloneFXQueryEvidence(&result.QueryEvidence)
 			execution.RecoveryCount++
 			trade.State = StateFXExecuted
@@ -251,6 +262,10 @@ func (s *Store) applyFXQueryResult(tradeID string, result FXQueryResult) (*FXExe
 // calling the executor. Every submission error becomes UNKNOWN; retries require
 // a query proving that the previous request did not execute.
 func (s *Store) SubmitFXExecution(ctx context.Context, tradeID string, executor FXExecutionExecutor, verifier FXQueryVerifier) (*FXExecution, error) {
+	return s.submitFXExecution(ctx, tradeID, executor, verifier, false)
+}
+
+func (s *Store) submitFXExecution(ctx context.Context, tradeID string, executor FXExecutionExecutor, verifier FXQueryVerifier, initialOnly bool) (*FXExecution, error) {
 	if executor == nil || verifier == nil {
 		return nil, errors.New("FX executor and query verifier are required")
 	}
@@ -264,7 +279,10 @@ func (s *Store) SubmitFXExecution(ctx context.Context, tradeID string, executor 
 	if execution.Status != FXExecutionReady {
 		return nil, fmt.Errorf("FX execution must be READY before submit, got %s", execution.Status)
 	}
-	submitted, err := s.MarkFXExecutionSubmitted(tradeID)
+	if initialOnly && execution.SubmissionCount != 0 {
+		return nil, errors.New("automatic FX resubmission is prohibited")
+	}
+	submitted, err := s.markFXExecutionSubmitted(tradeID, execution)
 	if err != nil {
 		return nil, err
 	}
@@ -360,6 +378,10 @@ func (s *Store) mutateFXExecution(tradeID string, update func(*FXExecution, *Tra
 }
 
 func (s *Store) createFXExecutionDB(tradeID, idempotencyKey, executorID string) (*FXExecution, error) {
+	return s.createFXExecutionWithReservationDB(tradeID, idempotencyKey, executorID, nil)
+}
+
+func (s *Store) createFXExecutionWithReservationDB(tradeID, idempotencyKey, executorID string, reservation *sandboxFXReservation) (*FXExecution, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
@@ -378,6 +400,19 @@ func (s *Store) createFXExecutionDB(tradeID, idempotencyKey, executorID string) 
 	}
 	if err = pricing.Validate(*trade.PricingSnapshot); err != nil {
 		return nil, fmt.Errorf("invalid FX pricing snapshot: %w", err)
+	}
+	if reservation != nil {
+		if _, err = tx.Exec(`INSERT INTO trade_sandbox_fx_reservations(trade_id,event_id,revision,command_json,receipt_json) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, tradeID, reservation.event, reservation.revision, reservation.command, reservation.receipt); err != nil {
+			return nil, err
+		}
+		var event, command string
+		var revision int64
+		if err = tx.QueryRow(`SELECT event_id,revision,command_json FROM trade_sandbox_fx_reservations WHERE trade_id=$1`, tradeID).Scan(&event, &revision, &command); err != nil {
+			return nil, err
+		}
+		if event != reservation.event || revision != reservation.revision || command != reservation.command {
+			return nil, errors.New("sandbox FX funding receipt conflict")
+		}
 	}
 	hash, err := fxExecutionRequestHash(&trade, idempotencyKey, executorID)
 	if err != nil {
@@ -400,6 +435,9 @@ func (s *Store) createFXExecutionDB(tradeID, idempotencyKey, executorID string) 
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
+	}
+	if reservation != nil && (trade.State == StateAccepted || trade.State == StateFundingRequired) {
+		trade.State = StateFunded
 	}
 	if trade.State != StateFunded || trade.PricingSnapshot.SourceCurrency == trade.PricingSnapshot.DestinationCurrency {
 		return nil, errors.New("funded cross-currency trade with immutable pricing is required")
@@ -582,6 +620,7 @@ func cloneFXExecution(execution *FXExecution) *FXExecution {
 	copy.LastRecoveryEvidence = cloneFXQueryEvidence(execution.LastRecoveryEvidence)
 	copy.FailureEvidence = cloneFXQueryEvidence(execution.FailureEvidence)
 	copy.ExecutionEvidence = cloneFXExecutionEvidence(execution.ExecutionEvidence)
+	copy.VerifiedResponse = append([]byte(nil), execution.VerifiedResponse...)
 	return &copy
 }
 

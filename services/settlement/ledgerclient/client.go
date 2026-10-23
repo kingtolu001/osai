@@ -51,7 +51,10 @@ func (c *Client) FailSettlement(instruction settlementcore.Instruction) error {
 }
 
 func (c *Client) ReverseSettlement(instruction settlementcore.Instruction) error {
-	_, err := c.client.ReverseSettlement(context.Background(), request(instruction, "reversed"))
+	ctx, span := observability.Start(correlation.WithContext(context.Background(), instruction.CorrelationID), "osai/settlement", "ledger.reverse")
+	defer span.End()
+	ctx = observability.AttachOutgoingGRPCMetadata(ctx)
+	_, err := c.client.ReverseSettlement(sandboxpolicy.Outgoing(ctx), request(instruction, "reversed"))
 	return err
 }
 

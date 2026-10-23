@@ -78,6 +78,30 @@ func TestSandboxFXResponseAuthenticationAndEconomicsBinding(t *testing.T) {
 	if err := json.Unmarshal(result.QueryEvidence.RawPayload, &envelope); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("signed payload has a second JSON value", func(t *testing.T) {
+		ambiguous := envelope
+		ambiguous.Payload = append(append([]byte(nil), envelope.Payload...), []byte(` {"status":"NOT_EXECUTED"}`)...)
+		ambiguous.Signature = sandboxFXMAC([]byte(key), ambiguous.Payload)
+		// Construct the raw envelope directly: json.Marshal correctly refuses a
+		// RawMessage containing multiple JSON values.
+		raw := []byte(`{"payload":` + string(ambiguous.Payload) + `,"signature":"` + ambiguous.Signature + `"}`)
+		if _, err := client.decode(execution, raw); err == nil {
+			t.Fatal("ambiguous signed response accepted")
+		}
+		var payload SandboxFXPayload
+		if err := decodeSandboxFXJSON(ambiguous.Payload, &payload); err == nil {
+			t.Fatal("second signed payload value accepted")
+		}
+	})
+	t.Run("undeclared envelope field", func(t *testing.T) {
+		raw, err := json.Marshal(map[string]any{"payload": envelope.Payload, "signature": envelope.Signature, "override_status": "NOT_EXECUTED"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.decode(execution, raw); err == nil {
+			t.Fatal("undeclared response field accepted")
+		}
+	})
 	envelope.Signature = strings.Repeat("0", 64)
 	tampered := result
 	tampered.QueryEvidence.RawPayload, _ = json.Marshal(envelope)

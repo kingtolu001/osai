@@ -53,6 +53,8 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 		t.Skip("local PostgreSQL and Temporal configuration required")
 	}
 	t.Setenv("FLW_ENV", "test")
+	t.Setenv("OSAI_LOCAL_PROOF_MODE", "true")
+	t.Setenv("OSAI_TEMPORAL_TASK_QUEUE", "osai-proof-preflight-"+uuid.NewString())
 	t.Setenv("FLW_SETTLEMENT_ENABLED", "true")
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -370,6 +372,14 @@ func TestFlutterwaveLocalPreflight(t *testing.T) {
 	}
 	if terminalJournalCount() != 3 {
 		t.Fatal("early callback did not yield one verified third ledger effect")
+	}
+	mu.Lock()
+	thirdRef := ref
+	mu.Unlock()
+	finishedThird, cancelThird := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelThird()
+	if err := temporalClient.GetWorkflow(finishedThird, "settlement-"+thirdRef, "").Get(finishedThird, nil); err != nil {
+		t.Fatalf("third workflow did not finish: %v", err)
 	}
 	thirdStored, err := repository.GetByID(context.Background(), third.SettlementId)
 	if err != nil || thirdStored.State != settlementcore.Confirmed {

@@ -39,8 +39,16 @@ func startSandboxFXRecovery(ctx context.Context, store *tradecore.Store) error {
 			callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			_, err := store.RecoverSandboxFXBatch(callCtx, client, 25)
 			cancel()
+			// An exhausted query budget must not starve accepted trades or
+			// completed executions waiting for their durable Ledger command.
+			acceptedCtx, acceptedCancel := context.WithTimeout(ctx, 10*time.Second)
+			_, acceptedErr := store.ProcessSandboxFXAcceptedBatch(acceptedCtx, client, 25)
+			acceptedCancel()
 			if err != nil {
 				log.Printf("sandbox FX recovery remains unresolved: %v", err)
+			}
+			if acceptedErr != nil {
+				log.Printf("sandbox FX acceptance remains unresolved: %v", acceptedErr)
 			}
 		}
 	}()

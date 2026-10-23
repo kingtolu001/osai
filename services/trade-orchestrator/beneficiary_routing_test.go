@@ -23,6 +23,30 @@ type testCustomerClient struct {
 	beneficiary *customerv1.Beneficiary
 }
 
+func TestSandboxFXRejectsUnboundBeneficiaryBeforeCreatingTrade(t *testing.T) {
+	for _, tc := range []struct {
+		name, requested, returned string
+		code                      codes.Code
+	}{
+		{"empty", "", "", codes.InvalidArgument},
+		{"malformed", "ben_invalid", "ben_invalid", codes.InvalidArgument},
+		{"different approved beneficiary", "sbx:requested", "sbx:other", codes.FailedPrecondition},
+		{"missing returned identity", "sbx:requested", "", codes.FailedPrecondition},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := tradecore.NewStore()
+			server := newTradeServer(store, nil).withCustomerClient(testCustomerClient{beneficiary: &customerv1.Beneficiary{BeneficiaryId: tc.returned, InstitutionId: "sbx:institution", Status: "ACTIVE", ApprovalStatus: "APPROVED"}}).withLedgerClient(testLedgerClient{})
+			_, err := server.createSandboxFXTrade(context.Background(), &tradev1.CreateTradeFromAcceptedQuoteRequest{InstitutionId: "sbx:institution", QuoteId: "sbx:quote", BeneficiaryId: tc.requested}, pricing.Snapshot{})
+			if status.Code(err) != tc.code {
+				t.Fatalf("expected %v, got %v", tc.code, err)
+			}
+			if _, exists := store.GetByQuoteID("sbx:quote"); exists {
+				t.Fatal("unbound beneficiary created a trade before validation")
+			}
+		})
+	}
+}
+
 func (c testCustomerClient) GetApprovedBeneficiary(context.Context, *customerv1.BeneficiaryRequest, ...grpc.CallOption) (*customerv1.Beneficiary, error) {
 	return c.beneficiary, nil
 }
@@ -67,6 +91,8 @@ func TestApprovedInstitutionBeneficiaryFeedsSettlement(t *testing.T) {
 	}{
 		{"approved", &customerv1.Beneficiary{BeneficiaryId: "ben_1", InstitutionId: "inst_1", Status: "ACTIVE", ApprovalStatus: "APPROVED", BankCode: "044", AccountNumber: "0690000040"}, true},
 		{"another institution", &customerv1.Beneficiary{BeneficiaryId: "ben_1", InstitutionId: "inst_2", Status: "ACTIVE", ApprovalStatus: "APPROVED", BankCode: "044", AccountNumber: "0690000040"}, false},
+		{"another beneficiary", &customerv1.Beneficiary{BeneficiaryId: "ben_2", InstitutionId: "inst_1", Status: "ACTIVE", ApprovalStatus: "APPROVED"}, false},
+		{"missing beneficiary identity", &customerv1.Beneficiary{InstitutionId: "inst_1", Status: "ACTIVE", ApprovalStatus: "APPROVED"}, false},
 		{"disabled", &customerv1.Beneficiary{BeneficiaryId: "ben_1", InstitutionId: "inst_1", Status: "DISABLED", ApprovalStatus: "APPROVED", BankCode: "044", AccountNumber: "0690000040"}, false},
 		{"unapproved", &customerv1.Beneficiary{BeneficiaryId: "ben_1", InstitutionId: "inst_1", Status: "ACTIVE", ApprovalStatus: "PENDING", BankCode: "044", AccountNumber: "0690000040"}, false},
 	} {

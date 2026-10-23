@@ -780,16 +780,17 @@ func (x *ListConfirmedSettlementsResponse) GetNextSettlementId() string {
 }
 
 type SettlementFinalityEvent struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	EventId            string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	InstitutionId      string                 `protobuf:"bytes,2,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
-	SettlementId       string                 `protobuf:"bytes,3,opt,name=settlement_id,json=settlementId,proto3" json:"settlement_id,omitempty"`
-	TradeId            string                 `protobuf:"bytes,4,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	Status             string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	CorrelationId      string                 `protobuf:"bytes,6,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	OccurredAtUnixNano int64                  `protobuf:"varint,7,opt,name=occurred_at_unix_nano,json=occurredAtUnixNano,proto3" json:"occurred_at_unix_nano,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	EventId                string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	InstitutionId          string                 `protobuf:"bytes,2,opt,name=institution_id,json=institutionId,proto3" json:"institution_id,omitempty"`
+	SettlementId           string                 `protobuf:"bytes,3,opt,name=settlement_id,json=settlementId,proto3" json:"settlement_id,omitempty"`
+	TradeId                string                 `protobuf:"bytes,4,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	Status                 string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	CorrelationId          string                 `protobuf:"bytes,6,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	OccurredAtUnixNano     int64                  `protobuf:"varint,7,opt,name=occurred_at_unix_nano,json=occurredAtUnixNano,proto3" json:"occurred_at_unix_nano,omitempty"`
+	SupersedesSettlementId string                 `protobuf:"bytes,8,opt,name=supersedes_settlement_id,json=supersedesSettlementId,proto3" json:"supersedes_settlement_id,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *SettlementFinalityEvent) Reset() {
@@ -869,6 +870,13 @@ func (x *SettlementFinalityEvent) GetOccurredAtUnixNano() int64 {
 		return x.OccurredAtUnixNano
 	}
 	return 0
+}
+
+func (x *SettlementFinalityEvent) GetSupersedesSettlementId() string {
+	if x != nil {
+		return x.SupersedesSettlementId
+	}
+	return ""
 }
 
 type ListPendingSettlementFinalityEventsRequest struct {
@@ -1137,7 +1145,7 @@ const file_proto_osai_settlement_v1_settlement_proto_rawDesc = "" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"\x9a\x01\n" +
 	" ListConfirmedSettlementsResponse\x12H\n" +
 	"\vsettlements\x18\x01 \x03(\v2&.osai.settlement.v1.SettlementResponseR\vsettlements\x12,\n" +
-	"\x12next_settlement_id\x18\x02 \x01(\tR\x10nextSettlementId\"\x8d\x02\n" +
+	"\x12next_settlement_id\x18\x02 \x01(\tR\x10nextSettlementId\"\xc7\x02\n" +
 	"\x17SettlementFinalityEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12%\n" +
 	"\x0einstitution_id\x18\x02 \x01(\tR\rinstitutionId\x12#\n" +
@@ -1145,7 +1153,8 @@ const file_proto_osai_settlement_v1_settlement_proto_rawDesc = "" +
 	"\btrade_id\x18\x04 \x01(\tR\atradeId\x12\x16\n" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12%\n" +
 	"\x0ecorrelation_id\x18\x06 \x01(\tR\rcorrelationId\x121\n" +
-	"\x15occurred_at_unix_nano\x18\a \x01(\x03R\x12occurredAtUnixNano\"j\n" +
+	"\x15occurred_at_unix_nano\x18\a \x01(\x03R\x12occurredAtUnixNano\x128\n" +
+	"\x18supersedes_settlement_id\x18\b \x01(\tR\x16supersedesSettlementId\"j\n" +
 	"*ListPendingSettlementFinalityEventsRequest\x12\x1f\n" +
 	"\vconsumer_id\x18\x01 \x01(\tR\n" +
 	"consumerId\x12\x1b\n" +

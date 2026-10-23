@@ -22,6 +22,7 @@ func NewPostgresStore(db *sql.DB) (*Store, error) {
 	CREATE INDEX IF NOT EXISTS trades_institution_status_idx ON trades(institution_id,status);
 	CREATE TABLE IF NOT EXISTS trade_transitions(id bigserial PRIMARY KEY,trade_id text NOT NULL REFERENCES trades(id),from_state text NOT NULL,to_state text NOT NULL,occurred_at timestamptz NOT NULL DEFAULT now());
 	CREATE TABLE IF NOT EXISTS trade_settlement_event_inbox(event_id text PRIMARY KEY,institution_id text NOT NULL,settlement_id text NOT NULL,trade_id text NOT NULL REFERENCES trades(id),status text NOT NULL CHECK(status IN ('SETTLED','FAILED')),correlation_id text NOT NULL DEFAULT '',received_at timestamptz NOT NULL DEFAULT now());
+	ALTER TABLE trade_settlement_event_inbox ADD COLUMN IF NOT EXISTS supersedes text NOT NULL DEFAULT '';
 	ALTER TABLE trade_settlement_event_inbox ADD COLUMN IF NOT EXISTS correlation_id text NOT NULL DEFAULT '';
 	CREATE TABLE IF NOT EXISTS trade_fx_executions(
 		execution_id text PRIMARY KEY,trade_id text NOT NULL UNIQUE REFERENCES trades(id),
@@ -30,6 +31,25 @@ func NewPostgresStore(db *sql.DB) (*Store, error) {
 		body jsonb NOT NULL,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
 	CREATE INDEX IF NOT EXISTS trade_fx_execution_recovery_idx ON trade_fx_executions(status,updated_at)
 		WHERE status IN ('SUBMITTED','UNKNOWN');`)
+	if err == nil {
+		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS trade_sandbox_fx_postings (
+		 event_id text PRIMARY KEY, execution_id text NOT NULL UNIQUE REFERENCES trade_fx_executions(execution_id),
+		 command_json text NOT NULL, receipt_json text, created_at timestamptz NOT NULL DEFAULT now(),
+		 attempted_at timestamptz, posted_at timestamptz);`)
+	}
+	if err == nil {
+		_, err = db.Exec(`ALTER TABLE trade_sandbox_fx_postings ADD COLUMN IF NOT EXISTS payout_attempted_at timestamptz`)
+	}
+	if err == nil {
+		_, err = db.Exec(`ALTER TABLE trade_settlement_event_inbox DROP CONSTRAINT IF EXISTS trade_settlement_event_inbox_status_check; ALTER TABLE trade_settlement_event_inbox ADD CONSTRAINT trade_settlement_event_inbox_status_check CHECK(status IN ('SETTLED','FAILED','RETURNED','REVERSED','SETTLING'))`)
+	}
+	if err == nil {
+		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS trade_sandbox_fx_reservations (
+		 trade_id text PRIMARY KEY REFERENCES trades(id), event_id text NOT NULL UNIQUE,
+		 revision bigint NOT NULL, command_json text NOT NULL, receipt_json text NOT NULL,
+		 attempted_at timestamptz);
+		 ALTER TABLE trade_sandbox_fx_reservations ADD COLUMN IF NOT EXISTS attempted_at timestamptz;`)
+	}
 	if err == nil {
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS trade_outbox(event_id text PRIMARY KEY,institution_id text NOT NULL,trade_id text NOT NULL REFERENCES trades(id),event_type text NOT NULL,body jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),delivered_at timestamptz); CREATE INDEX IF NOT EXISTS trade_outbox_pending_idx ON trade_outbox(created_at,event_id) WHERE delivered_at IS NULL;`)
 	}
@@ -88,6 +108,10 @@ func (s *Store) createDB(trade *Trade) (*Trade, error) {
 
 func insertTradeEvent(tx *sql.Tx, trade *Trade, eventType string, occurredAt time.Time) error {
 	eventID := "evt_trade_" + trade.ID + "_" + eventType
+	return insertTradeEventID(tx, trade, eventType, eventID, occurredAt)
+}
+
+func insertTradeEventID(tx *sql.Tx, trade *Trade, eventType, eventID string, occurredAt time.Time) error {
 	payload, err := json.Marshal(map[string]any{
 		"trade_id": trade.ID,
 		"quote_id": trade.QuoteID,
@@ -232,6 +256,10 @@ func (s *Store) setSettlementDB(tradeID, settlementID string) error {
 }
 
 func (s *Store) setStatusDB(tradeID string, state TradeState) error {
+	return s.setStatusWithFundingFenceDB(tradeID, state, false)
+}
+
+func (s *Store) setStatusWithFundingFenceDB(tradeID string, state TradeState, unfundedOnly bool) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -244,6 +272,11 @@ func (s *Store) setStatusDB(tradeID string, state TradeState) error {
 	var trade Trade
 	if err = json.Unmarshal(raw, &trade); err != nil {
 		return err
+	}
+	if unfundedOnly && trade.State != StateAccepted && trade.State != StateFundingRequired {
+		// A delayed insufficient-funds response must not overwrite another
+		// acceptance request's committed FX intent or subsequent execution.
+		return tx.Commit()
 	}
 	previous := trade.Status
 	if previous == string(state) {
@@ -287,12 +320,9 @@ func (s *Store) applySettlementFinalityDB(event FinalityEvent) error {
 	if err = json.Unmarshal(raw, &trade); err != nil {
 		return err
 	}
-	if trade.InstitutionID != event.InstitutionID || trade.SettlementID != event.SettlementID || trade.CorrelationID != event.CorrelationID {
-		return errors.New("settlement finality identity mismatch")
-	}
 	var prior FinalityEvent
-	err = tx.QueryRow(`SELECT event_id,institution_id,settlement_id,trade_id,status,correlation_id FROM trade_settlement_event_inbox WHERE event_id=$1`, event.EventID).
-		Scan(&prior.EventID, &prior.InstitutionID, &prior.SettlementID, &prior.TradeID, &prior.Status, &prior.CorrelationID)
+	err = tx.QueryRow(`SELECT event_id,institution_id,settlement_id,trade_id,status,correlation_id,supersedes FROM trade_settlement_event_inbox WHERE event_id=$1`, event.EventID).
+		Scan(&prior.EventID, &prior.InstitutionID, &prior.SettlementID, &prior.TradeID, &prior.Status, &prior.CorrelationID, &prior.Supersedes)
 	if err == nil {
 		if prior != event {
 			return errors.New("settlement finality event collision")
@@ -302,15 +332,19 @@ func (s *Store) applySettlementFinalityDB(event FinalityEvent) error {
 	if err != sql.ErrNoRows {
 		return err
 	}
-	if trade.State != StateSettling && trade.State != event.Status {
+	if !settlementEventMatches(trade, event) {
+		return errors.New("settlement finality identity mismatch")
+	}
+	if event.Supersedes == "" && !settlementFinalityAllowed(trade.State, event.Status) {
 		return errors.New("settlement finality conflicts with trade state")
 	}
-	if _, err = tx.Exec(`INSERT INTO trade_settlement_event_inbox(event_id,institution_id,settlement_id,trade_id,status,correlation_id) VALUES($1,$2,$3,$4,$5,$6)`, event.EventID, event.InstitutionID, event.SettlementID, event.TradeID, event.Status, event.CorrelationID); err != nil {
+	if _, err = tx.Exec(`INSERT INTO trade_settlement_event_inbox(event_id,institution_id,settlement_id,trade_id,status,correlation_id,supersedes) VALUES($1,$2,$3,$4,$5,$6,$7)`, event.EventID, event.InstitutionID, event.SettlementID, event.TradeID, event.Status, event.CorrelationID, event.Supersedes); err != nil {
 		return err
 	}
 	if trade.State != event.Status {
 		previous := trade.Status
 		trade.State, trade.Status, trade.UpdatedAt = event.Status, string(event.Status), time.Now().UTC()
+		trade.SettlementID = event.SettlementID
 		raw, err = json.Marshal(&trade)
 		if err != nil {
 			return err
@@ -320,6 +354,11 @@ func (s *Store) applySettlementFinalityDB(event FinalityEvent) error {
 		}
 		if _, err = tx.Exec(`INSERT INTO trade_transitions(trade_id,from_state,to_state) VALUES($1,$2,$3)`, event.TradeID, previous, event.Status); err != nil {
 			return err
+		}
+		if event.Status == StateFailed {
+			if err = insertTradeEventID(tx, &trade, "trade.failed", "evt_trade_finality_"+event.EventID, trade.UpdatedAt); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()
